@@ -27,4 +27,7 @@ data class RoutineRegistrationUiState(
     val successMessage: String? = null,
     val isCalculating: Boolean = false,
     val isSaveEnabled: Boolean = false,
-)
+) {
+    val hasCalculationResult: Boolean
+        get() = routeEstimate != null && recommendedDepartureTimeText.isNotBlank()
+}
