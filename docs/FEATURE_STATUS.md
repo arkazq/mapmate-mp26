@@ -15,7 +15,8 @@
 | 계산 로직 테스트 | 완료 | 09:00, 42분, 6분, 5분 입력 시 08:07을 검증합니다. | `app/src/test/java/com/mapmate/domain/calculator/DepartureTimeCalculatorTest.kt` |
 | Mock 장소 검색 provider | 완료 | `PlaceSearchProvider`의 mock 구현체가 있습니다. | `data/mock/MockPlaceSearchProvider.kt` |
 | Mock 이동 시간 provider | 완료 | 이동 수단별 고정 예상 시간을 반환합니다. | `data/mock/MockRouteEstimateProvider.kt` |
-| Room DB 저장 | 미구현 | 실제 루틴 저장소는 아직 없습니다. 현재 저장은 성공 상태 메시지 표시까지입니다. | 예정 |
+| Room DB 저장 | 완료 | 입력값 검증 후 `routines` 테이블에 루틴을 실제 저장합니다. | `data/local`, `data/repository/RoomRoutineRepository.kt` |
+| 저장된 루틴 목록 표시 | 완료 | Room `Flow`를 관찰해 저장된 루틴을 화면 상단에 표시합니다. | `presentation/routine/RoutineRegistrationScreen.kt` |
 | DataStore 설정 저장 | 미구현 | 앱 설정 저장 기능은 아직 없습니다. | 예정 |
 | 실제 Kakao API | 미구현 | 장소 검색/좌표 변환 API는 아직 연결하지 않았습니다. | 예정 |
 | 실제 ODsay API | 미구현 | 대중교통 경로 검색 API는 아직 연결하지 않았습니다. | 예정 |
@@ -24,7 +25,7 @@
 | WorkManager 재조회 | 미구현 | 출발 전 이동 시간 재조회 작업은 아직 없습니다. | 예정 |
 | 이동 기록 저장 | 미구현 | 탑승/도착 기록 저장 기능은 아직 없습니다. | 예정 |
 | 개인 보정값 업데이트 | 미구현 | 실제 도착 오차 기반 개인 보정 업데이트는 아직 없습니다. | 예정 |
-| 홈 화면 | 미구현 | 앱 진입 화면은 현재 루틴 등록 화면입니다. | `MainActivity.kt` |
+| 홈 화면 | 부분 완료 | 앱 진입 화면 상단에서 저장된 루틴 목록을 확인할 수 있습니다. 별도 Navigation 기반 홈 화면은 아직 없습니다. | `presentation/routine/RoutineRegistrationScreen.kt` |
 | 통계 화면 | 미구현 | 최근 기록/통계 화면은 아직 없습니다. | 예정 |
 | 설정 화면 | 미구현 | 알림 설정, 보정값 설정 화면은 아직 없습니다. | 예정 |
 
@@ -40,4 +41,4 @@ MainActivity
 
 ## 현재 저장 동작
 
-현재 `루틴 저장` 버튼은 Room DB에 저장하지 않습니다. 입력값 검증 후 성공 메시지를 표시하는 단계까지 구현되어 있습니다.
+현재 `루틴 저장` 버튼은 입력값 검증 후 Room DB의 `routines` 테이블에 루틴을 저장합니다. 저장된 루틴은 Room `Flow`를 통해 화면 상단의 `저장된 루틴` 영역에 바로 표시됩니다.

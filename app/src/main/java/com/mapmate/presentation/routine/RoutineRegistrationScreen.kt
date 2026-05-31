@@ -3,6 +3,7 @@ package com.mapmate.presentation.routine
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,24 +18,32 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mapmate.domain.model.RouteEstimate
+import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.ui.theme.MapMateTheme
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun RoutineRegistrationRoute(
     contentPadding: PaddingValues,
-    viewModel: RoutineRegistrationViewModel = viewModel(),
+    routineRepository: RoutineRepository,
 ) {
+    val viewModel: RoutineRegistrationViewModel = viewModel(
+        factory = RoutineRegistrationViewModel.factory(routineRepository),
+    )
     val uiState by viewModel.uiState.collectAsState()
 
     RoutineRegistrationScreen(
@@ -58,6 +67,10 @@ fun RoutineRegistrationScreen(
     ) {
         item {
             Header()
+        }
+
+        item {
+            SavedRoutineOverview(routines = uiState.savedRoutines)
         }
 
         item {
@@ -190,6 +203,92 @@ private fun Header() {
 }
 
 @Composable
+private fun SavedRoutineOverview(routines: List<Routine>) {
+    SectionBlock(
+        title = "저장된 루틴",
+        subtitle = if (routines.isEmpty()) {
+            "저장 버튼을 누르면 이곳에 루틴이 표시됩니다."
+        } else {
+            "총 ${routines.size}개의 루틴이 저장되어 있습니다."
+        },
+    ) {
+        if (routines.isEmpty()) {
+            Text(
+                text = "아직 저장된 루틴이 없습니다.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            routines.forEach { routine ->
+                SavedRoutineRow(routine = routine)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedRoutineRow(routine: Routine) {
+    val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = routine.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = routine.destination.name,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = routine.targetArrivalTime.format(timeFormatter),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Text(
+                text = listOf(
+                    routine.transportMode.toKoreanLabel(),
+                    routine.repeatDays
+                        .sortedBy { it.ordinal }
+                        .joinToString(" ") { it.toKoreanShortLabel() },
+                    "보정 ${routine.personalBufferMinutes}분",
+                    "여유 ${routine.safetyMarginMinutes}분",
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ResultArea(uiState: RoutineRegistrationUiState) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -299,10 +398,14 @@ private fun SaveActionArea(
         Button(
             onClick = { onEvent(RoutineRegistrationEvent.SaveClicked) },
             modifier = Modifier.fillMaxWidth(),
-            enabled = uiState.isSaveEnabled,
+            enabled = uiState.isSaveEnabled && !uiState.isSaving,
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
         ) {
-            Text("루틴 저장")
+            if (uiState.isSaving) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            } else {
+                Text("루틴 저장")
+            }
         }
     }
 }
