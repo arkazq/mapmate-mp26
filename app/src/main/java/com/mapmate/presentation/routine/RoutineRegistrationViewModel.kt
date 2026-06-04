@@ -1,6 +1,7 @@
 package com.mapmate.presentation.routine
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.mapmate.data.mock.MockPlaceSearchProvider
 import com.mapmate.data.mock.MockRouteEstimateProvider
@@ -11,6 +12,7 @@ import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.repository.RoutineRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +23,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
 class RoutineRegistrationViewModel(
+    private val routineRepository: RoutineRepository,
     private val placeSearchProvider: PlaceSearchProvider = MockPlaceSearchProvider(),
     private val routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
@@ -31,6 +34,7 @@ class RoutineRegistrationViewModel(
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     init {
+        observeSavedRoutines()
         searchDestinationCandidates("")
         refreshSaveEnabled()
     }
@@ -194,13 +198,37 @@ class RoutineRegistrationViewModel(
             safetyMarginMinutes = validatedInput.safetyMarginMinutes,
         )
 
-        _uiState.update {
-            it.copy(
-                successMessage = "'${routine.name}' 루틴 저장 준비가 완료되었습니다.",
-                errorMessage = null,
-            )
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isSaving = true,
+                    isSaveEnabled = false,
+                    successMessage = null,
+                    errorMessage = null,
+                )
+            }
+
+            val result = runCatching {
+                routineRepository.saveRoutine(routine)
+            }
+
+            _uiState.update {
+                if (result.isSuccess) {
+                    it.copy(
+                        successMessage = "'${routine.name}' 루틴이 저장되었습니다.",
+                        errorMessage = null,
+                        isSaving = false,
+                    )
+                } else {
+                    it.copy(
+                        successMessage = null,
+                        errorMessage = "루틴 저장에 실패했습니다. 다시 시도해 주세요.",
+                        isSaving = false,
+                    )
+                }
+            }
+            refreshSaveEnabled()
         }
-        refreshSaveEnabled()
     }
 
     private fun searchDestinationCandidates(query: String) {
@@ -208,6 +236,14 @@ class RoutineRegistrationViewModel(
             val candidates = placeSearchProvider.search(query)
             _uiState.update { it.copy(destinationCandidates = candidates) }
             refreshSaveEnabled()
+        }
+    }
+
+    private fun observeSavedRoutines() {
+        viewModelScope.launch {
+            routineRepository.observeRoutines().collect { routines ->
+                _uiState.update { it.copy(savedRoutines = routines) }
+            }
         }
     }
 
@@ -307,7 +343,8 @@ class RoutineRegistrationViewModel(
 
     private fun RoutineRegistrationUiState.withSaveEnabled(): RoutineRegistrationUiState {
         return copy(
-            isSaveEnabled = routineName.isNotBlank() &&
+            isSaveEnabled = !isSaving &&
+                routineName.isNotBlank() &&
                 (selectedDestination != null || destinationQuery.isNotBlank()) &&
                 parseArrivalTime(targetArrivalTimeText) != null &&
                 selectedRepeatDays.isNotEmpty() &&
@@ -325,4 +362,20 @@ class RoutineRegistrationViewModel(
         val personalBufferMinutes: Int,
         val safetyMarginMinutes: Int,
     )
+
+    companion object {
+        fun factory(routineRepository: RoutineRepository): ViewModelProvider.Factory {
+            return object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    if (modelClass.isAssignableFrom(RoutineRegistrationViewModel::class.java)) {
+                        return RoutineRegistrationViewModel(
+                            routineRepository = routineRepository,
+                        ) as T
+                    }
+                    throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+                }
+            }
+        }
+    }
 }

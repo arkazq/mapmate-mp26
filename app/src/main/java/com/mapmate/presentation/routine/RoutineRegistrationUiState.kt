@@ -3,9 +3,11 @@ package com.mapmate.presentation.routine
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.RouteEstimate
+import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 
 data class RoutineRegistrationUiState(
+    val savedRoutines: List<Routine> = emptyList(),
     val routineName: String = "",
     val destinationQuery: String = "",
     val selectedDestination: Destination? = null,
@@ -26,6 +28,7 @@ data class RoutineRegistrationUiState(
     val errorMessage: String? = null,
     val successMessage: String? = null,
     val isCalculating: Boolean = false,
+    val isSaving: Boolean = false,
     val isSaveEnabled: Boolean = false,
 ) {
     val hasCalculationResult: Boolean
