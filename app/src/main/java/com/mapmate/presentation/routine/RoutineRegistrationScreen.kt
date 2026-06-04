@@ -33,6 +33,7 @@ import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.repository.RoutineRepository
+import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.ui.theme.MapMateTheme
 import java.time.format.DateTimeFormatter
 
@@ -40,9 +41,13 @@ import java.time.format.DateTimeFormatter
 fun RoutineRegistrationRoute(
     contentPadding: PaddingValues,
     routineRepository: RoutineRepository,
+    settingsRepository: SettingsRepository,
 ) {
     val viewModel: RoutineRegistrationViewModel = viewModel(
-        factory = RoutineRegistrationViewModel.factory(routineRepository),
+        factory = RoutineRegistrationViewModel.factory(
+            routineRepository = routineRepository,
+            settingsRepository = settingsRepository,
+        ),
     )
     val uiState by viewModel.uiState.collectAsState()
 

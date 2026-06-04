@@ -1,5 +1,6 @@
 package com.mapmate.presentation.routine
 
+import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.RouteEstimate
@@ -20,9 +21,9 @@ data class RoutineRegistrationUiState(
         RepeatDay.THURSDAY,
         RepeatDay.FRIDAY,
     ),
-    val selectedTransportMode: TransportMode = TransportMode.TRANSIT,
-    val personalBufferMinutes: String = "6",
-    val safetyMarginMinutes: String = "5",
+    val selectedTransportMode: TransportMode = AppSettings.DEFAULT_TRANSPORT_MODE,
+    val personalBufferMinutes: String = AppSettings.DEFAULT_PERSONAL_BUFFER_MINUTES.toString(),
+    val safetyMarginMinutes: String = AppSettings.DEFAULT_SAFETY_MARGIN_MINUTES.toString(),
     val routeEstimate: RouteEstimate? = null,
     val recommendedDepartureTimeText: String = "",
     val errorMessage: String? = null,

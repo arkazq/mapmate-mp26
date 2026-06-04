@@ -7,15 +7,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
-import com.mapmate.data.local.MapMateDatabase
-import com.mapmate.data.repository.RoomRoutineRepository
-import com.mapmate.domain.repository.RoutineRepository
-import com.mapmate.presentation.routine.RoutineRegistrationRoute
+import com.mapmate.di.AppContainer
+import com.mapmate.presentation.MapMateApp
 import com.mapmate.ui.theme.MapMateTheme
 
 class MainActivity : ComponentActivity() {
-    private val routineRepository: RoutineRepository by lazy {
-        RoomRoutineRepository(MapMateDatabase.getInstance(this).routineDao())
+    private val appContainer: AppContainer by lazy {
+        AppContainer(this)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,9 +22,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             MapMateTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    RoutineRegistrationRoute(
+                    MapMateApp(
                         contentPadding = innerPadding,
-                        routineRepository = routineRepository,
+                        routineRepository = appContainer.routineRepository,
+                        settingsRepository = appContainer.settingsRepository,
                     )
                 }
             }

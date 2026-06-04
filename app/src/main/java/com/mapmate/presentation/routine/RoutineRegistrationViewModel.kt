@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.mapmate.data.mock.MockPlaceSearchProvider
 import com.mapmate.data.mock.MockRouteEstimateProvider
 import com.mapmate.domain.calculator.DepartureTimeCalculator
+import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
@@ -13,6 +14,7 @@ import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
+import com.mapmate.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +26,7 @@ import java.time.format.DateTimeParseException
 
 class RoutineRegistrationViewModel(
     private val routineRepository: RoutineRepository,
+    private val settingsRepository: SettingsRepository,
     private val placeSearchProvider: PlaceSearchProvider = MockPlaceSearchProvider(),
     private val routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
@@ -34,6 +37,7 @@ class RoutineRegistrationViewModel(
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     init {
+        observeSettings()
         observeSavedRoutines()
         searchDestinationCandidates("")
         refreshSaveEnabled()
@@ -130,30 +134,35 @@ class RoutineRegistrationViewModel(
                 errorMessage = null,
             )
         }
+        saveDefaultTransportMode(transportMode)
     }
 
     private fun onPersonalBufferChanged(minutesText: String) {
+        val filteredMinutesText = minutesText.filter(Char::isDigit).take(2)
         updateState {
             copy(
-                personalBufferMinutes = minutesText.filter(Char::isDigit).take(2),
+                personalBufferMinutes = filteredMinutesText,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
                 successMessage = null,
                 errorMessage = null,
             )
         }
+        filteredMinutesText.toValidBufferMinutesOrNull()?.let(::savePersonalBufferSetting)
     }
 
     private fun onSafetyMarginChanged(minutesText: String) {
+        val filteredMinutesText = minutesText.filter(Char::isDigit).take(2)
         updateState {
             copy(
-                safetyMarginMinutes = minutesText.filter(Char::isDigit).take(2),
+                safetyMarginMinutes = filteredMinutesText,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
                 successMessage = null,
                 errorMessage = null,
             )
         }
+        filteredMinutesText.toValidBufferMinutesOrNull()?.let(::saveSafetyMarginSetting)
     }
 
     private fun onCalculateClicked() {
@@ -247,6 +256,22 @@ class RoutineRegistrationViewModel(
         }
     }
 
+    private fun observeSettings() {
+        viewModelScope.launch {
+            settingsRepository.settings.collect { settings ->
+                _uiState.update {
+                    it.copy(
+                        personalBufferMinutes = settings.personalBufferMinutes.toString(),
+                        safetyMarginMinutes = settings.safetyMarginMinutes.toString(),
+                        selectedTransportMode = settings.defaultTransportMode,
+                        routeEstimate = null,
+                        recommendedDepartureTimeText = "",
+                    ).withSaveEnabled()
+                }
+            }
+        }
+    }
+
     private fun validateInput(state: RoutineRegistrationUiState): ValidatedRoutineInput? {
         val routineName = state.routineName.trim()
         if (routineName.isBlank()) {
@@ -278,14 +303,14 @@ class RoutineRegistrationViewModel(
             return null
         }
 
-        val personalBufferMinutes = state.personalBufferMinutes.toIntOrNull()
-        if (personalBufferMinutes == null || personalBufferMinutes !in 0..60) {
+        val personalBufferMinutes = state.personalBufferMinutes.toValidBufferMinutesOrNull()
+        if (personalBufferMinutes == null) {
             showValidationError("개인 버퍼는 0분부터 60분 사이로 입력해 주세요.")
             return null
         }
 
-        val safetyMarginMinutes = state.safetyMarginMinutes.toIntOrNull()
-        if (safetyMarginMinutes == null || safetyMarginMinutes !in 0..60) {
+        val safetyMarginMinutes = state.safetyMarginMinutes.toValidBufferMinutesOrNull()
+        if (safetyMarginMinutes == null) {
             showValidationError("안전 여유 시간은 0분부터 60분 사이로 입력해 주세요.")
             return null
         }
@@ -333,6 +358,49 @@ class RoutineRegistrationViewModel(
         }
     }
 
+    private fun savePersonalBufferSetting(minutes: Int) {
+        viewModelScope.launch {
+            val result = runCatching {
+                settingsRepository.updatePersonalBufferMinutes(minutes)
+            }
+            if (result.isFailure) {
+                showSettingsPersistenceError()
+            }
+        }
+    }
+
+    private fun saveSafetyMarginSetting(minutes: Int) {
+        viewModelScope.launch {
+            val result = runCatching {
+                settingsRepository.updateSafetyMarginMinutes(minutes)
+            }
+            if (result.isFailure) {
+                showSettingsPersistenceError()
+            }
+        }
+    }
+
+    private fun saveDefaultTransportMode(transportMode: TransportMode) {
+        viewModelScope.launch {
+            val result = runCatching {
+                settingsRepository.updateDefaultTransportMode(transportMode)
+            }
+            if (result.isFailure) {
+                showSettingsPersistenceError()
+            }
+        }
+    }
+
+    private fun showSettingsPersistenceError() {
+        _uiState.update {
+            it.copy(
+                errorMessage = "설정 저장에 실패했습니다. 다시 시도해 주세요.",
+                successMessage = null,
+            )
+        }
+        refreshSaveEnabled()
+    }
+
     private fun updateState(reducer: RoutineRegistrationUiState.() -> RoutineRegistrationUiState) {
         _uiState.update { state -> state.reducer().withSaveEnabled() }
     }
@@ -348,9 +416,15 @@ class RoutineRegistrationViewModel(
                 (selectedDestination != null || destinationQuery.isNotBlank()) &&
                 parseArrivalTime(targetArrivalTimeText) != null &&
                 selectedRepeatDays.isNotEmpty() &&
-                personalBufferMinutes.toIntOrNull()?.let { it in 0..60 } == true &&
-                safetyMarginMinutes.toIntOrNull()?.let { it in 0..60 } == true,
+                personalBufferMinutes.toValidBufferMinutesOrNull() != null &&
+                safetyMarginMinutes.toValidBufferMinutesOrNull() != null,
         )
+    }
+
+    private fun String.toValidBufferMinutesOrNull(): Int? {
+        return toIntOrNull()?.takeIf {
+            AppSettings.isValidBufferMinutes(it)
+        }
     }
 
     private data class ValidatedRoutineInput(
@@ -364,13 +438,17 @@ class RoutineRegistrationViewModel(
     )
 
     companion object {
-        fun factory(routineRepository: RoutineRepository): ViewModelProvider.Factory {
+        fun factory(
+            routineRepository: RoutineRepository,
+            settingsRepository: SettingsRepository,
+        ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     if (modelClass.isAssignableFrom(RoutineRegistrationViewModel::class.java)) {
                         return RoutineRegistrationViewModel(
                             routineRepository = routineRepository,
+                            settingsRepository = settingsRepository,
                         ) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
