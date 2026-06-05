@@ -11,12 +11,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.mapmate.domain.model.Routine
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
+import com.mapmate.presentation.home.HomeRoute
 import com.mapmate.presentation.routine.RoutineRegistrationRoute
 import com.mapmate.presentation.settings.SettingsRoute
 
@@ -27,7 +30,10 @@ fun MapMateApp(
     settingsRepository: SettingsRepository,
 ) {
     var selectedDestinationName by rememberSaveable {
-        mutableStateOf(MapMateDestination.Routine.name)
+        mutableStateOf(MapMateDestination.Home.name)
+    }
+    var editingRoutine by remember {
+        mutableStateOf<Routine?>(null)
     }
     val selectedDestination = MapMateDestination.valueOf(selectedDestinationName)
 
@@ -48,10 +54,24 @@ fun MapMateApp(
 
         Box(modifier = Modifier.weight(1f)) {
             when (selectedDestination) {
+                MapMateDestination.Home -> HomeRoute(
+                    contentPadding = PaddingValues(0.dp),
+                    routineRepository = routineRepository,
+                    onRegisterRoutineClick = {
+                        editingRoutine = null
+                        selectedDestinationName = MapMateDestination.Routine.name
+                    },
+                    onEditRoutineClick = { routine ->
+                        editingRoutine = routine
+                        selectedDestinationName = MapMateDestination.Routine.name
+                    },
+                )
+
                 MapMateDestination.Routine -> RoutineRegistrationRoute(
                     contentPadding = PaddingValues(0.dp),
                     routineRepository = routineRepository,
                     settingsRepository = settingsRepository,
+                    editingRoutine = editingRoutine,
                 )
 
                 MapMateDestination.Settings -> SettingsRoute(
@@ -66,6 +86,7 @@ fun MapMateApp(
 private enum class MapMateDestination(
     val label: String,
 ) {
+    Home(label = "홈"),
     Routine(label = "루틴"),
     Settings(label = "설정"),
 }

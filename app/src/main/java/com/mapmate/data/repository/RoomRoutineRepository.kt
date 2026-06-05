@@ -15,6 +15,10 @@ class RoomRoutineRepository(
         return routineDao.insertRoutine(routine.toEntity())
     }
 
+    override suspend fun deleteRoutine(id: Long) {
+        routineDao.deleteRoutineById(id)
+    }
+
     override fun observeRoutines(): Flow<List<Routine>> {
         return routineDao.observeRoutines()
             .map { entities -> entities.map { it.toDomain() } }

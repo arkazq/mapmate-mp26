@@ -2,7 +2,7 @@
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 루틴 등록 화면, 설정 화면, 저장된 루틴 목록 표시, mock provider 기반 권장 출발 시각 계산, Room 기반 루틴 저장, DataStore 기반 앱 설정 저장 흐름까지 구현되어 있습니다. Retrofit, 실제 알림 예약, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 화면, 루틴 등록 화면, 설정 화면, 저장된 루틴 목록 표시, mock provider 기반 권장 출발 시각 계산, Room 기반 루틴 저장, DataStore 기반 앱 설정 저장 흐름까지 구현되어 있습니다. Retrofit, 실제 알림 예약, Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -25,12 +25,19 @@ com.mapmate
 │  └─ AppContainer.kt
 ├─ presentation
 │  ├─ MapMateApp.kt
+│  ├─ common
+│  │  ├─ RoutineDisplayLabels.kt
+│  │  └─ RoutineSummaryCard.kt
+│  ├─ home
+│  │  ├─ HomeScreen.kt
+│  │  ├─ HomeViewModel.kt
+│  │  └─ HomeUiState.kt
 │  ├─ routine
-│     ├─ RoutineRegistrationScreen.kt
-│     ├─ RoutineRegistrationComponents.kt
-│     ├─ RoutineRegistrationViewModel.kt
-│     ├─ RoutineRegistrationUiState.kt
-│     └─ RoutineRegistrationEvent.kt
+│  │  ├─ RoutineRegistrationScreen.kt
+│  │  ├─ RoutineRegistrationComponents.kt
+│  │  ├─ RoutineRegistrationViewModel.kt
+│  │  ├─ RoutineRegistrationUiState.kt
+│  │  └─ RoutineRegistrationEvent.kt
 │  └─ settings
 │     ├─ SettingsScreen.kt
 │     ├─ SettingsViewModel.kt
@@ -67,13 +74,28 @@ com.mapmate
       └─ RoomRoutineRepository.kt
 ```
 
+## `presentation/common`
+
+여러 화면에서 재사용하는 UI와 표시 문자열 변환을 담당합니다.
+
+- `RoutineSummaryCard`: 저장된 루틴 요약 카드 표시
+- `RoutineDisplayLabels`: 요일과 이동 수단의 한국어 표시 문자열 제공
+
+## `presentation/home`
+
+홈 화면의 UI와 상태 관리를 담당합니다.
+
+- `HomeScreen`: 저장된 루틴 목록, 로딩/오류/빈 상태, 루틴 등록/수정/삭제 액션 표시
+- `HomeViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 루틴 삭제 요청을 처리해 홈 화면 상태 갱신
+- `HomeUiState`: 홈 화면에 필요한 저장 루틴 목록과 상태값
+
 ## `presentation/routine`
 
 루틴 등록 화면의 UI와 상태 관리를 담당합니다.
 
-- `RoutineRegistrationScreen`: 저장된 루틴 목록, 입력 필드, 결과 카드, 저장 영역 표시
+- `RoutineRegistrationScreen`: 입력 필드, 결과 카드, 저장 영역 표시
 - `RoutineRegistrationComponents`: 목적지 후보, 반복 요일, 이동 수단, 메시지 등 재사용 UI component
-- `RoutineRegistrationViewModel`: 사용자 입력 처리, 검증, DataStore 설정 저장, mock provider 호출, 권장 출발 시각 계산 요청
+- `RoutineRegistrationViewModel`: 사용자 입력 처리, 검증, 수정 대상 루틴 로딩, DataStore 설정 저장, mock provider 호출, 권장 출발 시각 계산 요청
 - `RoutineRegistrationUiState`: 화면에 필요한 모든 상태
 - `RoutineRegistrationEvent`: 화면에서 ViewModel로 전달되는 사용자 액션
 
@@ -128,7 +150,7 @@ recommended departure time
 
 루틴 저장소와 앱 설정 저장소를 추상화합니다.
 
-- `RoutineRepository`: 루틴 저장과 저장된 루틴 관찰 동작을 정의
+- `RoutineRepository`: 루틴 저장, 삭제, 저장된 루틴 관찰 동작을 정의
 - `SettingsRepository`: 앱 설정 관찰과 보정값/알림 설정값/기본 이동수단 저장 동작을 정의
 
 ViewModel은 Room DAO나 DataStore를 직접 참조하지 않고 repository interface에 의존합니다.
@@ -182,8 +204,8 @@ Preferences DataStore 기반 설정 저장 구조입니다.
 ```text
 User input
 → MapMateApp
-→ RoutineRegistrationScreen / SettingsScreen
-→ RoutineRegistrationViewModel / SettingsViewModel
+→ HomeScreen / RoutineRegistrationScreen / SettingsScreen
+→ HomeViewModel / RoutineRegistrationViewModel / SettingsViewModel
 → PlaceSearchProvider / RouteEstimateProvider
 → DepartureTimeCalculator
 → RoutineRepository
@@ -204,9 +226,11 @@ User input
 6. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다.
 7. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다.
 8. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
-9. 저장된 루틴 목록은 Room `Flow`를 통해 `RoutineRegistrationUiState.savedRoutines`에 반영됩니다.
-10. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
-11. 결과는 `RoutineRegistrationUiState`에 반영되고 UI가 다시 그려집니다.
+9. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
+10. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.
+11. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`에 반영됩니다.
+12. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
+13. 결과는 `RoutineRegistrationUiState`에 반영되고 UI가 다시 그려집니다.
 
 ## 설계 원칙
 
@@ -226,6 +250,6 @@ User input
 - 알림
 - 이동 기록
 - 개인 보정 로직
-- 별도 Navigation 기반 홈 화면
+- Navigation Compose 기반 상세 화면 전환
 - 통계 화면
 - 설정 화면
