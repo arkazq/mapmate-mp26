@@ -26,6 +26,8 @@ class MainActivity : ComponentActivity() {
                         contentPadding = innerPadding,
                         routineRepository = appContainer.routineRepository,
                         settingsRepository = appContainer.settingsRepository,
+                        placeSearchProvider = appContainer.placeSearchProvider,
+                        routeEstimateProvider = appContainer.routeEstimateProvider,
                     )
                 }
             }

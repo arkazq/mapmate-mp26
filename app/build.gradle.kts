@@ -1,7 +1,21 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+}
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun localProperty(name: String): String {
+    return localProperties.getProperty(name).orEmpty()
 }
 
 android {
@@ -20,6 +34,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "KAKAO_REST_API_KEY", "\"${localProperty("KAKAO_REST_API_KEY")}\"")
+        buildConfigField("String", "ODSAY_API_KEY", "\"${localProperty("ODSAY_API_KEY")}\"")
+        buildConfigField("String", "GOOGLE_ROUTES_API_KEY", "\"${localProperty("GOOGLE_ROUTES_API_KEY")}\"")
+        buildConfigField("Double", "MAPMATE_ORIGIN_LATITUDE", localProperty("MAPMATE_ORIGIN_LATITUDE").ifBlank { "0.0" })
+        buildConfigField("Double", "MAPMATE_ORIGIN_LONGITUDE", localProperty("MAPMATE_ORIGIN_LONGITUDE").ifBlank { "0.0" })
     }
 
     buildTypes {
@@ -37,6 +57,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -53,8 +74,12 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.room.runtime)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.kotlinx.serialization)
+    implementation(libs.kotlinx.serialization.json)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

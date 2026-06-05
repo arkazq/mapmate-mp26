@@ -30,6 +30,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.domain.provider.PlaceSearchProvider
+import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.ui.theme.MapMateTheme
@@ -39,12 +41,16 @@ fun RoutineRegistrationRoute(
     contentPadding: PaddingValues,
     routineRepository: RoutineRepository,
     settingsRepository: SettingsRepository,
+    placeSearchProvider: PlaceSearchProvider,
+    routeEstimateProvider: RouteEstimateProvider,
     editingRoutine: Routine? = null,
 ) {
     val viewModel: RoutineRegistrationViewModel = viewModel(
         factory = RoutineRegistrationViewModel.factory(
             routineRepository = routineRepository,
             settingsRepository = settingsRepository,
+            placeSearchProvider = placeSearchProvider,
+            routeEstimateProvider = routeEstimateProvider,
         ),
     )
     val uiState by viewModel.uiState.collectAsState()

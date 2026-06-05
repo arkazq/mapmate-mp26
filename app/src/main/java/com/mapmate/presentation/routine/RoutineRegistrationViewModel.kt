@@ -460,6 +460,8 @@ class RoutineRegistrationViewModel(
         fun factory(
             routineRepository: RoutineRepository,
             settingsRepository: SettingsRepository,
+            placeSearchProvider: PlaceSearchProvider = MockPlaceSearchProvider(),
+            routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -468,6 +470,8 @@ class RoutineRegistrationViewModel(
                         return RoutineRegistrationViewModel(
                             routineRepository = routineRepository,
                             settingsRepository = settingsRepository,
+                            placeSearchProvider = placeSearchProvider,
+                            routeEstimateProvider = routeEstimateProvider,
                         ) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
