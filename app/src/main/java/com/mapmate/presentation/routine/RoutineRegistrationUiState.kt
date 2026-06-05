@@ -9,6 +9,9 @@ import com.mapmate.domain.model.TransportMode
 data class RoutineRegistrationUiState(
     val editingRoutineId: Long? = null,
     val routineName: String = "",
+    val originQuery: String = "",
+    val selectedOrigin: Destination? = null,
+    val originCandidates: List<Destination> = emptyList(),
     val destinationQuery: String = "",
     val selectedDestination: Destination? = null,
     val destinationCandidates: List<Destination> = emptyList(),
@@ -27,6 +30,7 @@ data class RoutineRegistrationUiState(
     val recommendedDepartureTimeText: String = "",
     val errorMessage: String? = null,
     val successMessage: String? = null,
+    val isGettingCurrentLocation: Boolean = false,
     val isCalculating: Boolean = false,
     val isSaving: Boolean = false,
     val isSaveEnabled: Boolean = false,

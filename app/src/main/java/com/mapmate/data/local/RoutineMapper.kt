@@ -15,6 +15,10 @@ fun Routine.toEntity(
     return RoutineEntity(
         id = id ?: 0,
         name = name,
+        originName = origin.name,
+        originAddress = origin.address,
+        originLatitude = origin.latitude,
+        originLongitude = origin.longitude,
         destinationName = destination.name,
         destinationAddress = destination.address,
         destinationLatitude = destination.latitude,
@@ -34,6 +38,12 @@ fun RoutineEntity.toDomain(): Routine {
     return Routine(
         id = id,
         name = name,
+        origin = Destination(
+            name = originName,
+            address = originAddress,
+            latitude = originLatitude,
+            longitude = originLongitude,
+        ),
         destination = Destination(
             name = destinationName,
             address = destinationAddress,

@@ -14,6 +14,12 @@ class RoutineMapperTest {
         val routine = Routine(
             id = null,
             name = "학교 가는 길",
+            origin = Destination(
+                name = "집",
+                address = "서울특별시 동작구",
+                latitude = 37.5000,
+                longitude = 126.9500,
+            ),
             destination = Destination(
                 name = "숭실대학교",
                 address = "서울특별시 동작구 상도로 369",
@@ -31,6 +37,10 @@ class RoutineMapperTest {
 
         assertEquals(0L, entity.id)
         assertEquals("학교 가는 길", entity.name)
+        assertEquals("집", entity.originName)
+        assertEquals("서울특별시 동작구", entity.originAddress)
+        assertEquals(37.5000, entity.originLatitude!!, 0.0001)
+        assertEquals(126.9500, entity.originLongitude!!, 0.0001)
         assertEquals("숭실대학교", entity.destinationName)
         assertEquals("서울특별시 동작구 상도로 369", entity.destinationAddress)
         assertEquals(37.4963, entity.destinationLatitude!!, 0.0001)
@@ -48,6 +58,10 @@ class RoutineMapperTest {
         val entity = RoutineEntity(
             id = 7L,
             name = "퇴근",
+            originName = "회사",
+            originAddress = "서울특별시 강남구",
+            originLatitude = 37.5010,
+            originLongitude = 127.0300,
             destinationName = "강남역",
             destinationAddress = "서울특별시 강남구 강남대로 지하396",
             destinationLatitude = 37.4979,
@@ -64,6 +78,10 @@ class RoutineMapperTest {
 
         assertEquals(7L, routine.id)
         assertEquals("퇴근", routine.name)
+        assertEquals("회사", routine.origin.name)
+        assertEquals("서울특별시 강남구", routine.origin.address)
+        assertEquals(37.5010, routine.origin.latitude!!, 0.0001)
+        assertEquals(127.0300, routine.origin.longitude!!, 0.0001)
         assertEquals("강남역", routine.destination.name)
         assertEquals("서울특별시 강남구 강남대로 지하396", routine.destination.address)
         assertEquals(37.4979, routine.destination.latitude!!, 0.0001)

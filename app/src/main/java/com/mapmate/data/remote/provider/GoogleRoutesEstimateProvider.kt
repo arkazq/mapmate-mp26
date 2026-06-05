@@ -17,13 +17,17 @@ class GoogleRoutesEstimateProvider(
     private val config: RemoteApiConfig,
 ) : RouteEstimateProvider {
     override suspend fun getRouteEstimate(
+        origin: Destination,
         destination: Destination,
         transportMode: TransportMode,
     ): RouteEstimate {
         check(config.hasGoogleRoutesKey) { "Google Routes API key is missing." }
 
-        val origin = requireNotNull(config.origin?.takeIf { it.isValid() }) {
-            "Origin coordinate is missing."
+        val originLatitude = requireNotNull(origin.latitude) {
+            "Origin latitude is missing."
+        }
+        val originLongitude = requireNotNull(origin.longitude) {
+            "Origin longitude is missing."
         }
         val destinationLatitude = requireNotNull(destination.latitude) {
             "Destination latitude is missing."
@@ -36,7 +40,7 @@ class GoogleRoutesEstimateProvider(
             apiKey = config.googleRoutesApiKey,
             fieldMask = "routes.duration,routes.description,routes.localizedValues.duration",
             request = GoogleRoutesRequest(
-                origin = waypoint(origin.latitude, origin.longitude),
+                origin = waypoint(originLatitude, originLongitude),
                 destination = waypoint(destinationLatitude, destinationLongitude),
                 travelMode = transportMode.toGoogleTravelMode(),
             ),
@@ -50,7 +54,7 @@ class GoogleRoutesEstimateProvider(
         val transportLabel = transportMode.toKoreanLabel()
         return RouteEstimate(
             estimatedMinutes = estimatedMinutes,
-            summary = "${destination.name}까지 ${transportLabel} 기준 ${estimatedMinutes}분 예상",
+            summary = "${origin.name}에서 ${destination.name}까지 ${transportLabel} 기준 ${estimatedMinutes}분 예상",
             providerName = "Google Routes",
             reason = listOfNotNull(
                 route.localizedValues?.duration?.text?.let { "Google Routes ${it} 경로 기준입니다." },

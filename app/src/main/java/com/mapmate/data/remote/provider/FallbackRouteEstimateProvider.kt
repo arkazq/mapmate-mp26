@@ -10,12 +10,14 @@ class FallbackRouteEstimateProvider(
     private val fallback: RouteEstimateProvider,
 ) : RouteEstimateProvider {
     override suspend fun getRouteEstimate(
+        origin: Destination,
         destination: Destination,
         transportMode: TransportMode,
     ): RouteEstimate {
         primaryProviders.forEach { provider ->
             val result = runCatching {
                 provider.getRouteEstimate(
+                    origin = origin,
                     destination = destination,
                     transportMode = transportMode,
                 )
@@ -25,6 +27,7 @@ class FallbackRouteEstimateProvider(
         }
 
         return fallback.getRouteEstimate(
+            origin = origin,
             destination = destination,
             transportMode = transportMode,
         )

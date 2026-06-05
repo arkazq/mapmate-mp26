@@ -11,6 +11,7 @@ import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
@@ -29,6 +30,7 @@ class RoutineRegistrationViewModel(
     private val settingsRepository: SettingsRepository,
     private val placeSearchProvider: PlaceSearchProvider = MockPlaceSearchProvider(),
     private val routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
+    private val currentLocationProvider: CurrentLocationProvider = UnavailableCurrentLocationProvider,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(RoutineRegistrationUiState())
@@ -38,6 +40,7 @@ class RoutineRegistrationViewModel(
 
     init {
         observeSettings()
+        searchOriginCandidates("")
         searchDestinationCandidates("")
         refreshSaveEnabled()
     }
@@ -45,6 +48,8 @@ class RoutineRegistrationViewModel(
     fun onEvent(event: RoutineRegistrationEvent) {
         when (event) {
             is RoutineRegistrationEvent.RoutineNameChanged -> onRoutineNameChanged(event.name)
+            is RoutineRegistrationEvent.OriginQueryChanged -> onOriginQueryChanged(event.query)
+            is RoutineRegistrationEvent.OriginSelected -> onOriginSelected(event.origin)
             is RoutineRegistrationEvent.DestinationQueryChanged -> onDestinationQueryChanged(event.query)
             is RoutineRegistrationEvent.DestinationSelected -> onDestinationSelected(event.destination)
             is RoutineRegistrationEvent.ArrivalTimeChanged -> onArrivalTimeChanged(event.timeText)
@@ -52,6 +57,8 @@ class RoutineRegistrationViewModel(
             is RoutineRegistrationEvent.TransportModeSelected -> onTransportModeSelected(event.transportMode)
             is RoutineRegistrationEvent.PersonalBufferChanged -> onPersonalBufferChanged(event.minutesText)
             is RoutineRegistrationEvent.SafetyMarginChanged -> onSafetyMarginChanged(event.minutesText)
+            RoutineRegistrationEvent.CurrentLocationClicked -> onCurrentLocationClicked()
+            RoutineRegistrationEvent.CurrentLocationPermissionDenied -> onCurrentLocationPermissionDenied()
             RoutineRegistrationEvent.CalculateClicked -> onCalculateClicked()
             RoutineRegistrationEvent.SaveClicked -> onSaveClicked()
             RoutineRegistrationEvent.MessageCleared -> clearMessages()
@@ -63,6 +70,8 @@ class RoutineRegistrationViewModel(
             it.copy(
                 editingRoutineId = routine.id,
                 routineName = routine.name,
+                originQuery = routine.origin.name,
+                selectedOrigin = routine.origin,
                 destinationQuery = routine.destination.name,
                 selectedDestination = routine.destination,
                 targetArrivalTimeText = routine.targetArrivalTime.format(timeFormatter),
@@ -76,6 +85,7 @@ class RoutineRegistrationViewModel(
                 errorMessage = null,
             ).withSaveEnabled()
         }
+        searchOriginCandidates(routine.origin.name)
         searchDestinationCandidates(routine.destination.name)
     }
 
@@ -83,6 +93,33 @@ class RoutineRegistrationViewModel(
         updateState {
             copy(
                 routineName = name,
+                successMessage = null,
+                errorMessage = null,
+            )
+        }
+    }
+
+    private fun onOriginQueryChanged(query: String) {
+        updateState {
+            copy(
+                originQuery = query,
+                selectedOrigin = null,
+                routeEstimate = null,
+                recommendedDepartureTimeText = "",
+                successMessage = null,
+                errorMessage = null,
+            )
+        }
+        searchOriginCandidates(query)
+    }
+
+    private fun onOriginSelected(origin: Destination) {
+        updateState {
+            copy(
+                originQuery = origin.name,
+                selectedOrigin = origin,
+                routeEstimate = null,
+                recommendedDepartureTimeText = "",
                 successMessage = null,
                 errorMessage = null,
             )
@@ -192,6 +229,7 @@ class RoutineRegistrationViewModel(
             _uiState.update { it.copy(isCalculating = true, errorMessage = null, successMessage = null) }
 
             val routeEstimate = routeEstimateProvider.getRouteEstimate(
+                origin = validatedInput.origin,
                 destination = validatedInput.destination,
                 transportMode = validatedInput.transportMode,
             )
@@ -220,6 +258,7 @@ class RoutineRegistrationViewModel(
         val routine = Routine(
             id = _uiState.value.editingRoutineId,
             name = validatedInput.routineName,
+            origin = validatedInput.origin,
             destination = validatedInput.destination,
             targetArrivalTime = validatedInput.targetArrivalTime,
             repeatDays = validatedInput.repeatDays,
@@ -273,6 +312,65 @@ class RoutineRegistrationViewModel(
         }
     }
 
+    private fun searchOriginCandidates(query: String) {
+        viewModelScope.launch {
+            val candidates = placeSearchProvider.search(query)
+            _uiState.update { it.copy(originCandidates = candidates) }
+            refreshSaveEnabled()
+        }
+    }
+
+    private fun onCurrentLocationClicked() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isGettingCurrentLocation = true,
+                    successMessage = null,
+                    errorMessage = null,
+                )
+            }
+
+            val result = runCatching {
+                currentLocationProvider.getCurrentLocation()
+            }
+
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { origin ->
+                        state.copy(
+                            originQuery = origin.name,
+                            selectedOrigin = origin,
+                            routeEstimate = null,
+                            recommendedDepartureTimeText = "",
+                            isGettingCurrentLocation = false,
+                            successMessage = "현재 위치를 출발지로 설정했습니다.",
+                            errorMessage = null,
+                        )
+                    },
+                    onFailure = {
+                        state.copy(
+                            isGettingCurrentLocation = false,
+                            successMessage = null,
+                            errorMessage = "현재 위치를 가져오지 못했습니다. 위치 설정을 확인하거나 출발지를 검색해 선택해 주세요.",
+                        )
+                    },
+                )
+            }
+            refreshSaveEnabled()
+        }
+    }
+
+    private fun onCurrentLocationPermissionDenied() {
+        _uiState.update {
+            it.copy(
+                errorMessage = "현재 위치를 사용하려면 위치 권한을 허용해 주세요.",
+                successMessage = null,
+                isGettingCurrentLocation = false,
+            )
+        }
+        refreshSaveEnabled()
+    }
+
     private fun observeSettings() {
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
@@ -311,6 +409,19 @@ class RoutineRegistrationViewModel(
             return null
         }
 
+        val origin = state.selectedOrigin ?: state.originQuery.trim().takeIf { it.isNotBlank() }?.let {
+            Destination(
+                name = it,
+                address = "직접 입력한 출발지",
+                latitude = null,
+                longitude = null,
+            )
+        }
+        if (origin == null) {
+            showValidationError("출발지를 검색해 선택하거나 현재 위치를 사용해 주세요.")
+            return null
+        }
+
         val targetArrivalTime = parseArrivalTime(state.targetArrivalTimeText)
         if (targetArrivalTime == null) {
             showValidationError("도착 시각은 HH:mm 형식으로 입력해 주세요. 예: 09:00")
@@ -336,6 +447,7 @@ class RoutineRegistrationViewModel(
 
         return ValidatedRoutineInput(
             routineName = routineName,
+            origin = origin,
             destination = destination,
             targetArrivalTime = targetArrivalTime,
             repeatDays = state.selectedRepeatDays,
@@ -432,6 +544,7 @@ class RoutineRegistrationViewModel(
         return copy(
             isSaveEnabled = !isSaving &&
                 routineName.isNotBlank() &&
+                (selectedOrigin != null || originQuery.isNotBlank()) &&
                 (selectedDestination != null || destinationQuery.isNotBlank()) &&
                 parseArrivalTime(targetArrivalTimeText) != null &&
                 selectedRepeatDays.isNotEmpty() &&
@@ -448,6 +561,7 @@ class RoutineRegistrationViewModel(
 
     private data class ValidatedRoutineInput(
         val routineName: String,
+        val origin: Destination,
         val destination: Destination,
         val targetArrivalTime: LocalTime,
         val repeatDays: Set<RepeatDay>,
@@ -457,11 +571,18 @@ class RoutineRegistrationViewModel(
     )
 
     companion object {
+        private object UnavailableCurrentLocationProvider : CurrentLocationProvider {
+            override suspend fun getCurrentLocation(): Destination {
+                error("Current location provider is unavailable.")
+            }
+        }
+
         fun factory(
             routineRepository: RoutineRepository,
             settingsRepository: SettingsRepository,
             placeSearchProvider: PlaceSearchProvider = MockPlaceSearchProvider(),
             routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
+            currentLocationProvider: CurrentLocationProvider = UnavailableCurrentLocationProvider,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -472,6 +593,7 @@ class RoutineRegistrationViewModel(
                             settingsRepository = settingsRepository,
                             placeSearchProvider = placeSearchProvider,
                             routeEstimateProvider = routeEstimateProvider,
+                            currentLocationProvider = currentLocationProvider,
                         ) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

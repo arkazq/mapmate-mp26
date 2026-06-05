@@ -54,7 +54,7 @@ fun RoutineSummaryCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = routine.destination.name,
+                        text = "${routine.origin.name} → ${routine.destination.name}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mapmate.domain.model.Routine
+import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
@@ -32,6 +33,7 @@ fun MapMateApp(
     settingsRepository: SettingsRepository,
     placeSearchProvider: PlaceSearchProvider,
     routeEstimateProvider: RouteEstimateProvider,
+    currentLocationProvider: CurrentLocationProvider,
 ) {
     var selectedDestinationName by rememberSaveable {
         mutableStateOf(MapMateDestination.Home.name)
@@ -77,6 +79,7 @@ fun MapMateApp(
                     settingsRepository = settingsRepository,
                     placeSearchProvider = placeSearchProvider,
                     routeEstimateProvider = routeEstimateProvider,
+                    currentLocationProvider = currentLocationProvider,
                     editingRoutine = editingRoutine,
                 )
 

@@ -38,8 +38,6 @@ android {
         buildConfigField("String", "KAKAO_REST_API_KEY", "\"${localProperty("KAKAO_REST_API_KEY")}\"")
         buildConfigField("String", "ODSAY_API_KEY", "\"${localProperty("ODSAY_API_KEY")}\"")
         buildConfigField("String", "GOOGLE_ROUTES_API_KEY", "\"${localProperty("GOOGLE_ROUTES_API_KEY")}\"")
-        buildConfigField("Double", "MAPMATE_ORIGIN_LATITUDE", localProperty("MAPMATE_ORIGIN_LATITUDE").ifBlank { "0.0" })
-        buildConfigField("Double", "MAPMATE_ORIGIN_LONGITUDE", localProperty("MAPMATE_ORIGIN_LONGITUDE").ifBlank { "0.0" })
     }
 
     buildTypes {
