@@ -213,6 +213,12 @@ private fun HomeScreenPreview() {
                 savedRoutines = listOf(
                     Routine(
                         name = "학교 가는 길",
+                        origin = Destination(
+                            name = "집",
+                            address = "서울특별시 동작구",
+                            latitude = 37.5000,
+                            longitude = 126.9500,
+                        ),
                         destination = Destination(
                             name = "숭실대학교",
                             address = "서울 동작구 상도로 369",

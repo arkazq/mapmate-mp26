@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [RoutineEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class MapMateDatabase : RoomDatabase() {
@@ -25,7 +27,19 @@ abstract class MapMateDatabase : RoomDatabase() {
                     context.applicationContext,
                     MapMateDatabase::class.java,
                     DATABASE_NAME,
-                ).build().also { instance = it }
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+                    .also { instance = it }
+            }
+        }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE routines ADD COLUMN originName TEXT NOT NULL DEFAULT '출발지 미설정'")
+                db.execSQL("ALTER TABLE routines ADD COLUMN originAddress TEXT NOT NULL DEFAULT '기존 루틴에는 출발지가 없습니다.'")
+                db.execSQL("ALTER TABLE routines ADD COLUMN originLatitude REAL")
+                db.execSQL("ALTER TABLE routines ADD COLUMN originLongitude REAL")
             }
         }
     }

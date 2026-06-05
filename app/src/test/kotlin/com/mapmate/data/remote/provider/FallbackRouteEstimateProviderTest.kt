@@ -28,6 +28,7 @@ class FallbackRouteEstimateProviderTest {
         )
 
         val result = provider.getRouteEstimate(
+            origin = testOrigin,
             destination = testDestination,
             transportMode = TransportMode.TRANSIT,
         )
@@ -49,6 +50,7 @@ class FallbackRouteEstimateProviderTest {
         )
 
         val result = provider.getRouteEstimate(
+            origin = testOrigin,
             destination = testDestination,
             transportMode = TransportMode.TRANSIT,
         )
@@ -58,6 +60,7 @@ class FallbackRouteEstimateProviderTest {
 
     private object FailingRouteEstimateProvider : RouteEstimateProvider {
         override suspend fun getRouteEstimate(
+            origin: Destination,
             destination: Destination,
             transportMode: TransportMode,
         ): RouteEstimate {
@@ -69,6 +72,7 @@ class FallbackRouteEstimateProviderTest {
         private val routeEstimate: RouteEstimate,
     ) : RouteEstimateProvider {
         override suspend fun getRouteEstimate(
+            origin: Destination,
             destination: Destination,
             transportMode: TransportMode,
         ): RouteEstimate {
@@ -77,11 +81,18 @@ class FallbackRouteEstimateProviderTest {
     }
 
     private companion object {
-        val testDestination = Destination(
+        val testOrigin = Destination(
             name = "숭실대학교",
             address = "서울특별시 동작구 상도로 369",
             latitude = 37.4963,
             longitude = 126.9574,
+        )
+
+        val testDestination = Destination(
+            name = "강남역",
+            address = "서울특별시 강남구 강남대로 지하396",
+            latitude = 37.4979,
+            longitude = 127.0276,
         )
     }
 }

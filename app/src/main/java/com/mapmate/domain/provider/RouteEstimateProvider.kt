@@ -6,6 +6,7 @@ import com.mapmate.domain.model.TransportMode
 
 interface RouteEstimateProvider {
     suspend fun getRouteEstimate(
+        origin: Destination,
         destination: Destination,
         transportMode: TransportMode,
     ): RouteEstimate

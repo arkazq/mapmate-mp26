@@ -9,6 +9,8 @@
 | 루틴 등록 UI | 완료 | 루틴 이름, 목적지, 도착 시각, 요일, 이동 수단, 보정 시간 입력 화면이 있습니다. | `presentation/routine/RoutineRegistrationScreen.kt` |
 | 목적지 후보 표시 | 완료 | Kakao Local API 키가 있으면 실제 장소 검색 결과를 표시하고, 실패하거나 키가 없으면 mock 후보를 표시합니다. | `data/remote/provider/KakaoPlaceSearchProvider.kt`, `data/mock/MockPlaceSearchProvider.kt` |
 | 목적지 선택 | 완료 | 목적지 후보를 선택하면 `selectedDestination`에 반영됩니다. | `presentation/routine/RoutineRegistrationViewModel.kt` |
+| 출발지 검색 선택 | 완료 | Kakao Local API 또는 mock 장소 후보에서 출발지를 검색하고 선택할 수 있습니다. | `presentation/routine/RoutineRegistrationScreen.kt`, `presentation/routine/RoutineRegistrationViewModel.kt` |
+| 현재 위치 출발지 선택 | 완료 | Android 위치 권한을 요청하고 휴대폰 현재 위치 좌표를 출발지로 설정할 수 있습니다. | `data/location/AndroidCurrentLocationProvider.kt`, `presentation/routine/RoutineRegistrationScreen.kt` |
 | 반복 요일 선택 | 완료 | 월~일 반복 요일을 선택/해제할 수 있습니다. | `presentation/routine/RoutineRegistrationComponents.kt` |
 | 이동 수단 선택 | 완료 | `TRANSIT`, `WALK`, `CAR` 이동 수단을 선택할 수 있습니다. | `domain/model/TransportMode.kt` |
 | 권장 출발 시각 계산 | 완료 | 실제 경로 API 또는 mock 예상 이동 시간과 보정 시간을 기준으로 권장 출발 시각을 계산합니다. | `presentation/routine/RoutineRegistrationViewModel.kt` |
@@ -54,4 +56,4 @@ MainActivity
 
 `local.properties`에 `KAKAO_REST_API_KEY`, `ODSAY_API_KEY`, `GOOGLE_ROUTES_API_KEY`, `MAPMATE_ORIGIN_LATITUDE`, `MAPMATE_ORIGIN_LONGITUDE`를 설정하면 실제 provider가 우선 동작합니다. 키가 없거나 API 호출이 실패하면 `FallbackPlaceSearchProvider`, `FallbackRouteEstimateProvider`가 기존 mock provider 결과를 반환하므로 발표용 MVP 흐름은 유지됩니다.
 
-현재 경로 API는 출발지 입력 UI가 없어 `local.properties`의 데모 출발 좌표를 사용합니다. 출발지를 루틴 데이터나 설정 화면에서 관리하는 작업은 다음 단계입니다.
+현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있습니다.

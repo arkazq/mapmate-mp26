@@ -2,6 +2,7 @@ package com.mapmate.di
 
 import android.content.Context
 import com.mapmate.BuildConfig
+import com.mapmate.data.location.AndroidCurrentLocationProvider
 import com.mapmate.data.local.MapMateDatabase
 import com.mapmate.data.preferences.DataStoreSettingsRepository
 import com.mapmate.data.remote.api.GoogleRoutesApi
@@ -9,7 +10,6 @@ import com.mapmate.data.remote.api.KakaoLocalApi
 import com.mapmate.data.remote.api.MapMateRetrofitFactory
 import com.mapmate.data.remote.api.OdsayApi
 import com.mapmate.data.remote.config.RemoteApiConfig
-import com.mapmate.data.remote.config.RemoteCoordinate
 import com.mapmate.data.remote.provider.FallbackPlaceSearchProvider
 import com.mapmate.data.remote.provider.FallbackRouteEstimateProvider
 import com.mapmate.data.remote.provider.GoogleRoutesEstimateProvider
@@ -18,6 +18,7 @@ import com.mapmate.data.remote.provider.OdsayRouteEstimateProvider
 import com.mapmate.data.mock.MockPlaceSearchProvider
 import com.mapmate.data.mock.MockRouteEstimateProvider
 import com.mapmate.data.repository.RoomRoutineRepository
+import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
@@ -34,6 +35,10 @@ class AppContainer(
 
     val settingsRepository: SettingsRepository by lazy {
         DataStoreSettingsRepository(applicationContext)
+    }
+
+    val currentLocationProvider: CurrentLocationProvider by lazy {
+        AndroidCurrentLocationProvider(applicationContext)
     }
 
     val placeSearchProvider: PlaceSearchProvider by lazy {
@@ -76,10 +81,6 @@ class AppContainer(
             kakaoRestApiKey = BuildConfig.KAKAO_REST_API_KEY,
             odsayApiKey = BuildConfig.ODSAY_API_KEY,
             googleRoutesApiKey = BuildConfig.GOOGLE_ROUTES_API_KEY,
-            origin = RemoteCoordinate(
-                latitude = BuildConfig.MAPMATE_ORIGIN_LATITUDE,
-                longitude = BuildConfig.MAPMATE_ORIGIN_LONGITUDE,
-            ).takeIf { it.isValid() },
         )
     }
 

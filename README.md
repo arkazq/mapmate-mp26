@@ -4,7 +4,7 @@ SoongSil University mobile programming team project
 
 MapMate는 반복되는 출퇴근/등교 루틴을 기준으로 사용자가 언제 출발해야 하는지 계산해 주는 Android 앱입니다.
 
-현재 프로젝트는 실제 지도 API를 붙이기 전, **mock 기반 MVP foundation**, Room 기반 루틴 저장, DataStore 기반 설정 저장, 기본 설정 화면을 먼저 구현한 상태입니다.
+현재 프로젝트는 **Kakao Local API 기반 장소 검색**, ODsay/Google Routes 기반 경로 시간 provider, mock fallback, Room 기반 루틴 저장, DataStore 기반 설정 저장, 기본 설정 화면까지 구현한 상태입니다.
 
 ## 앱 목적
 
@@ -13,8 +13,9 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 ```text
 루틴 등록
 → 설정 탭에서 기본값 관리
-→ Mock 목적지 검색
-→ Mock 이동 시간 조회
+→ 출발지 검색 선택 또는 현재 위치 사용
+→ 목적지 검색 선택
+→ 실제 API 또는 Mock 이동 시간 조회
 → 권장 출발 시각 계산
 → DataStore에 보정/알림/기본 이동수단 설정 저장
 → Room DB에 루틴 저장
@@ -30,8 +31,12 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 홈 화면의 저장된 루틴 목록 표시
 - 홈 화면의 루틴 수정 / 삭제
 - 루틴 이름 입력
+- 출발지 검색어 입력
+- 출발지 후보 표시 및 선택
+- 휴대폰 현재 위치 기반 출발지 선택
 - 목적지 검색어 입력
-- Mock 목적지 후보 표시 및 선택
+- Kakao Local API 기반 목적지 후보 표시 및 선택
+- API 키 누락 또는 API 실패 시 Mock 장소 후보 fallback
 - 목표 도착 시각 입력
 - 반복 요일 선택
 - 이동 수단 선택: 대중교통, 도보, 자동차
@@ -40,16 +45,18 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - DataStore 기반 개인 보정 시간 / 안전 여유 시간 저장
 - DataStore 기반 알림 설정값 저장
 - DataStore 기반 기본 이동수단 저장
-- Mock 이동 시간 기반 권장 출발 시각 계산
+- ODsay / Google Routes / Mock 이동 시간 기반 권장 출발 시각 계산
+- 실제 경로 API 실패 시 Mock 이동 시간 fallback
 - Room DB 기반 루틴 저장
+- Room DB 기반 출발지 / 목적지 저장
 - 입력 검증 오류 표시
 - 루틴 저장 성공 상태 표시
 
 ## 아직 구현되지 않은 기능
 
-- 실제 Kakao Local API 연동
-- 실제 ODsay API 연동
-- 실제 Google Routes API 연동
+- 현재 위치 좌표의 주소 역지오코딩
+- 실제 API 실패 시 마지막 성공값 캐시
+- Google Routes 도착 시각 기준 경로 조회
 - AlarmManager 기반 출발 알림
 - WorkManager 기반 출발 전 재조회
 - 이동 기록 저장
@@ -65,6 +72,9 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - ViewModel + StateFlow
 - DataStore
 - Room
+- Retrofit2
+- Kotlinx Serialization
+- Android LocationManager
 - Mock Provider
 - JUnit
 
@@ -80,6 +90,16 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 ```cmd
 gradlew.bat build
 ```
+
+실제 API를 사용하려면 Git에 커밋되지 않는 `local.properties`에 필요한 키를 추가합니다.
+
+```properties
+KAKAO_REST_API_KEY=API_KEY_PLACEHOLDER
+ODSAY_API_KEY=API_KEY_PLACEHOLDER
+GOOGLE_ROUTES_API_KEY=API_KEY_PLACEHOLDER
+```
+
+API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
 ## 브랜치 전략 요약
 

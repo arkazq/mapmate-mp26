@@ -12,6 +12,7 @@ class OdsayRouteEstimateProvider(
     private val config: RemoteApiConfig,
 ) : RouteEstimateProvider {
     override suspend fun getRouteEstimate(
+        origin: Destination,
         destination: Destination,
         transportMode: TransportMode,
     ): RouteEstimate {
@@ -20,8 +21,11 @@ class OdsayRouteEstimateProvider(
         }
         check(config.hasOdsayKey) { "ODsay API key is missing." }
 
-        val origin = requireNotNull(config.origin?.takeIf { it.isValid() }) {
-            "Origin coordinate is missing."
+        val originLatitude = requireNotNull(origin.latitude) {
+            "Origin latitude is missing."
+        }
+        val originLongitude = requireNotNull(origin.longitude) {
+            "Origin longitude is missing."
         }
         val destinationLatitude = requireNotNull(destination.latitude) {
             "Destination latitude is missing."
@@ -31,8 +35,8 @@ class OdsayRouteEstimateProvider(
         }
 
         val response = api.searchPublicTransitPath(
-            startLongitude = origin.longitude,
-            startLatitude = origin.latitude,
+            startLongitude = originLongitude,
+            startLatitude = originLatitude,
             endLongitude = destinationLongitude,
             endLatitude = destinationLatitude,
             apiKey = config.odsayApiKey,
@@ -47,7 +51,7 @@ class OdsayRouteEstimateProvider(
 
         return RouteEstimate(
             estimatedMinutes = totalTime,
-            summary = "${destination.name}까지 대중교통 기준 ${totalTime}분 예상",
+            summary = "${origin.name}에서 ${destination.name}까지 대중교통 기준 ${totalTime}분 예상",
             providerName = "ODsay",
             reason = buildOdsayReason(pathInfo),
         )

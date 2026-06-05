@@ -5,6 +5,7 @@ import java.time.LocalTime
 data class Routine(
     val id: Long? = null,
     val name: String,
+    val origin: Destination,
     val destination: Destination,
     val targetArrivalTime: LocalTime,
     val repeatDays: Set<RepeatDay>,

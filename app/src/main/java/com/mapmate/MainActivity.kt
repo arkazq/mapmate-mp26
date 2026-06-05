@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
                         settingsRepository = appContainer.settingsRepository,
                         placeSearchProvider = appContainer.placeSearchProvider,
                         routeEstimateProvider = appContainer.routeEstimateProvider,
+                        currentLocationProvider = appContainer.currentLocationProvider,
                     )
                 }
             }

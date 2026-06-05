@@ -1,5 +1,7 @@
 package com.mapmate.presentation.routine
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
@@ -18,18 +20,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
@@ -43,6 +50,7 @@ fun RoutineRegistrationRoute(
     settingsRepository: SettingsRepository,
     placeSearchProvider: PlaceSearchProvider,
     routeEstimateProvider: RouteEstimateProvider,
+    currentLocationProvider: CurrentLocationProvider,
     editingRoutine: Routine? = null,
 ) {
     val viewModel: RoutineRegistrationViewModel = viewModel(
@@ -51,6 +59,7 @@ fun RoutineRegistrationRoute(
             settingsRepository = settingsRepository,
             placeSearchProvider = placeSearchProvider,
             routeEstimateProvider = routeEstimateProvider,
+            currentLocationProvider = currentLocationProvider,
         ),
     )
     val uiState by viewModel.uiState.collectAsState()
@@ -72,6 +81,40 @@ fun RoutineRegistrationScreen(
     onEvent: (RoutineRegistrationEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { permissions ->
+        val isGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (isGranted) {
+            onEvent(RoutineRegistrationEvent.CurrentLocationClicked)
+        } else {
+            onEvent(RoutineRegistrationEvent.CurrentLocationPermissionDenied)
+        }
+    }
+    val onCurrentLocationClick = {
+        val hasFineLocationPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasCoarseLocationPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasFineLocationPermission || hasCoarseLocationPermission) {
+            onEvent(RoutineRegistrationEvent.CurrentLocationClicked)
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxWidth(),
@@ -85,7 +128,7 @@ fun RoutineRegistrationScreen(
         item {
             SectionBlock(
                 title = "기본 정보",
-                subtitle = "루틴 이름과 도착할 장소를 정합니다.",
+                subtitle = "루틴 이름과 출발지, 도착할 장소를 정합니다.",
             ) {
                 OutlinedTextField(
                     value = uiState.routineName,
@@ -94,6 +137,33 @@ fun RoutineRegistrationScreen(
                     label = { Text("루틴 이름") },
                     placeholder = { Text("예: 학교 가는 길") },
                     singleLine = true,
+                )
+
+                OutlinedTextField(
+                    value = uiState.originQuery,
+                    onValueChange = { onEvent(RoutineRegistrationEvent.OriginQueryChanged(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("출발지 검색") },
+                    placeholder = { Text("예: 집, 숭실대학교") },
+                    singleLine = true,
+                )
+
+                OutlinedButton(
+                    onClick = onCurrentLocationClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isGettingCurrentLocation,
+                ) {
+                    if (uiState.isGettingCurrentLocation) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("현재 위치 사용")
+                    }
+                }
+
+                DestinationCandidateList(
+                    candidates = uiState.originCandidates,
+                    selectedDestination = uiState.selectedOrigin,
+                    onDestinationSelected = { onEvent(RoutineRegistrationEvent.OriginSelected(it)) },
                 )
 
                 OutlinedTextField(

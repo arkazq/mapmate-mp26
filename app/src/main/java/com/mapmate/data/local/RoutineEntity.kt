@@ -8,6 +8,10 @@ data class RoutineEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val name: String,
+    val originName: String,
+    val originAddress: String,
+    val originLatitude: Double?,
+    val originLongitude: Double?,
     val destinationName: String,
     val destinationAddress: String,
     val destinationLatitude: Double?,
