@@ -4,11 +4,10 @@ import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.RouteEstimate
-import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 
 data class RoutineRegistrationUiState(
-    val savedRoutines: List<Routine> = emptyList(),
+    val editingRoutineId: Long? = null,
     val routineName: String = "",
     val destinationQuery: String = "",
     val selectedDestination: Destination? = null,
@@ -32,6 +31,9 @@ data class RoutineRegistrationUiState(
     val isSaving: Boolean = false,
     val isSaveEnabled: Boolean = false,
 ) {
+    val isEditing: Boolean
+        get() = editingRoutineId != null
+
     val hasCalculationResult: Boolean
         get() = routeEstimate != null && recommendedDepartureTimeText.isNotBlank()
 }

@@ -38,7 +38,6 @@ class RoutineRegistrationViewModel(
 
     init {
         observeSettings()
-        observeSavedRoutines()
         searchDestinationCandidates("")
         refreshSaveEnabled()
     }
@@ -57,6 +56,27 @@ class RoutineRegistrationViewModel(
             RoutineRegistrationEvent.SaveClicked -> onSaveClicked()
             RoutineRegistrationEvent.MessageCleared -> clearMessages()
         }
+    }
+
+    fun loadRoutineForEditing(routine: Routine) {
+        _uiState.update {
+            it.copy(
+                editingRoutineId = routine.id,
+                routineName = routine.name,
+                destinationQuery = routine.destination.name,
+                selectedDestination = routine.destination,
+                targetArrivalTimeText = routine.targetArrivalTime.format(timeFormatter),
+                selectedRepeatDays = routine.repeatDays,
+                selectedTransportMode = routine.transportMode,
+                personalBufferMinutes = routine.personalBufferMinutes.toString(),
+                safetyMarginMinutes = routine.safetyMarginMinutes.toString(),
+                routeEstimate = null,
+                recommendedDepartureTimeText = "",
+                successMessage = null,
+                errorMessage = null,
+            ).withSaveEnabled()
+        }
+        searchDestinationCandidates(routine.destination.name)
     }
 
     private fun onRoutineNameChanged(name: String) {
@@ -198,6 +218,7 @@ class RoutineRegistrationViewModel(
         val validatedInput = validateInput(_uiState.value) ?: return
 
         val routine = Routine(
+            id = _uiState.value.editingRoutineId,
             name = validatedInput.routineName,
             destination = validatedInput.destination,
             targetArrivalTime = validatedInput.targetArrivalTime,
@@ -224,7 +245,11 @@ class RoutineRegistrationViewModel(
             _uiState.update {
                 if (result.isSuccess) {
                     it.copy(
-                        successMessage = "'${routine.name}' 루틴이 저장되었습니다.",
+                        successMessage = if (it.isEditing) {
+                            "'${routine.name}' 루틴이 수정되었습니다."
+                        } else {
+                            "'${routine.name}' 루틴이 저장되었습니다."
+                        },
                         errorMessage = null,
                         isSaving = false,
                     )
@@ -248,18 +273,12 @@ class RoutineRegistrationViewModel(
         }
     }
 
-    private fun observeSavedRoutines() {
-        viewModelScope.launch {
-            routineRepository.observeRoutines().collect { routines ->
-                _uiState.update { it.copy(savedRoutines = routines) }
-            }
-        }
-    }
-
     private fun observeSettings() {
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
                 _uiState.update {
+                    if (it.isEditing) return@update it.withSaveEnabled()
+
                     it.copy(
                         personalBufferMinutes = settings.personalBufferMinutes.toString(),
                         safetyMarginMinutes = settings.safetyMarginMinutes.toString(),

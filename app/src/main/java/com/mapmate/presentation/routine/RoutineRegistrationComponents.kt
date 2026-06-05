@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.dp
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.presentation.common.toKoreanDescription
+import com.mapmate.presentation.common.toKoreanLabel
+import com.mapmate.presentation.common.toKoreanShortLabel
 
 @Composable
 fun SectionBlock(
@@ -369,30 +372,6 @@ fun MessageArea(
     }
 }
 
-fun RepeatDay.toKoreanShortLabel(): String {
-    return when (this) {
-        RepeatDay.MONDAY -> "월"
-        RepeatDay.TUESDAY -> "화"
-        RepeatDay.WEDNESDAY -> "수"
-        RepeatDay.THURSDAY -> "목"
-        RepeatDay.FRIDAY -> "금"
-        RepeatDay.SATURDAY -> "토"
-        RepeatDay.SUNDAY -> "일"
-    }
-}
-
-fun TransportMode.toKoreanLabel(): String {
-    return when (this) {
-        TransportMode.TRANSIT -> "대중교통"
-        TransportMode.WALK -> "도보"
-        TransportMode.CAR -> "자동차"
-    }
-}
-
 private fun TransportMode.toDescription(): String {
-    return when (this) {
-        TransportMode.TRANSIT -> "버스/지하철"
-        TransportMode.WALK -> "도보 이동"
-        TransportMode.CAR -> "차량 이동"
-    }
+    return toKoreanDescription()
 }
