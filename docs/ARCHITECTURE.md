@@ -2,7 +2,7 @@
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 화면, 루틴 등록 화면, 설정 화면, 저장된 루틴 목록 표시, mock provider 기반 권장 출발 시각 계산, Room 기반 루틴 저장, DataStore 기반 앱 설정 저장 흐름까지 구현되어 있습니다. Retrofit, 실제 알림 예약, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 UI, 기록 완료 UI, 기록 placeholder, 설정 화면까지 구현되어 있습니다. Room 기반 루틴 저장과 DataStore 기반 설정 저장은 연결되어 있지만, 이동 기록 저장, 실제 알림 예약, WorkManager 재조회, Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -26,23 +26,42 @@ com.mapmate
 ├─ presentation
 │  ├─ MapMateApp.kt
 │  ├─ common
+│  │  ├─ MapMateCards.kt
+│  │  ├─ MapMateDesign.kt
+│  │  ├─ MapMateIcon.kt
+│  │  ├─ MapMateScaffold.kt
+│  │  ├─ MapMateSelectors.kt
 │  │  ├─ RoutineDisplayLabels.kt
+│  │  ├─ RoutineRecommendationUiModel.kt
 │  │  └─ RoutineSummaryCard.kt
+│  ├─ history
+│  │  └─ RecordsScreen.kt
 │  ├─ home
 │  │  ├─ HomeScreen.kt
 │  │  ├─ HomeViewModel.kt
 │  │  └─ HomeUiState.kt
+│  ├─ prediction
+│  │  ├─ PredictionDetailScreen.kt
+│  │  ├─ PredictionDetailViewModel.kt
+│  │  └─ PredictionDetailUiState.kt
 │  ├─ routine
 │  │  ├─ RoutineRegistrationScreen.kt
 │  │  ├─ RoutineRegistrationComponents.kt
 │  │  ├─ RoutineRegistrationViewModel.kt
 │  │  ├─ RoutineRegistrationUiState.kt
-│  │  └─ RoutineRegistrationEvent.kt
-│  └─ settings
-│     ├─ SettingsScreen.kt
-│     ├─ SettingsViewModel.kt
-│     ├─ SettingsUiState.kt
-│     └─ SettingsEvent.kt
+│  │  ├─ RoutineRegistrationEvent.kt
+│  │  ├─ RoutinesScreen.kt
+│  │  ├─ RoutinesViewModel.kt
+│  │  └─ RoutinesUiState.kt
+│  ├─ settings
+│  │  ├─ SettingsScreen.kt
+│  │  ├─ SettingsViewModel.kt
+│  │  ├─ SettingsUiState.kt
+│  │  └─ SettingsEvent.kt
+│  └─ tracking
+│     ├─ TrackingScreen.kt
+│     ├─ TrackingViewModel.kt
+│     └─ TrackingUiState.kt
 ├─ domain
 │  ├─ model
 │  │  ├─ AppSettings.kt
@@ -68,8 +87,15 @@ com.mapmate
    ├─ mock
    │  ├─ MockPlaceSearchProvider.kt
    │  └─ MockRouteEstimateProvider.kt
+   ├─ location
+   │  └─ AndroidCurrentLocationProvider.kt
    ├─ preferences
    │  └─ DataStoreSettingsRepository.kt
+   ├─ remote
+   │  ├─ api
+   │  ├─ config
+   │  ├─ dto
+   │  └─ provider
    └─ repository
       └─ RoomRoutineRepository.kt
 ```
@@ -80,26 +106,61 @@ com.mapmate
 
 - `RoutineSummaryCard`: 저장된 루틴 요약 카드 표시
 - `RoutineDisplayLabels`: 요일과 이동 수단의 한국어 표시 문자열 제공
+- `MapMateScaffold`: 앱 공통 Scaffold와 하단 내비게이션 제공
+- `MapMateCards`: 화면 헤더, 섹션 카드, 히어로 카드, 계산/타임라인/루틴 카드 등 공통 Compose UI 제공
+- `MapMateSelectors`: 요일과 이동수단 선택 UI 제공
+- `MapMateIcon`: 로컬 vector drawable 기반 아이콘 래퍼 제공
+- `MapMateDesign`: 화면 여백, 카드 radius, elevation 등 presentation 전용 디자인 토큰 제공
+- `RoutineRecommendationUiModel`: 여러 화면에서 권장 출발 시각을 표시하기 위한 UI 모델 변환 제공
 
 ## `presentation/home`
 
 홈 화면의 UI와 상태 관리를 담당합니다.
 
-- `HomeScreen`: 저장된 루틴 목록, 로딩/오류/빈 상태, 루틴 등록/수정/삭제 액션 표시
-- `HomeViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 루틴 삭제 요청을 처리해 홈 화면 상태 갱신
-- `HomeUiState`: 홈 화면에 필요한 저장 루틴 목록과 상태값
+- `HomeScreen`: 오늘 권장 출발 시각, 출발까지 남은 시간, 추천 근거, 지표 카드, 오늘의 루틴 요약 표시
+- `HomeViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 홈 대시보드 추천 UI 모델을 생성
+- `HomeUiState`: 홈 화면에 필요한 저장 루틴 목록, 대시보드 추천, 상태값
 
 ## `presentation/routine`
 
+- `RoutinesScreen`: 저장된 루틴 목록, 활성/비활성 탭 UI, 수정/삭제/상세 예측 액션 표시
+- `RoutinesViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 루틴 목록 추천 UI 모델과 삭제 상태를 관리
+- `RoutinesUiState`: 루틴 목록 화면 상태
+
 루틴 등록 화면의 UI와 상태 관리를 담당합니다.
 
-- `RoutineRegistrationScreen`: 입력 필드, 결과 카드, 저장 영역 표시
+- `RoutineRegistrationScreen`: 기본 정보, 장소, 도착 목표, 반복, 이동수단, 보정 단계형 입력 UI 표시
 - `RoutineRegistrationComponents`: 목적지 후보, 반복 요일, 이동 수단, 메시지 등 재사용 UI component
 - `RoutineRegistrationViewModel`: 사용자 입력 처리, 검증, 수정 대상 루틴 로딩, DataStore 설정 저장, mock provider 호출, 권장 출발 시각 계산 요청
 - `RoutineRegistrationUiState`: 화면에 필요한 모든 상태
 - `RoutineRegistrationEvent`: 화면에서 ViewModel로 전달되는 사용자 액션
 
 Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 provider 호출은 직접 하지 않습니다.
+
+## `presentation/prediction`
+
+상세 예측 화면의 UI와 상태 관리를 담당합니다.
+
+- `PredictionDetailScreen`: 권장 출발 시각, 계산 근거, 경로 요약, 이동 기록 시작/루틴 수정 액션 표시
+- `PredictionDetailViewModel`: 선택된 루틴 기준으로 `RouteEstimateProvider`를 호출하고 권장 출발 시각 UI 모델을 생성
+- `PredictionDetailUiState`: 상세 예측 화면 상태
+
+## `presentation/tracking`
+
+이동 기록 UI-only 흐름을 담당합니다.
+
+- `TrackingScreen`: 출발 예정, 탑승, 도착 단계와 현재 이동 정보 표시
+- `TrackingCompletionScreen`: 도착 액션 후 별도 기록 완료 화면 표시
+- `TrackingViewModel`: 화면 로컬 단계 상태를 관리하고 경로 요약을 로드
+- `TrackingUiState`: 이동 기록 화면 상태
+
+현재 `TrackingScreen`은 실제 `CommuteRecord`를 저장하지 않습니다. 도착 후 완료 화면은 UI-only 상태이며, 향후 데이터 계층 작업에서 Room 저장과 오차 기반 보정 로직을 연결합니다.
+
+## `presentation/history`
+
+기록 탭 UI를 담당합니다.
+
+- `RecordsScreen`: 저장된 이동 기록이 아직 없음을 안내하는 사용자용 placeholder 표시
 
 ## `presentation/settings`
 
@@ -204,15 +265,15 @@ Preferences DataStore 기반 설정 저장 구조입니다.
 ```text
 User input
 → MapMateApp
-→ HomeScreen / RoutineRegistrationScreen / SettingsScreen
-→ HomeViewModel / RoutineRegistrationViewModel / SettingsViewModel
+→ HomeScreen / RoutinesScreen / RoutineRegistrationScreen / PredictionDetailScreen / TrackingScreen / SettingsScreen
+→ HomeViewModel / RoutinesViewModel / RoutineRegistrationViewModel / PredictionDetailViewModel / TrackingViewModel / SettingsViewModel
 → PlaceSearchProvider / RouteEstimateProvider
 → DepartureTimeCalculator
 → RoutineRepository
 → RoutineDao
 → Room Flow
 → SettingsRepository / DataStore
-→ RoutineRegistrationUiState
+→ HomeUiState / RoutinesUiState / RoutineRegistrationUiState / PredictionDetailUiState / TrackingUiState / SettingsUiState
 → UI update
 ```
 
@@ -228,9 +289,11 @@ User input
 8. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
 9. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
 10. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.
-11. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`에 반영됩니다.
+11. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`와 `RoutinesUiState.recommendations`에 반영됩니다.
 12. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
-13. 결과는 `RoutineRegistrationUiState`에 반영되고 UI가 다시 그려집니다.
+13. 상세 예측 화면과 이동 기록 화면은 선택된 루틴을 기준으로 `RouteEstimateProvider`를 호출해 권장 출발 시각 UI 모델을 구성합니다.
+14. 이동 기록 완료 화면은 현재 UI-only 상태로 별도 화면에 완료 메시지와 임시 오차 정보를 표시합니다.
+15. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
 
 ## 설계 원칙
 
@@ -240,16 +303,14 @@ User input
 - 외부 API는 provider interface 뒤에 숨깁니다.
 - 로컬 저장은 repository interface 뒤에 숨깁니다.
 - 앱 수준 의존성 생성은 `AppContainer`에 모읍니다.
-- 현재는 mock provider를 사용합니다.
-- 실제 API 구현체는 나중에 provider interface 구현체로 교체할 수 있습니다.
+- 실제 API provider는 fallback provider 뒤에 두고, 키 누락/호출 실패 시 mock provider 결과로 복구합니다.
 - domain 계층에는 Android, Compose, Room, Retrofit 의존성을 넣지 않습니다.
 
 ## 앞으로 확장할 영역
 
-- 실제 API provider
-- 알림
-- 이동 기록
-- 개인 보정 로직
-- Navigation Compose 기반 상세 화면 전환
-- 통계 화면
-- 설정 화면
+- AlarmManager 기반 출발 알림 예약
+- WorkManager 기반 출발 전 재조회
+- 이동 기록 Room 저장
+- 실제 도착 오차 기반 개인 보정 로직
+- 저장된 기록 목록과 통계/분석 화면
+- 필요 시 Navigation Compose 도입

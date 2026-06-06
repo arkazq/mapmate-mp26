@@ -1,13 +1,7 @@
 package com.mapmate.presentation
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,9 +16,16 @@ import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
+import com.mapmate.presentation.common.MapMateBottomDestination
+import com.mapmate.presentation.common.MapMateScaffold
+import com.mapmate.presentation.history.RecordsScreen
 import com.mapmate.presentation.home.HomeRoute
+import com.mapmate.presentation.prediction.PredictionDetailRoute
 import com.mapmate.presentation.routine.RoutineRegistrationRoute
+import com.mapmate.presentation.routine.RoutinesRoute
 import com.mapmate.presentation.settings.SettingsRoute
+import com.mapmate.presentation.tracking.TrackingCompletionScreen
+import com.mapmate.presentation.tracking.TrackingRoute
 
 @Composable
 fun MapMateApp(
@@ -35,67 +36,233 @@ fun MapMateApp(
     routeEstimateProvider: RouteEstimateProvider,
     currentLocationProvider: CurrentLocationProvider,
 ) {
-    var selectedDestinationName by rememberSaveable {
-        mutableStateOf(MapMateDestination.Home.name)
+    var selectedMainDestinationName by rememberSaveable {
+        mutableStateOf(MapMateBottomDestination.Home.name)
     }
-    var editingRoutine by remember {
-        mutableStateOf<Routine?>(null)
+    var screen by remember {
+        mutableStateOf<MapMateScreen>(MapMateScreen.Home)
     }
-    val selectedDestination = MapMateDestination.valueOf(selectedDestinationName)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(contentPadding),
+    fun openMain(destination: MapMateBottomDestination) {
+        selectedMainDestinationName = destination.name
+        screen = destination.toScreen()
+    }
+
+    fun openRoutineRegistration(
+        editingRoutine: Routine?,
+        returnDestination: MapMateBottomDestination = MapMateBottomDestination.Routines,
     ) {
-        PrimaryTabRow(selectedTabIndex = selectedDestination.ordinal) {
-            MapMateDestination.entries.forEach { destination ->
-                Tab(
-                    selected = destination == selectedDestination,
-                    onClick = { selectedDestinationName = destination.name },
-                    text = { Text(destination.label) },
-                )
-            }
-        }
+        screen = MapMateScreen.RoutineRegistration(
+            editingRoutine = editingRoutine,
+            returnDestination = returnDestination,
+        )
+    }
 
-        Box(modifier = Modifier.weight(1f)) {
-            when (selectedDestination) {
-                MapMateDestination.Home -> HomeRoute(
-                    contentPadding = PaddingValues(0.dp),
-                    routineRepository = routineRepository,
-                    onRegisterRoutineClick = {
-                        editingRoutine = null
-                        selectedDestinationName = MapMateDestination.Routine.name
-                    },
-                    onEditRoutineClick = { routine ->
-                        editingRoutine = routine
-                        selectedDestinationName = MapMateDestination.Routine.name
-                    },
-                )
+    fun openPrediction(
+        routine: Routine,
+        returnDestination: MapMateBottomDestination,
+    ) {
+        screen = MapMateScreen.PredictionDetail(
+            routine = routine,
+            returnDestination = returnDestination,
+        )
+    }
 
-                MapMateDestination.Routine -> RoutineRegistrationRoute(
-                    contentPadding = PaddingValues(0.dp),
-                    routineRepository = routineRepository,
-                    settingsRepository = settingsRepository,
-                    placeSearchProvider = placeSearchProvider,
-                    routeEstimateProvider = routeEstimateProvider,
-                    currentLocationProvider = currentLocationProvider,
-                    editingRoutine = editingRoutine,
-                )
+    val selectedMainDestination = MapMateBottomDestination.valueOf(selectedMainDestinationName)
+    val currentMainDestination = screen.mainDestination ?: selectedMainDestination
 
-                MapMateDestination.Settings -> SettingsRoute(
-                    contentPadding = PaddingValues(0.dp),
-                    settingsRepository = settingsRepository,
-                )
-            }
+    MapMateScaffold(
+        modifier = Modifier.padding(contentPadding),
+        selectedDestination = currentMainDestination,
+        showBottomBar = screen.mainDestination != null,
+        onDestinationSelected = ::openMain,
+    ) { innerPadding ->
+        when (val currentScreen = screen) {
+            MapMateScreen.Home -> HomeRoute(
+                contentPadding = innerPadding,
+                routineRepository = routineRepository,
+                routeEstimateProvider = routeEstimateProvider,
+                onRegisterRoutineClick = {
+                    openRoutineRegistration(
+                        editingRoutine = null,
+                        returnDestination = MapMateBottomDestination.Home,
+                    )
+                },
+                onEditRoutineClick = {
+                    openRoutineRegistration(
+                        editingRoutine = it,
+                        returnDestination = MapMateBottomDestination.Home,
+                    )
+                },
+                onPredictionClick = {
+                    openPrediction(
+                        routine = it,
+                        returnDestination = MapMateBottomDestination.Home,
+                    )
+                },
+                onStartTrackingClick = {
+                    screen = MapMateScreen.Tracking(
+                        routine = it,
+                        returnDestination = MapMateBottomDestination.Home,
+                    )
+                },
+                onRoutinesClick = {
+                    openMain(MapMateBottomDestination.Routines)
+                },
+            )
+
+            MapMateScreen.Routines -> RoutinesRoute(
+                contentPadding = innerPadding,
+                routineRepository = routineRepository,
+                routeEstimateProvider = routeEstimateProvider,
+                onRegisterRoutineClick = {
+                    openRoutineRegistration(
+                        editingRoutine = null,
+                        returnDestination = MapMateBottomDestination.Routines,
+                    )
+                },
+                onEditRoutineClick = {
+                    openRoutineRegistration(
+                        editingRoutine = it,
+                        returnDestination = MapMateBottomDestination.Routines,
+                    )
+                },
+                onPredictionClick = {
+                    openPrediction(
+                        routine = it,
+                        returnDestination = MapMateBottomDestination.Routines,
+                    )
+                },
+            )
+
+            MapMateScreen.Records -> RecordsScreen(
+                contentPadding = innerPadding,
+                onRegisterRoutineClick = {
+                    openRoutineRegistration(
+                        editingRoutine = null,
+                        returnDestination = MapMateBottomDestination.Records,
+                    )
+                },
+            )
+
+            MapMateScreen.Settings -> SettingsRoute(
+                contentPadding = innerPadding,
+                settingsRepository = settingsRepository,
+            )
+
+            is MapMateScreen.RoutineRegistration -> RoutineRegistrationRoute(
+                contentPadding = innerPadding,
+                routineRepository = routineRepository,
+                settingsRepository = settingsRepository,
+                placeSearchProvider = placeSearchProvider,
+                routeEstimateProvider = routeEstimateProvider,
+                currentLocationProvider = currentLocationProvider,
+                editingRoutine = currentScreen.editingRoutine,
+                onBackClick = { openMain(currentScreen.returnDestination) },
+                onSaveCompleted = { openMain(MapMateBottomDestination.Home) },
+            )
+
+            is MapMateScreen.PredictionDetail -> PredictionDetailRoute(
+                contentPadding = innerPadding,
+                routine = currentScreen.routine,
+                routeEstimateProvider = routeEstimateProvider,
+                onBackClick = { openMain(currentScreen.returnDestination) },
+                onStartTrackingClick = {
+                    screen = MapMateScreen.Tracking(
+                        routine = it,
+                        returnDestination = currentScreen.returnDestination,
+                    )
+                },
+                onEditRoutineClick = {
+                    openRoutineRegistration(
+                        editingRoutine = it,
+                        returnDestination = currentScreen.returnDestination,
+                    )
+                },
+            )
+
+            is MapMateScreen.Tracking -> TrackingRoute(
+                contentPadding = innerPadding,
+                routine = currentScreen.routine,
+                routeEstimateProvider = routeEstimateProvider,
+                onBackClick = {
+                    screen = MapMateScreen.PredictionDetail(
+                        routine = currentScreen.routine,
+                        returnDestination = currentScreen.returnDestination,
+                    )
+                },
+                onCompleted = {
+                    screen = MapMateScreen.TrackingComplete(
+                        routine = currentScreen.routine,
+                        returnDestination = currentScreen.returnDestination,
+                    )
+                },
+            )
+
+            is MapMateScreen.TrackingComplete -> TrackingCompletionScreen(
+                contentPadding = innerPadding,
+                routine = currentScreen.routine,
+                onBackClick = { openMain(currentScreen.returnDestination) },
+                onRecordsClick = { openMain(MapMateBottomDestination.Records) },
+                onHomeClick = { openMain(MapMateBottomDestination.Home) },
+            )
         }
     }
 }
 
-private enum class MapMateDestination(
-    val label: String,
-) {
-    Home(label = "홈"),
-    Routine(label = "루틴"),
-    Settings(label = "설정"),
+private sealed interface MapMateScreen {
+    val mainDestination: MapMateBottomDestination?
+
+    data object Home : MapMateScreen {
+        override val mainDestination = MapMateBottomDestination.Home
+    }
+
+    data object Routines : MapMateScreen {
+        override val mainDestination = MapMateBottomDestination.Routines
+    }
+
+    data object Records : MapMateScreen {
+        override val mainDestination = MapMateBottomDestination.Records
+    }
+
+    data object Settings : MapMateScreen {
+        override val mainDestination = MapMateBottomDestination.Settings
+    }
+
+    data class RoutineRegistration(
+        val editingRoutine: Routine?,
+        val returnDestination: MapMateBottomDestination,
+    ) : MapMateScreen {
+        override val mainDestination: MapMateBottomDestination? = null
+    }
+
+    data class PredictionDetail(
+        val routine: Routine,
+        val returnDestination: MapMateBottomDestination,
+    ) : MapMateScreen {
+        override val mainDestination: MapMateBottomDestination? = null
+    }
+
+    data class Tracking(
+        val routine: Routine,
+        val returnDestination: MapMateBottomDestination,
+    ) : MapMateScreen {
+        override val mainDestination: MapMateBottomDestination? = null
+    }
+
+    data class TrackingComplete(
+        val routine: Routine,
+        val returnDestination: MapMateBottomDestination,
+    ) : MapMateScreen {
+        override val mainDestination: MapMateBottomDestination? = null
+    }
+}
+
+private fun MapMateBottomDestination.toScreen(): MapMateScreen {
+    return when (this) {
+        MapMateBottomDestination.Home -> MapMateScreen.Home
+        MapMateBottomDestination.Routines -> MapMateScreen.Routines
+        MapMateBottomDestination.Records -> MapMateScreen.Records
+        MapMateBottomDestination.Settings -> MapMateScreen.Settings
+    }
 }
