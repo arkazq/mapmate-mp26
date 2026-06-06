@@ -28,6 +28,11 @@
 | 실제 Kakao API | 부분 완료 | Kakao Local API 키워드 장소 검색을 연결했습니다. API 키가 없거나 실패하면 mock 후보를 사용합니다. | `data/remote/api/KakaoLocalApi.kt`, `data/remote/provider/KakaoPlaceSearchProvider.kt` |
 | 실제 ODsay API | 부분 완료 | ODsay 대중교통 경로 검색 provider를 연결했습니다. API 키와 데모 출발 좌표가 있어야 실제 호출합니다. | `data/remote/api/OdsayApi.kt`, `data/remote/provider/OdsayRouteEstimateProvider.kt` |
 | 실제 Google Routes API | 부분 완료 | Google Routes provider를 연결했습니다. 도보/자동차 경로와 대중교통 fallback에 사용할 수 있습니다. | `data/remote/api/GoogleRoutesApi.kt`, `data/remote/provider/GoogleRoutesEstimateProvider.kt` |
+| 버스 실시간 도착정보 | 미구현 | 첫 탑승 정류장의 실제 버스 대기 시간을 보정하기 위한 ODsay 또는 서울특별시 버스도착정보 provider가 아직 없습니다. | 예정 |
+| 버스 실시간 위치정보 | 미구현 | 도착정보 보조와 운행 지연 판단을 위한 ODsay 또는 서울특별시 버스위치정보 provider가 아직 없습니다. | 예정 |
+| 지하철 실시간 도착정보 | 미구현 | 첫 탑승역 또는 환승역의 실제 지하철 도착 예정 시간을 보정하는 provider가 아직 없습니다. | 예정 |
+| 지하철 열차 위치정보 | 미구현 | 지하철 도착정보 보조와 운행 상태 표시를 위한 열차 위치정보 provider가 아직 없습니다. | 예정 |
+| 자동차 traffic-aware 경로 | 미구현 | 자동차 이동수단에서 Google Routes `TRAFFIC_AWARE` 정책을 적용하는 provider 정책은 아직 없습니다. | 예정 |
 | 알림 | 부분 완료 | 알림 사용 여부 설정값은 DataStore에 저장합니다. `AlarmManager` 기반 실제 예약은 아직 없습니다. | `presentation/settings/SettingsScreen.kt`, 예정 |
 | WorkManager 재조회 | 미구현 | 출발 전 이동 시간 재조회 작업은 아직 없습니다. | 예정 |
 | 상세 예측 화면 | 완료 | 권장 출발 시각, 계산 근거, 경로 요약을 표시하고 이동 기록 화면으로 진입합니다. | `presentation/prediction` |
@@ -68,3 +73,5 @@ MainActivity
 `local.properties`에 `KAKAO_REST_API_KEY`, `ODSAY_API_KEY`, `GOOGLE_ROUTES_API_KEY`, `MAPMATE_ORIGIN_LATITUDE`, `MAPMATE_ORIGIN_LONGITUDE`를 설정하면 실제 provider가 우선 동작합니다. 키가 없거나 API 호출이 실패하면 `FallbackPlaceSearchProvider`, `FallbackRouteEstimateProvider`가 기존 mock provider 결과를 반환하므로 발표용 MVP 흐름은 유지됩니다.
 
 현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있습니다.
+
+ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하지만, 현재 버스/지하철 지연이나 실제 정류장/역 도착 예정 시간을 완전히 보장하는 값으로 보지는 않습니다. 실시간성을 높이려면 첫 탑승 구간 기준 버스/지하철 실시간 도착정보 provider, 출발 전 WorkManager 재조회, 실제 이동 기록 기반 개인 보정이 추가되어야 합니다. 구체적인 API 후보와 우선순위는 `docs/API_STRATEGY.md`에 정리되어 있습니다.
