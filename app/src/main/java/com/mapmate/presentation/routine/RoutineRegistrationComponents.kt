@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.presentation.common.SectionCard
 import com.mapmate.presentation.common.toKoreanDescription
 import com.mapmate.presentation.common.toKoreanLabel
 import com.mapmate.presentation.common.toKoreanShortLabel
@@ -45,35 +46,12 @@ fun SectionBlock(
     subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    SectionCard(
+        title = title,
+        modifier = modifier,
+        subtitle = subtitle,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                subtitle?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            content()
-        }
+        content()
     }
 }
 
@@ -86,33 +64,25 @@ fun DestinationCandidateList(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         candidates.forEach { destination ->
             val isSelected = destination == selectedDestination
-            val containerColor = if (isSelected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-            val borderColor = if (isSelected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.outlineVariant
-            }
-
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(MaterialTheme.shapes.medium)
                     .clickable { onDestinationSelected(destination) },
                 shape = MaterialTheme.shapes.medium,
-                color = containerColor,
-                border = BorderStroke(1.dp, borderColor),
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                },
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SelectionDot(isSelected = isSelected)
@@ -120,11 +90,7 @@ fun DestinationCandidateList(
                         Text(
                             text = destination.name,
                             style = MaterialTheme.typography.titleSmall,
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -132,11 +98,7 @@ fun DestinationCandidateList(
                         Text(
                             text = destination.address,
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -169,7 +131,7 @@ fun RepeatDaySelector(
                 color = if (isSelected) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.surface
+                    MaterialTheme.colorScheme.surfaceVariant
                 },
                 border = BorderStroke(
                     width = 1.dp,
@@ -206,7 +168,7 @@ private fun SelectionDot(isSelected: Boolean) {
     }
 
     Surface(
-        modifier = Modifier.size(18.dp),
+        modifier = Modifier.size(16.dp),
         shape = MaterialTheme.shapes.large,
         border = BorderStroke(2.dp, color),
         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
@@ -214,7 +176,7 @@ private fun SelectionDot(isSelected: Boolean) {
         if (isSelected) {
             Box(contentAlignment = Alignment.Center) {
                 Surface(
-                    modifier = Modifier.size(6.dp),
+                modifier = Modifier.size(5.dp),
                     shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.onPrimary,
                     content = {},
@@ -239,27 +201,19 @@ fun TransportModeSelector(
             val isSelected = transportMode == selectedTransportMode
             Surface(
                 modifier = Modifier
-                    .widthIn(min = 96.dp)
-                    .heightIn(min = 56.dp)
+                    .widthIn(min = 88.dp)
+                    .heightIn(min = 48.dp)
                     .clip(MaterialTheme.shapes.medium)
                     .clickable { onTransportModeSelected(transportMode) },
                 shape = MaterialTheme.shapes.medium,
                 color = if (isSelected) {
                     MaterialTheme.colorScheme.primaryContainer
                 } else {
-                    MaterialTheme.colorScheme.surface
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                 },
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant
-                    },
-                ),
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(

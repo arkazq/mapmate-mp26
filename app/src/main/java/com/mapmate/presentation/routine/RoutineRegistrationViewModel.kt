@@ -37,6 +37,7 @@ class RoutineRegistrationViewModel(
     val uiState: StateFlow<RoutineRegistrationUiState> = _uiState.asStateFlow()
 
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    private var latestSettings = AppSettings()
 
     init {
         observeSettings()
@@ -83,10 +84,22 @@ class RoutineRegistrationViewModel(
                 recommendedDepartureTimeText = "",
                 successMessage = null,
                 errorMessage = null,
+                isSaveCompleted = false,
             ).withSaveEnabled()
         }
         searchOriginCandidates(routine.origin.name)
         searchDestinationCandidates(routine.destination.name)
+    }
+
+    fun startNewRoutine() {
+        _uiState.value = RoutineRegistrationUiState(
+            selectedTransportMode = latestSettings.defaultTransportMode,
+            personalBufferMinutes = latestSettings.personalBufferMinutes.toString(),
+            safetyMarginMinutes = latestSettings.safetyMarginMinutes.toString(),
+        )
+        searchOriginCandidates("")
+        searchDestinationCandidates("")
+        refreshSaveEnabled()
     }
 
     private fun onRoutineNameChanged(name: String) {
@@ -95,6 +108,7 @@ class RoutineRegistrationViewModel(
                 routineName = name,
                 successMessage = null,
                 errorMessage = null,
+                isSaveCompleted = false,
             )
         }
     }
@@ -274,6 +288,7 @@ class RoutineRegistrationViewModel(
                     isSaveEnabled = false,
                     successMessage = null,
                     errorMessage = null,
+                    isSaveCompleted = false,
                 )
             }
 
@@ -291,12 +306,14 @@ class RoutineRegistrationViewModel(
                         },
                         errorMessage = null,
                         isSaving = false,
+                        isSaveCompleted = true,
                     )
                 } else {
                     it.copy(
                         successMessage = null,
                         errorMessage = "루틴 저장에 실패했습니다. 다시 시도해 주세요.",
                         isSaving = false,
+                        isSaveCompleted = false,
                     )
                 }
             }
@@ -374,6 +391,7 @@ class RoutineRegistrationViewModel(
     private fun observeSettings() {
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
+                latestSettings = settings
                 _uiState.update {
                     if (it.isEditing) return@update it.withSaveEnabled()
 

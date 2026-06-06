@@ -1,4 +1,4 @@
-package com.mapmate.presentation.home
+package com.mapmate.presentation.routine
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -17,16 +17,16 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class HomeViewModel(
+class RoutinesViewModel(
     private val routineRepository: RoutineRepository,
     private val routeEstimateProvider: RouteEstimateProvider,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(RoutinesUiState())
+    val uiState: StateFlow<RoutinesUiState> = _uiState.asStateFlow()
 
     init {
-        observeSavedRoutines()
+        observeRoutines()
     }
 
     fun deleteRoutine(routine: Routine) {
@@ -49,21 +49,21 @@ class HomeViewModel(
                 if (result.isSuccess) {
                     it.copy(
                         deletingRoutineId = null,
-                        errorMessage = null,
                         successMessage = "'${routine.name}' 루틴을 삭제했습니다.",
+                        errorMessage = null,
                     )
                 } else {
                     it.copy(
                         deletingRoutineId = null,
-                        errorMessage = "루틴 삭제에 실패했습니다. 다시 시도해 주세요.",
                         successMessage = null,
+                        errorMessage = "루틴 삭제에 실패했습니다. 다시 시도해 주세요.",
                     )
                 }
             }
         }
     }
 
-    private fun observeSavedRoutines() {
+    private fun observeRoutines() {
         viewModelScope.launch {
             routineRepository.observeRoutines()
                 .catch {
@@ -75,13 +75,13 @@ class HomeViewModel(
                     }
                 }
                 .collect { routines ->
-                    val dashboardRecommendation = routines.firstOrNull()
-                        ?.toDashboardRecommendation()
+                    val recommendations = routines.map { routine ->
+                        routine.toRecommendation()
+                    }
 
                     _uiState.update {
                         it.copy(
-                            savedRoutines = routines,
-                            dashboardRecommendation = dashboardRecommendation,
+                            recommendations = recommendations,
                             isLoading = false,
                             errorMessage = null,
                         )
@@ -90,7 +90,7 @@ class HomeViewModel(
         }
     }
 
-    private suspend fun Routine.toDashboardRecommendation(): RoutineRecommendationUiModel {
+    private suspend fun Routine.toRecommendation(): RoutineRecommendationUiModel {
         return runCatching {
             val routeEstimate = routeEstimateProvider.getRouteEstimate(
                 origin = origin,
@@ -114,8 +114,8 @@ class HomeViewModel(
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
-                        return HomeViewModel(
+                    if (modelClass.isAssignableFrom(RoutinesViewModel::class.java)) {
+                        return RoutinesViewModel(
                             routineRepository = routineRepository,
                             routeEstimateProvider = routeEstimateProvider,
                         ) as T

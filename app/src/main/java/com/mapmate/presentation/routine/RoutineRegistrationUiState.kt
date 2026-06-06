@@ -34,6 +34,7 @@ data class RoutineRegistrationUiState(
     val isCalculating: Boolean = false,
     val isSaving: Boolean = false,
     val isSaveEnabled: Boolean = false,
+    val isSaveCompleted: Boolean = false,
 ) {
     val isEditing: Boolean
         get() = editingRoutineId != null
