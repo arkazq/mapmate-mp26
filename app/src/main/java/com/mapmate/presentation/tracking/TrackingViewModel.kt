@@ -8,6 +8,7 @@ import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.CommuteRecordRepository
+import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
 import com.mapmate.presentation.common.toRecommendationUiModel
@@ -26,6 +27,7 @@ class TrackingViewModel(
     private val routine: Routine,
     private val routeEstimateProvider: RouteEstimateProvider,
     private val commuteRecordRepository: CommuteRecordRepository,
+    private val settingsRepository: SettingsRepository,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TrackingUiState(routine = routine))
@@ -98,15 +100,24 @@ class TrackingViewModel(
                 )
             }
 
-            runCatching {
+            val saveResult = runCatching {
                 val recordId = commuteRecordRepository.saveRecord(record)
                 record.copy(id = recordId)
-            }.onSuccess { savedRecord ->
+            }
+
+            saveResult.onSuccess { savedRecord ->
+                val adjustedPersonalBufferMinutes = runCatching {
+                    settingsRepository.updatePersonalBufferForArrivalDelta(
+                        arrivalDeltaMinutes = savedRecord.arrivalDeltaMinutes,
+                    )
+                }.getOrNull()
+
                 _uiState.update {
                     it.copy(
                         stage = TrackingStage.Arrived,
                         isSavingRecord = false,
                         completedRecord = savedRecord,
+                        adjustedPersonalBufferMinutes = adjustedPersonalBufferMinutes,
                     )
                 }
             }.onFailure {
@@ -125,6 +136,7 @@ class TrackingViewModel(
             routine: Routine,
             routeEstimateProvider: RouteEstimateProvider,
             commuteRecordRepository: CommuteRecordRepository,
+            settingsRepository: SettingsRepository,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
@@ -134,6 +146,7 @@ class TrackingViewModel(
                             routine = routine,
                             routeEstimateProvider = routeEstimateProvider,
                             commuteRecordRepository = commuteRecordRepository,
+                            settingsRepository = settingsRepository,
                         ) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

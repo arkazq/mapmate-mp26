@@ -39,6 +39,7 @@ import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.CommuteRecordRepository
+import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.presentation.common.DetailTopBar
 import com.mapmate.presentation.common.IconBadge
 import com.mapmate.presentation.common.MapMateIcon
@@ -63,6 +64,7 @@ fun TrackingRoute(
     routine: Routine,
     routeEstimateProvider: RouteEstimateProvider,
     commuteRecordRepository: CommuteRecordRepository,
+    settingsRepository: SettingsRepository,
     onBackClick: () -> Unit,
     onCompleted: (CommuteRecord) -> Unit,
 ) {
@@ -72,6 +74,7 @@ fun TrackingRoute(
             routine = routine,
             routeEstimateProvider = routeEstimateProvider,
             commuteRecordRepository = commuteRecordRepository,
+            settingsRepository = settingsRepository,
         ),
     )
     val uiState by viewModel.uiState.collectAsState()

@@ -189,6 +189,7 @@ fun MapMateApp(
                 routine = currentScreen.routine,
                 routeEstimateProvider = routeEstimateProvider,
                 commuteRecordRepository = commuteRecordRepository,
+                settingsRepository = settingsRepository,
                 onBackClick = {
                     screen = MapMateScreen.PredictionDetail(
                         routine = currentScreen.routine,

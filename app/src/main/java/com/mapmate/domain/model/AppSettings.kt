@@ -12,6 +12,7 @@ data class AppSettings(
         const val DEFAULT_NOTIFICATIONS_ENABLED = false
         const val MIN_BUFFER_MINUTES = 0
         const val MAX_BUFFER_MINUTES = 60
+        const val MAX_AUTO_BUFFER_ADJUSTMENT_MINUTES = 5
         val DEFAULT_TRANSPORT_MODE = TransportMode.TRANSIT
 
         fun isValidBufferMinutes(minutes: Int): Boolean {
@@ -23,6 +24,20 @@ data class AppSettings(
             defaultMinutes: Int,
         ): Int {
             return minutes?.takeIf(::isValidBufferMinutes) ?: defaultMinutes
+        }
+
+        fun adjustedPersonalBufferMinutes(
+            currentMinutes: Int,
+            arrivalDeltaMinutes: Int,
+        ): Int {
+            val adjustment = arrivalDeltaMinutes.coerceIn(
+                minimumValue = -MAX_AUTO_BUFFER_ADJUSTMENT_MINUTES,
+                maximumValue = MAX_AUTO_BUFFER_ADJUSTMENT_MINUTES,
+            )
+            return (currentMinutes + adjustment).coerceIn(
+                minimumValue = MIN_BUFFER_MINUTES,
+                maximumValue = MAX_BUFFER_MINUTES,
+            )
         }
 
         fun transportModeOrDefault(storedName: String?): TransportMode {

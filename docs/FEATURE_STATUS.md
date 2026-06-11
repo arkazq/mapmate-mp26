@@ -39,7 +39,7 @@
 | 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 기록 흐름을 제공하고 도착 완료 시 Room에 기록을 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
 | 기록 완료 화면 UI | 완료 | 도착 액션 후 같은 페이지 내부 카드가 아니라 별도 기록 완료 화면으로 전환합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/MapMateApp.kt` |
 | 이동 기록 저장 | 완료 | 루틴명, 출발지/목적지, 이동수단, 추천 출발 시각, 도착 시각, 도착 오차를 `commute_records` 테이블에 저장합니다. | `data/local/CommuteRecordEntity.kt`, `data/repository/RoomCommuteRecordRepository.kt` |
-| 개인 보정값 업데이트 | 미구현 | 실제 도착 오차 기반 개인 보정 업데이트는 아직 없습니다. | 예정 |
+| 개인 보정값 업데이트 | 완료 | 이동 기록의 도착 오차를 기준으로 개인 보정 시간을 최대 ±5분 범위에서 자동 조정합니다. | `domain/model/AppSettings.kt`, `data/preferences/DataStoreSettingsRepository.kt`, `presentation/tracking/TrackingViewModel.kt` |
 | 기록 탭 | 완료 | 저장된 이동 기록 목록과 empty state를 표시합니다. | `presentation/history/RecordsScreen.kt`, `presentation/history/RecordsViewModel.kt` |
 | 홈 화면 | 완료 | 앱 첫 화면에서 오늘 권장 출발 시각과 오늘의 루틴 요약을 확인할 수 있습니다. | `presentation/home` |
 | 통계 화면 | 미구현 | 최근 기록/통계 화면은 아직 없습니다. | 예정 |
@@ -68,7 +68,7 @@ MainActivity
 
 개인 보정 시간과 안전 여유 시간은 입력값이 0~60분 범위로 유효할 때 Preferences DataStore에 저장됩니다. 기본 이동수단과 알림 사용 여부도 같은 DataStore에 저장됩니다. 앱을 다시 실행하면 `SettingsRepository`를 통해 마지막 설정을 읽어 루틴 등록 화면과 설정 화면의 기본값으로 반영합니다.
 
-이동 기록 화면에서 이동 시작 후 도착을 완료하면 `CommuteRecordRepository`를 통해 Room DB의 `commute_records` 테이블에 기록을 저장합니다. 기록 탭은 저장된 기록을 최신 도착 순서로 표시하고, 목표 도착 시각 대비 오차를 함께 보여줍니다.
+이동 기록 화면에서 이동 시작 후 도착을 완료하면 `CommuteRecordRepository`를 통해 Room DB의 `commute_records` 테이블에 기록을 저장합니다. 기록 탭은 저장된 기록을 최신 도착 순서로 표시하고, 목표 도착 시각 대비 오차를 함께 보여줍니다. 기록 저장이 성공하면 `SettingsRepository`가 도착 오차를 DataStore 개인 보정값에 반영합니다. 한 번의 기록이 보정값을 과도하게 흔들지 않도록 자동 조정 폭은 최대 ±5분으로 제한합니다.
 
 ## 현재 API 동작
 
@@ -76,4 +76,4 @@ MainActivity
 
 현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있습니다.
 
-ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하지만, 현재 버스/지하철 지연이나 실제 정류장/역 도착 예정 시간을 완전히 보장하는 값으로 보지는 않습니다. 실시간성을 높이려면 첫 탑승 구간 기준 버스/지하철 실시간 도착정보 provider, 출발 전 WorkManager 재조회, 실제 이동 기록 기반 개인 보정이 추가되어야 합니다. 구체적인 API 후보와 우선순위는 `docs/API_STRATEGY.md`에 정리되어 있습니다.
+ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하지만, 현재 버스/지하철 지연이나 실제 정류장/역 도착 예정 시간을 완전히 보장하는 값으로 보지는 않습니다. 실시간성을 높이려면 첫 탑승 구간 기준 버스/지하철 실시간 도착정보 provider와 출발 전 WorkManager 재조회가 추가되어야 합니다. 구체적인 API 후보와 우선순위는 `docs/API_STRATEGY.md`에 정리되어 있습니다.

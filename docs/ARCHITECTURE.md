@@ -2,7 +2,7 @@
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 설정 화면까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, 실제 알림 예약, WorkManager 재조회, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, 실제 알림 예약, WorkManager 재조회, Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -159,10 +159,10 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 
 - `TrackingScreen`: 출발 예정, 탑승, 도착 단계와 현재 이동 정보 표시
 - `TrackingCompletionScreen`: 저장된 `CommuteRecord` 기반 기록 완료 화면 표시
-- `TrackingViewModel`: 단계 상태, 경로 요약 로드, 도착 완료 시 `CommuteRecordRepository.saveRecord()` 호출
+- `TrackingViewModel`: 단계 상태, 경로 요약 로드, 도착 완료 시 `CommuteRecordRepository.saveRecord()` 호출 및 `SettingsRepository`를 통한 개인 보정값 자동 조정
 - `TrackingUiState`: 이동 기록 화면 상태와 저장된 완료 기록
 
-현재 `TrackingScreen`은 도착 완료 시 실제 `CommuteRecord`를 저장합니다. 도착 오차 기반 개인 보정값 자동 업데이트는 향후 설정 저장소와 연결합니다.
+현재 `TrackingScreen`은 도착 완료 시 실제 `CommuteRecord`를 저장합니다. 기록 저장이 성공하면 목표 도착 시각 대비 실제 도착 오차를 DataStore 개인 보정값에 반영합니다. 자동 조정 폭은 한 번에 최대 ±5분으로 제한합니다.
 
 ## `presentation/history`
 
@@ -185,7 +185,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 
 앱의 핵심 데이터를 표현합니다.
 
-- `AppSettings`: DataStore에 저장하는 개인 보정 시간, 안전 여유 시간, 알림 설정값, 기본 이동수단
+- `AppSettings`: DataStore에 저장하는 개인 보정 시간, 안전 여유 시간, 알림 설정값, 기본 이동수단과 도착 오차 기반 자동 보정 계산
 - `CommuteRecord`: 완료한 이동의 루틴명, 출발/도착 정보, 추천 출발 시각, 실제 도착 시각, 도착 오차
 - `Routine`: 루틴 이름, 목적지, 목표 도착 시각, 반복 요일, 이동 수단, 보정 시간
 - `Destination`: 장소 이름, 주소, 위도, 경도
@@ -224,7 +224,7 @@ recommended departure time
 
 - `CommuteRecordRepository`: 이동 기록 저장과 저장된 기록 관찰 동작을 정의
 - `RoutineRepository`: 루틴 저장, 삭제, 저장된 루틴 관찰 동작을 정의
-- `SettingsRepository`: 앱 설정 관찰과 보정값/알림 설정값/기본 이동수단 저장 동작을 정의
+- `SettingsRepository`: 앱 설정 관찰, 보정값/알림 설정값/기본 이동수단 저장, 도착 오차 기반 개인 보정 자동 업데이트 동작을 정의
 
 ViewModel은 Room DAO나 DataStore를 직접 참조하지 않고 repository interface에 의존합니다.
 
@@ -259,7 +259,7 @@ domain repository interface의 Room 구현체입니다.
 
 Preferences DataStore 기반 설정 저장 구조입니다.
 
-- `DataStoreSettingsRepository`: 개인 보정 시간, 안전 여유 시간, 알림 설정값, 기본 이동수단을 저장하고 `Flow<AppSettings>`로 관찰
+- `DataStoreSettingsRepository`: 개인 보정 시간, 안전 여유 시간, 알림 설정값, 기본 이동수단을 저장하고 `Flow<AppSettings>`로 관찰하며, 이동 기록 도착 오차를 개인 보정값에 반영
 
 ## `di`
 
@@ -312,9 +312,10 @@ User input
 12. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
 13. 상세 예측 화면과 이동 기록 화면은 선택된 루틴을 기준으로 `RouteEstimateProvider`를 호출해 권장 출발 시각 UI 모델을 구성합니다.
 14. 이동 기록 화면에서 도착을 완료하면 `CommuteRecordRepository.saveRecord()`를 통해 Room DB에 기록을 저장합니다.
-15. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
-16. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
-17. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
+15. 기록 저장이 성공하면 `SettingsRepository.updatePersonalBufferForArrivalDelta()`가 도착 오차를 개인 보정값에 반영합니다.
+16. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
+17. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
+18. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
 
 ## 설계 원칙
 
@@ -331,6 +332,5 @@ User input
 
 - AlarmManager 기반 출발 알림 예약
 - WorkManager 기반 출발 전 재조회
-- 실제 도착 오차 기반 개인 보정 로직
 - 통계/분석 화면
 - 필요 시 Navigation Compose 도입

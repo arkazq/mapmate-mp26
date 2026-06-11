@@ -53,6 +53,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 이동 기록 완료 별도 화면 UI
 - 이동 기록 Room 저장
 - 저장된 이동 기록 목록
+- 실제 도착 오차 기반 개인 보정 자동 업데이트
 - 설정 화면
 - DataStore 기반 개인 보정 시간 / 안전 여유 시간 저장
 - DataStore 기반 알림 설정값 저장
@@ -85,6 +86,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 현재 브랜치 `feature/commute-history-storage`
   - `CommuteRecord` 도메인 모델과 Room `commute_records` 테이블 추가
   - 이동 기록 완료 시 루틴명, 출발지/목적지, 추천 출발 시각, 실제 도착 시각, 도착 오차 저장
+  - 도착 오차를 기준으로 DataStore 개인 보정값을 자동 조정
   - 기록 완료 화면을 저장된 기록 기반으로 표시
   - 기록 탭에서 저장된 이동 기록 목록과 empty state 표시
   - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`에 구현 상태 반영
@@ -103,7 +105,6 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 자동차 모드의 Google Routes traffic-aware 경로 조회
 - AlarmManager 기반 출발 알림
 - WorkManager 기반 출발 전 재조회
-- 개인 보정값 업데이트
 - 통계/기록 분석 화면
 
 ## 기술 스택
