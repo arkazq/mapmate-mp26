@@ -117,7 +117,7 @@ GOOGLE_ROUTES_API_KEY=API_KEY_PLACEHOLDER
 
 API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
-현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. 다만 버스 지연, 도로 정체, 지하철 지연, 실제 정류장/역 도착 예정 시간을 완전히 보장하는 실시간 값은 아니므로, 실시간성을 높이려면 버스/지하철 실시간 도착정보 provider와 출발 전 재조회 작업을 추가해야 합니다. 자세한 확장 계획은 `docs/API_STRATEGY.md`를 확인합니다.
+현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. 다만 버스 지연, 도로 정체, 지하철 지연, 실제 정류장/역 도착 예정 시간을 완전히 보장하는 실시간 값은 아니므로, 실시간성을 높이려면 TAGO 버스 실시간 도착정보 provider와 출발 전 재조회 작업을 추가해야 합니다. 자세한 확장 계획은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 확인합니다.
 
 ## 브랜치 전략 요약
 
@@ -134,6 +134,7 @@ API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fall
 - `docs/MAPMATE_TEAM_GIT_GUIDE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/API_STRATEGY.md`
+- `docs/REALTIME_DEPARTURE_STRATEGY.md`
 - `docs/FEATURE_STATUS.md`
 
 ## 팀원
