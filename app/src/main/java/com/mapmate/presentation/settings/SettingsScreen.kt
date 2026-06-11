@@ -184,7 +184,7 @@ fun SettingsScreen(
                         onEvent(SettingsEvent.NotificationsEnabledChanged(it))
                     },
                 )
-                // TODO: 출발 전 재조회 WorkManager가 연결되면 DataStore 상태로 승격한다.
+                // TODO: 실시간 도착정보 provider가 추가되면 별도 변경 알림 설정으로 승격한다.
                 SettingsSwitchRow(
                     title = "추천 시간 재계산 알림",
                     description = "교통 상황 변화 시 새로운 추천 시간을 알려드립니다.",

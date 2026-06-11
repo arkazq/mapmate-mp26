@@ -34,7 +34,7 @@
 | 지하철 열차 위치정보 | 미구현 | 지하철 도착정보 보조와 운행 상태 표시를 위한 열차 위치정보 provider가 아직 없습니다. | 예정 |
 | 자동차 traffic-aware 경로 | 미구현 | 자동차 이동수단에서 Google Routes `TRAFFIC_AWARE` 정책을 적용하는 provider 정책은 아직 없습니다. | 예정 |
 | 알림 | 완료 | 알림 사용 여부는 DataStore에 저장하며, 켜져 있으면 저장된 루틴과 경로 예상 시간을 기준으로 가장 가까운 다음 출발 알림을 `AlarmManager`에 예약합니다. Android 13 이상에서는 알림 권한을 요청합니다. | `data/alarm`, `presentation/settings/SettingsScreen.kt`, `MainActivity.kt` |
-| WorkManager 재조회 | 미구현 | 출발 전 이동 시간 재조회 작업은 아직 없습니다. | 예정 |
+| WorkManager 재조회 | 완료 | 다음 출발 알림 30분 전에 unique one-time work를 예약해 경로 예상 시간을 다시 조회하고 알림/재조회 예약을 갱신합니다. | `data/alarm/AndroidDepartureRecheckScheduler.kt`, `data/alarm/DepartureRecheckWorker.kt` |
 | 상세 예측 화면 | 완료 | 권장 출발 시각, 계산 근거, 경로 요약을 표시하고 이동 기록 화면으로 진입합니다. | `presentation/prediction` |
 | 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 기록 흐름을 제공하고 도착 완료 시 Room에 기록을 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
 | 기록 완료 화면 UI | 완료 | 도착 액션 후 같은 페이지 내부 카드가 아니라 별도 기록 완료 화면으로 전환합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/MapMateApp.kt` |
@@ -70,6 +70,8 @@ MainActivity
 
 알림 설정이 켜져 있으면 앱 실행 중 `SettingsRepository.settings`와 `RoutineRepository.observeRoutines()`를 관찰해 다음 출발 알림을 자동 재예약합니다. 예약 시 실제 경로 provider를 우선 사용하고, API 키가 없거나 호출이 실패하면 기존 mock fallback 이동 시간으로 권장 출발 시각을 계산합니다. 알림은 현재 가장 가까운 1개만 유지하며, 알림 수신 후 다음 반복 요일 알림을 다시 예약합니다.
 
+다음 출발 알림이 30분보다 더 남아 있으면 WorkManager one-time work를 함께 예약합니다. 재조회 작업은 네트워크 연결 조건에서 실행되며, 실행 시 현재 루틴과 설정을 다시 읽고 `RouteEstimateProvider`를 다시 호출한 뒤 가장 가까운 출발 알림과 다음 재조회 작업을 갱신합니다. 출발까지 1분 이내이거나 이미 30분 재조회 구간 안에 들어온 경우에는 즉시 반복 예약을 만들지 않도록 기존 unique work를 취소합니다.
+
 이동 기록 화면에서 이동 시작 후 도착을 완료하면 `CommuteRecordRepository`를 통해 Room DB의 `commute_records` 테이블에 기록을 저장합니다. 기록 탭은 저장된 기록을 최신 도착 순서로 표시하고, 목표 도착 시각 대비 오차를 함께 보여줍니다. 기록 저장이 성공하면 `SettingsRepository`가 도착 오차를 DataStore 개인 보정값에 반영합니다. 한 번의 기록이 보정값을 과도하게 흔들지 않도록 자동 조정 폭은 최대 ±5분으로 제한합니다.
 
 ## 현재 API 동작
@@ -78,4 +80,4 @@ MainActivity
 
 현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있습니다.
 
-ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하지만, 현재 버스/지하철 지연이나 실제 정류장/역 도착 예정 시간을 완전히 보장하는 값으로 보지는 않습니다. 실시간성을 높이려면 첫 탑승 구간 기준 버스/지하철 실시간 도착정보 provider와 출발 전 WorkManager 재조회가 추가되어야 합니다. 구체적인 API 후보와 우선순위는 `docs/API_STRATEGY.md`에 정리되어 있습니다.
+ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하지만, 현재 버스/지하철 지연이나 실제 정류장/역 도착 예정 시간을 완전히 보장하는 값으로 보지는 않습니다. 출발 전 WorkManager 재조회는 구현되어 있으므로, 실시간성을 더 높이려면 첫 탑승 구간 기준 버스/지하철 실시간 도착정보 provider가 추가되어야 합니다. 구체적인 API 후보와 우선순위는 `docs/API_STRATEGY.md`에 정리되어 있습니다.

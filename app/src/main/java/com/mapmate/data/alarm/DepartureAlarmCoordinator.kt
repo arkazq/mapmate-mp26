@@ -2,6 +2,7 @@ package com.mapmate.data.alarm
 
 import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.alarm.DepartureAlarmScheduler
+import com.mapmate.domain.alarm.DepartureRecheckScheduler
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
@@ -18,6 +19,7 @@ class DepartureAlarmCoordinator(
     private val routineRepository: RoutineRepository,
     private val routeEstimateProvider: RouteEstimateProvider,
     private val alarmScheduler: DepartureAlarmScheduler,
+    private val recheckScheduler: DepartureRecheckScheduler,
     private val planner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
 ) {
     suspend fun keepAlarmsInSync() {
@@ -43,7 +45,7 @@ class DepartureAlarmCoordinator(
         routines: List<Routine>,
     ) {
         if (!settings.notificationsEnabled || !alarmScheduler.canPostDepartureNotifications()) {
-            alarmScheduler.cancel()
+            cancelScheduledWork()
             return
         }
 
@@ -53,10 +55,16 @@ class DepartureAlarmCoordinator(
         val nextAlarm = planner.nextAlarm(routineRouteDurations)
 
         if (nextAlarm == null) {
-            alarmScheduler.cancel()
+            cancelScheduledWork()
         } else {
             alarmScheduler.schedule(nextAlarm)
+            recheckScheduler.schedule(nextAlarm)
         }
+    }
+
+    private fun cancelScheduledWork() {
+        alarmScheduler.cancel()
+        recheckScheduler.cancel()
     }
 
     private suspend fun routeDurationMinutes(routine: Routine): Int {

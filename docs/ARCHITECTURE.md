@@ -2,7 +2,7 @@
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, WorkManager 재조회와 Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, WorkManager 기반 출발 전 재조회까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -68,7 +68,8 @@ com.mapmate
 │  ├─ alarm
 │  │  ├─ DepartureAlarmPlanner.kt
 │  │  ├─ DepartureAlarmSchedule.kt
-│  │  └─ DepartureAlarmScheduler.kt
+│  │  ├─ DepartureAlarmScheduler.kt
+│  │  └─ DepartureRecheckScheduler.kt
 │  ├─ model
 │  │  ├─ AppSettings.kt
 │  │  ├─ CommuteRecord.kt
@@ -89,10 +90,12 @@ com.mapmate
 └─ data
    ├─ alarm
    │  ├─ AndroidDepartureAlarmScheduler.kt
+   │  ├─ AndroidDepartureRecheckScheduler.kt
    │  ├─ DepartureAlarmBootReceiver.kt
    │  ├─ DepartureAlarmCoordinator.kt
    │  ├─ DepartureAlarmNotificationPublisher.kt
-   │  └─ DepartureAlarmReceiver.kt
+   │  ├─ DepartureAlarmReceiver.kt
+   │  └─ DepartureRecheckWorker.kt
    ├─ local
    │  ├─ CommuteRecordDao.kt
    │  ├─ CommuteRecordEntity.kt
@@ -210,6 +213,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 - `DepartureAlarmPlanner`: 루틴 반복 요일, 목표 도착 시각, 경로 예상 시간, 보정 시간을 기준으로 다음 출발 알림 시각 계산
 - `DepartureAlarmSchedule`: 예약할 루틴, 목적지, 권장 출발 시각, 알림 trigger epoch millis를 담는 모델
 - `DepartureAlarmScheduler`: Android `AlarmManager` 구현체를 domain 밖으로 숨기기 위한 interface
+- `DepartureRecheckScheduler`: Android `WorkManager` 구현체를 domain 밖으로 숨기기 위한 interface
 
 ## `domain/calculator`
 
@@ -285,9 +289,11 @@ Android `AlarmManager`, `BroadcastReceiver`, `NotificationManager` 기반 출발
 
 - `DepartureAlarmCoordinator`: 알림 설정과 저장된 루틴을 읽어 다음 출발 알림을 예약/취소
 - `AndroidDepartureAlarmScheduler`: `AlarmManager`로 가장 가까운 출발 알림 하나를 예약하고 기존 예약을 취소
+- `AndroidDepartureRecheckScheduler`: 출발 30분 전 unique WorkManager one-time work를 예약하고 기존 재조회 작업을 취소
 - `DepartureAlarmReceiver`: 예약된 알림을 수신해 notification을 표시하고 다음 반복 알림을 재예약
 - `DepartureAlarmBootReceiver`: 기기 부팅 또는 앱 업데이트 후 알림을 재예약
 - `DepartureAlarmNotificationPublisher`: notification channel 생성과 출발 알림 표시
+- `DepartureRecheckWorker`: 현재 루틴/설정과 경로 provider를 다시 사용해 다음 출발 알림과 다음 재조회 작업을 갱신
 
 ## `di`
 
@@ -344,8 +350,10 @@ User input
 16. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
 17. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
 18. 앱 실행 중 `DepartureAlarmCoordinator`는 알림 설정과 저장된 루틴 목록을 관찰해 다음 출발 알림을 예약하거나 취소합니다.
-19. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
-20. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
+19. 다음 출발 알림이 30분보다 더 남아 있으면 `AndroidDepartureRecheckScheduler`가 WorkManager one-time work를 예약합니다.
+20. `DepartureRecheckWorker`는 출발 전 경로 예상 시간을 다시 조회하고 다음 출발 알림과 재조회 작업을 갱신합니다.
+21. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
+22. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
 
 ## 설계 원칙
 
@@ -360,6 +368,5 @@ User input
 
 ## 앞으로 확장할 영역
 
-- WorkManager 기반 출발 전 재조회
 - 통계/분석 화면
 - 필요 시 Navigation Compose 도입
