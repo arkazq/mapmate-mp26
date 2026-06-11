@@ -36,11 +36,11 @@
 | 알림 | 부분 완료 | 알림 사용 여부 설정값은 DataStore에 저장합니다. `AlarmManager` 기반 실제 예약은 아직 없습니다. | `presentation/settings/SettingsScreen.kt`, 예정 |
 | WorkManager 재조회 | 미구현 | 출발 전 이동 시간 재조회 작업은 아직 없습니다. | 예정 |
 | 상세 예측 화면 | 완료 | 권장 출발 시각, 계산 근거, 경로 요약을 표시하고 이동 기록 화면으로 진입합니다. | `presentation/prediction` |
-| 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 UI-only 기록 흐름을 제공합니다. 실제 저장은 아직 없습니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
+| 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 기록 흐름을 제공하고 도착 완료 시 Room에 기록을 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
 | 기록 완료 화면 UI | 완료 | 도착 액션 후 같은 페이지 내부 카드가 아니라 별도 기록 완료 화면으로 전환합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/MapMateApp.kt` |
-| 이동 기록 저장 | 미구현 | 탑승/도착 기록을 Room에 저장하는 기능은 아직 없습니다. | 예정 |
+| 이동 기록 저장 | 완료 | 루틴명, 출발지/목적지, 이동수단, 추천 출발 시각, 도착 시각, 도착 오차를 `commute_records` 테이블에 저장합니다. | `data/local/CommuteRecordEntity.kt`, `data/repository/RoomCommuteRecordRepository.kt` |
 | 개인 보정값 업데이트 | 미구현 | 실제 도착 오차 기반 개인 보정 업데이트는 아직 없습니다. | 예정 |
-| 기록 탭 | 부분 완료 | 사용자용 empty state placeholder를 표시합니다. 실제 저장된 기록 목록은 아직 없습니다. | `presentation/history/RecordsScreen.kt` |
+| 기록 탭 | 완료 | 저장된 이동 기록 목록과 empty state를 표시합니다. | `presentation/history/RecordsScreen.kt`, `presentation/history/RecordsViewModel.kt` |
 | 홈 화면 | 완료 | 앱 첫 화면에서 오늘 권장 출발 시각과 오늘의 루틴 요약을 확인할 수 있습니다. | `presentation/home` |
 | 통계 화면 | 미구현 | 최근 기록/통계 화면은 아직 없습니다. | 예정 |
 | 설정 화면 | 완료 | 보정값, 기본 이동수단, 알림 사용 여부를 변경할 수 있습니다. | `presentation/settings` |
@@ -67,6 +67,8 @@ MainActivity
 현재 `루틴 저장` 버튼은 입력값 검증 후 Room DB의 `routines` 테이블에 루틴을 저장합니다. 저장 성공 후 홈 화면으로 이동합니다. 저장된 루틴은 Room `Flow`를 통해 홈 대시보드와 루틴 목록 화면에 바로 표시됩니다. 루틴 목록의 `수정` 버튼은 선택한 루틴을 루틴 등록 화면에 채우고, `삭제` 버튼은 해당 루틴을 Room DB에서 제거합니다.
 
 개인 보정 시간과 안전 여유 시간은 입력값이 0~60분 범위로 유효할 때 Preferences DataStore에 저장됩니다. 기본 이동수단과 알림 사용 여부도 같은 DataStore에 저장됩니다. 앱을 다시 실행하면 `SettingsRepository`를 통해 마지막 설정을 읽어 루틴 등록 화면과 설정 화면의 기본값으로 반영합니다.
+
+이동 기록 화면에서 이동 시작 후 도착을 완료하면 `CommuteRecordRepository`를 통해 Room DB의 `commute_records` 테이블에 기록을 저장합니다. 기록 탭은 저장된 기록을 최신 도착 순서로 표시하고, 목표 도착 시각 대비 오차를 함께 보여줍니다.
 
 ## 현재 API 동작
 

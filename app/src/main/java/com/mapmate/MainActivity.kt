@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
                     MapMateApp(
                         contentPadding = innerPadding,
                         routineRepository = appContainer.routineRepository,
+                        commuteRecordRepository = appContainer.commuteRecordRepository,
                         settingsRepository = appContainer.settingsRepository,
                         placeSearchProvider = appContainer.placeSearchProvider,
                         routeEstimateProvider = appContainer.routeEstimateProvider,

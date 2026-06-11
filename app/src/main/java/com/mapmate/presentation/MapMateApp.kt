@@ -14,11 +14,12 @@ import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.presentation.common.MapMateBottomDestination
 import com.mapmate.presentation.common.MapMateScaffold
-import com.mapmate.presentation.history.RecordsScreen
+import com.mapmate.presentation.history.RecordsRoute
 import com.mapmate.presentation.home.HomeRoute
 import com.mapmate.presentation.prediction.PredictionDetailRoute
 import com.mapmate.presentation.routine.RoutineRegistrationRoute
@@ -31,6 +32,7 @@ import com.mapmate.presentation.tracking.TrackingRoute
 fun MapMateApp(
     contentPadding: PaddingValues,
     routineRepository: RoutineRepository,
+    commuteRecordRepository: CommuteRecordRepository,
     settingsRepository: SettingsRepository,
     placeSearchProvider: PlaceSearchProvider,
     routeEstimateProvider: RouteEstimateProvider,
@@ -135,8 +137,9 @@ fun MapMateApp(
                 },
             )
 
-            MapMateScreen.Records -> RecordsScreen(
+            MapMateScreen.Records -> RecordsRoute(
                 contentPadding = innerPadding,
+                commuteRecordRepository = commuteRecordRepository,
                 onRegisterRoutineClick = {
                     openRoutineRegistration(
                         editingRoutine = null,
@@ -185,15 +188,16 @@ fun MapMateApp(
                 contentPadding = innerPadding,
                 routine = currentScreen.routine,
                 routeEstimateProvider = routeEstimateProvider,
+                commuteRecordRepository = commuteRecordRepository,
                 onBackClick = {
                     screen = MapMateScreen.PredictionDetail(
                         routine = currentScreen.routine,
                         returnDestination = currentScreen.returnDestination,
                     )
                 },
-                onCompleted = {
+                onCompleted = { record ->
                     screen = MapMateScreen.TrackingComplete(
-                        routine = currentScreen.routine,
+                        record = record,
                         returnDestination = currentScreen.returnDestination,
                     )
                 },
@@ -201,7 +205,7 @@ fun MapMateApp(
 
             is MapMateScreen.TrackingComplete -> TrackingCompletionScreen(
                 contentPadding = innerPadding,
-                routine = currentScreen.routine,
+                record = currentScreen.record,
                 onBackClick = { openMain(currentScreen.returnDestination) },
                 onRecordsClick = { openMain(MapMateBottomDestination.Records) },
                 onHomeClick = { openMain(MapMateBottomDestination.Home) },
@@ -251,7 +255,7 @@ private sealed interface MapMateScreen {
     }
 
     data class TrackingComplete(
-        val routine: Routine,
+        val record: com.mapmate.domain.model.CommuteRecord,
         val returnDestination: MapMateBottomDestination,
     ) : MapMateScreen {
         override val mainDestination: MapMateBottomDestination? = null

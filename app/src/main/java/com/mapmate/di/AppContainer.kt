@@ -17,10 +17,12 @@ import com.mapmate.data.remote.provider.KakaoPlaceSearchProvider
 import com.mapmate.data.remote.provider.OdsayRouteEstimateProvider
 import com.mapmate.data.mock.MockPlaceSearchProvider
 import com.mapmate.data.mock.MockRouteEstimateProvider
+import com.mapmate.data.repository.RoomCommuteRecordRepository
 import com.mapmate.data.repository.RoomRoutineRepository
 import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 
@@ -29,8 +31,16 @@ class AppContainer(
 ) {
     private val applicationContext = context.applicationContext
 
+    private val database: MapMateDatabase by lazy {
+        MapMateDatabase.getInstance(applicationContext)
+    }
+
     val routineRepository: RoutineRepository by lazy {
-        RoomRoutineRepository(MapMateDatabase.getInstance(applicationContext).routineDao())
+        RoomRoutineRepository(database.routineDao())
+    }
+
+    val commuteRecordRepository: CommuteRecordRepository by lazy {
+        RoomCommuteRecordRepository(database.commuteRecordDao())
     }
 
     val settingsRepository: SettingsRepository by lazy {
