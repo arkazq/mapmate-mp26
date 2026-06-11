@@ -4,7 +4,7 @@ SoongSil University mobile programming team project
 
 MapMate는 반복되는 출퇴근/등교 루틴을 기준으로 사용자가 언제 출발해야 하는지 계산해 주는 Android 앱입니다.
 
-현재 프로젝트는 **Kakao Local API 기반 장소 검색**, ODsay/Google Routes 기반 경로 시간 provider, mock fallback, Room 기반 루틴 저장, DataStore 기반 설정 저장, Material 3 기반 출발 준비 대시보드와 루틴 관리 UI까지 구현한 상태입니다.
+현재 프로젝트는 **Kakao Local API 기반 장소 검색**, ODsay/Google Routes 기반 경로 시간 provider, mock fallback, Room 기반 루틴/이동 기록 저장, DataStore 기반 설정 저장, AlarmManager 기반 출발 알림, Material 3 기반 출발 준비 대시보드와 루틴 관리 UI까지 구현한 상태입니다.
 
 ## 앱 목적
 
@@ -20,6 +20,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 → DataStore에 보정/알림/기본 이동수단 설정 저장
 → Room DB에 루틴 저장
 → 홈 화면에서 오늘 권장 출발 시각 확인
+→ AlarmManager로 다음 출발 알림 예약
 → 상세 예측 화면에서 계산 근거 확인
 → 이동 기록 UI 진행
 → Room DB에 이동 기록 저장
@@ -58,6 +59,9 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - DataStore 기반 개인 보정 시간 / 안전 여유 시간 저장
 - DataStore 기반 알림 설정값 저장
 - DataStore 기반 기본 이동수단 저장
+- Android 13 이상 알림 권한 요청
+- AlarmManager 기반 다음 출발 알림 예약
+- 부팅/앱 업데이트 후 출발 알림 재예약
 - ODsay / Google Routes / Mock 이동 시간 기반 권장 출발 시각 계산
 - 실제 경로 API 실패 시 Mock 이동 시간 fallback
 - Room DB 기반 루틴 저장
@@ -89,6 +93,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - 도착 오차를 기준으로 DataStore 개인 보정값을 자동 조정
   - 기록 완료 화면을 저장된 기록 기반으로 표시
   - 기록 탭에서 저장된 이동 기록 목록과 empty state 표시
+  - 알림 설정이 켜져 있으면 저장된 루틴과 경로 예상 시간을 기준으로 다음 출발 알림을 AlarmManager에 예약
   - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`에 구현 상태 반영
 
 검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
@@ -103,7 +108,6 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 실제 API 실패 시 마지막 성공값 캐시
 - Google Routes 도착 시각 기준 경로 조회
 - 자동차 모드의 Google Routes traffic-aware 경로 조회
-- AlarmManager 기반 출발 알림
 - WorkManager 기반 출발 전 재조회
 - 통계/기록 분석 화면
 
@@ -118,6 +122,8 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - Retrofit2
 - Kotlinx Serialization
 - Android LocationManager
+- Android AlarmManager
+- Android NotificationManager
 - Mock Provider
 - JUnit
 

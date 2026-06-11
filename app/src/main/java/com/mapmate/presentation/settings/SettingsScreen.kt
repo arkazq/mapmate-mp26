@@ -1,5 +1,11 @@
 package com.mapmate.presentation.settings
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,9 +26,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,12 +56,46 @@ fun SettingsRoute(
         factory = SettingsViewModel.factory(settingsRepository),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.onEvent(
+            if (granted) {
+                SettingsEvent.NotificationsEnabledChanged(true)
+            } else {
+                SettingsEvent.NotificationPermissionDenied
+            },
+        )
+    }
+
+    LaunchedEffect(uiState.notificationsEnabled) {
+        if (uiState.notificationsEnabled && !context.canPostNotifications()) {
+            viewModel.onEvent(SettingsEvent.NotificationPermissionDenied)
+        }
+    }
+
+    fun handleSettingsEvent(event: SettingsEvent) {
+        if (event is SettingsEvent.NotificationsEnabledChanged &&
+            event.enabled &&
+            !context.canPostNotifications()
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        viewModel.onEvent(event)
+    }
 
     SettingsScreen(
         uiState = uiState,
-        onEvent = viewModel::onEvent,
+        onEvent = { handleSettingsEvent(it) },
         modifier = Modifier.padding(contentPadding),
     )
+}
+
+private fun Context.canPostNotifications(): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }
 
 @Composable

@@ -2,6 +2,8 @@ package com.mapmate.di
 
 import android.content.Context
 import com.mapmate.BuildConfig
+import com.mapmate.data.alarm.AndroidDepartureAlarmScheduler
+import com.mapmate.data.alarm.DepartureAlarmCoordinator
 import com.mapmate.data.location.AndroidCurrentLocationProvider
 import com.mapmate.data.local.MapMateDatabase
 import com.mapmate.data.preferences.DataStoreSettingsRepository
@@ -83,6 +85,15 @@ class AppContainer(
                 ),
             ),
             fallback = MockRouteEstimateProvider(),
+        )
+    }
+
+    val departureAlarmCoordinator: DepartureAlarmCoordinator by lazy {
+        DepartureAlarmCoordinator(
+            settingsRepository = settingsRepository,
+            routineRepository = routineRepository,
+            routeEstimateProvider = routeEstimateProvider,
+            alarmScheduler = AndroidDepartureAlarmScheduler(applicationContext),
         )
     }
 

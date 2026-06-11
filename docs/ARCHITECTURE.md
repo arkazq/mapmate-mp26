@@ -2,7 +2,7 @@
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, 실제 알림 예약, WorkManager 재조회, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, WorkManager 재조회와 Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -65,6 +65,10 @@ com.mapmate
 │     ├─ TrackingViewModel.kt
 │     └─ TrackingUiState.kt
 ├─ domain
+│  ├─ alarm
+│  │  ├─ DepartureAlarmPlanner.kt
+│  │  ├─ DepartureAlarmSchedule.kt
+│  │  └─ DepartureAlarmScheduler.kt
 │  ├─ model
 │  │  ├─ AppSettings.kt
 │  │  ├─ CommuteRecord.kt
@@ -83,6 +87,12 @@ com.mapmate
 │     ├─ RoutineRepository.kt
 │     └─ SettingsRepository.kt
 └─ data
+   ├─ alarm
+   │  ├─ AndroidDepartureAlarmScheduler.kt
+   │  ├─ DepartureAlarmBootReceiver.kt
+   │  ├─ DepartureAlarmCoordinator.kt
+   │  ├─ DepartureAlarmNotificationPublisher.kt
+   │  └─ DepartureAlarmReceiver.kt
    ├─ local
    │  ├─ CommuteRecordDao.kt
    │  ├─ CommuteRecordEntity.kt
@@ -176,7 +186,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 
 설정 화면의 UI와 상태 관리를 담당합니다.
 
-- `SettingsScreen`: 보정값, 기본 이동수단, 알림 설정값 표시와 입력 처리
+- `SettingsScreen`: 보정값, 기본 이동수단, 알림 설정값 표시와 입력 처리, Android 13 이상 알림 권한 요청
 - `SettingsViewModel`: DataStore 설정 관찰과 저장 요청 처리
 - `SettingsUiState`: 설정 화면 상태
 - `SettingsEvent`: 화면에서 ViewModel로 전달되는 설정 변경 액션
@@ -192,6 +202,14 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 - `TransportMode`: `TRANSIT`, `WALK`, `CAR`
 - `RepeatDay`: `MONDAY`부터 `SUNDAY`
 - `RouteEstimate`: 예상 이동 시간, 요약, provider 이름, 계산 사유
+
+## `domain/alarm`
+
+출발 알림 예약에 필요한 순수 계산과 scheduler 추상화를 담당합니다.
+
+- `DepartureAlarmPlanner`: 루틴 반복 요일, 목표 도착 시각, 경로 예상 시간, 보정 시간을 기준으로 다음 출발 알림 시각 계산
+- `DepartureAlarmSchedule`: 예약할 루틴, 목적지, 권장 출발 시각, 알림 trigger epoch millis를 담는 모델
+- `DepartureAlarmScheduler`: Android `AlarmManager` 구현체를 domain 밖으로 숨기기 위한 interface
 
 ## `domain/calculator`
 
@@ -261,11 +279,21 @@ Preferences DataStore 기반 설정 저장 구조입니다.
 
 - `DataStoreSettingsRepository`: 개인 보정 시간, 안전 여유 시간, 알림 설정값, 기본 이동수단을 저장하고 `Flow<AppSettings>`로 관찰하며, 이동 기록 도착 오차를 개인 보정값에 반영
 
+## `data/alarm`
+
+Android `AlarmManager`, `BroadcastReceiver`, `NotificationManager` 기반 출발 알림을 담당합니다.
+
+- `DepartureAlarmCoordinator`: 알림 설정과 저장된 루틴을 읽어 다음 출발 알림을 예약/취소
+- `AndroidDepartureAlarmScheduler`: `AlarmManager`로 가장 가까운 출발 알림 하나를 예약하고 기존 예약을 취소
+- `DepartureAlarmReceiver`: 예약된 알림을 수신해 notification을 표시하고 다음 반복 알림을 재예약
+- `DepartureAlarmBootReceiver`: 기기 부팅 또는 앱 업데이트 후 알림을 재예약
+- `DepartureAlarmNotificationPublisher`: notification channel 생성과 출발 알림 표시
+
 ## `di`
 
 앱 수준 의존성 생성을 담당합니다.
 
-- `AppContainer`: `RoomRoutineRepository`, `RoomCommuteRecordRepository`, `DataStoreSettingsRepository`를 생성하고 `MainActivity`에 제공합니다.
+- `AppContainer`: `RoomRoutineRepository`, `RoomCommuteRecordRepository`, `DataStoreSettingsRepository`, `DepartureAlarmCoordinator`를 생성하고 `MainActivity`에 제공합니다.
 
 ## `data/mock`
 
@@ -315,7 +343,9 @@ User input
 15. 기록 저장이 성공하면 `SettingsRepository.updatePersonalBufferForArrivalDelta()`가 도착 오차를 개인 보정값에 반영합니다.
 16. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
 17. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
-18. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
+18. 앱 실행 중 `DepartureAlarmCoordinator`는 알림 설정과 저장된 루틴 목록을 관찰해 다음 출발 알림을 예약하거나 취소합니다.
+19. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
+20. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
 
 ## 설계 원칙
 
@@ -330,7 +360,6 @@ User input
 
 ## 앞으로 확장할 영역
 
-- AlarmManager 기반 출발 알림 예약
 - WorkManager 기반 출발 전 재조회
 - 통계/분석 화면
 - 필요 시 Navigation Compose 도입

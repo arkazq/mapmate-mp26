@@ -33,7 +33,7 @@
 | 지하철 실시간 도착정보 | 미구현 | 첫 탑승역 또는 환승역의 실제 지하철 도착 예정 시간을 보정하는 provider가 아직 없습니다. | 예정 |
 | 지하철 열차 위치정보 | 미구현 | 지하철 도착정보 보조와 운행 상태 표시를 위한 열차 위치정보 provider가 아직 없습니다. | 예정 |
 | 자동차 traffic-aware 경로 | 미구현 | 자동차 이동수단에서 Google Routes `TRAFFIC_AWARE` 정책을 적용하는 provider 정책은 아직 없습니다. | 예정 |
-| 알림 | 부분 완료 | 알림 사용 여부 설정값은 DataStore에 저장합니다. `AlarmManager` 기반 실제 예약은 아직 없습니다. | `presentation/settings/SettingsScreen.kt`, 예정 |
+| 알림 | 완료 | 알림 사용 여부는 DataStore에 저장하며, 켜져 있으면 저장된 루틴과 경로 예상 시간을 기준으로 가장 가까운 다음 출발 알림을 `AlarmManager`에 예약합니다. Android 13 이상에서는 알림 권한을 요청합니다. | `data/alarm`, `presentation/settings/SettingsScreen.kt`, `MainActivity.kt` |
 | WorkManager 재조회 | 미구현 | 출발 전 이동 시간 재조회 작업은 아직 없습니다. | 예정 |
 | 상세 예측 화면 | 완료 | 권장 출발 시각, 계산 근거, 경로 요약을 표시하고 이동 기록 화면으로 진입합니다. | `presentation/prediction` |
 | 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 기록 흐름을 제공하고 도착 완료 시 Room에 기록을 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
@@ -67,6 +67,8 @@ MainActivity
 현재 `루틴 저장` 버튼은 입력값 검증 후 Room DB의 `routines` 테이블에 루틴을 저장합니다. 저장 성공 후 홈 화면으로 이동합니다. 저장된 루틴은 Room `Flow`를 통해 홈 대시보드와 루틴 목록 화면에 바로 표시됩니다. 루틴 목록의 `수정` 버튼은 선택한 루틴을 루틴 등록 화면에 채우고, `삭제` 버튼은 해당 루틴을 Room DB에서 제거합니다.
 
 개인 보정 시간과 안전 여유 시간은 입력값이 0~60분 범위로 유효할 때 Preferences DataStore에 저장됩니다. 기본 이동수단과 알림 사용 여부도 같은 DataStore에 저장됩니다. 앱을 다시 실행하면 `SettingsRepository`를 통해 마지막 설정을 읽어 루틴 등록 화면과 설정 화면의 기본값으로 반영합니다.
+
+알림 설정이 켜져 있으면 앱 실행 중 `SettingsRepository.settings`와 `RoutineRepository.observeRoutines()`를 관찰해 다음 출발 알림을 자동 재예약합니다. 예약 시 실제 경로 provider를 우선 사용하고, API 키가 없거나 호출이 실패하면 기존 mock fallback 이동 시간으로 권장 출발 시각을 계산합니다. 알림은 현재 가장 가까운 1개만 유지하며, 알림 수신 후 다음 반복 요일 알림을 다시 예약합니다.
 
 이동 기록 화면에서 이동 시작 후 도착을 완료하면 `CommuteRecordRepository`를 통해 Room DB의 `commute_records` 테이블에 기록을 저장합니다. 기록 탭은 저장된 기록을 최신 도착 순서로 표시하고, 목표 도착 시각 대비 오차를 함께 보여줍니다. 기록 저장이 성공하면 `SettingsRepository`가 도착 오차를 DataStore 개인 보정값에 반영합니다. 한 번의 기록이 보정값을 과도하게 흔들지 않도록 자동 조정 폭은 최대 ±5분으로 제한합니다.
 
