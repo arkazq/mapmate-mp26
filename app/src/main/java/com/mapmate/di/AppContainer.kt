@@ -12,12 +12,17 @@ import com.mapmate.data.remote.api.GoogleRoutesApi
 import com.mapmate.data.remote.api.KakaoLocalApi
 import com.mapmate.data.remote.api.MapMateRetrofitFactory
 import com.mapmate.data.remote.api.OdsayApi
+import com.mapmate.data.remote.api.SeoulBusArrivalApi
+import com.mapmate.data.remote.api.SeoulSubwayRealtimeApi
 import com.mapmate.data.remote.config.RemoteApiConfig
+import com.mapmate.data.remote.provider.CompositeTransitArrivalProvider
 import com.mapmate.data.remote.provider.FallbackPlaceSearchProvider
 import com.mapmate.data.remote.provider.FallbackRouteEstimateProvider
 import com.mapmate.data.remote.provider.GoogleRoutesEstimateProvider
 import com.mapmate.data.remote.provider.KakaoPlaceSearchProvider
 import com.mapmate.data.remote.provider.OdsayRouteEstimateProvider
+import com.mapmate.data.remote.provider.SeoulBusRealtimeArrivalProvider
+import com.mapmate.data.remote.provider.SeoulSubwayRealtimeArrivalProvider
 import com.mapmate.data.mock.MockPlaceSearchProvider
 import com.mapmate.data.mock.MockRouteEstimateProvider
 import com.mapmate.data.repository.RoomCommuteRecordRepository
@@ -76,6 +81,7 @@ class AppContainer(
                         serviceClass = OdsayApi::class.java,
                     ),
                     config = remoteApiConfig,
+                    transitArrivalProvider = transitArrivalProvider,
                 ),
                 GoogleRoutesEstimateProvider(
                     api = MapMateRetrofitFactory.create(
@@ -86,6 +92,27 @@ class AppContainer(
                 ),
             ),
             fallback = MockRouteEstimateProvider(),
+        )
+    }
+
+    private val transitArrivalProvider by lazy {
+        CompositeTransitArrivalProvider(
+            providers = listOf(
+                SeoulBusRealtimeArrivalProvider(
+                    api = MapMateRetrofitFactory.create(
+                        baseUrl = SEOUL_BUS_BASE_URL,
+                        serviceClass = SeoulBusArrivalApi::class.java,
+                    ),
+                    config = remoteApiConfig,
+                ),
+                SeoulSubwayRealtimeArrivalProvider(
+                    api = MapMateRetrofitFactory.create(
+                        baseUrl = SEOUL_SUBWAY_BASE_URL,
+                        serviceClass = SeoulSubwayRealtimeApi::class.java,
+                    ),
+                    config = remoteApiConfig,
+                ),
+            ),
         )
     }
 
@@ -104,6 +131,8 @@ class AppContainer(
             kakaoRestApiKey = BuildConfig.KAKAO_REST_API_KEY,
             odsayApiKey = BuildConfig.ODSAY_API_KEY,
             googleRoutesApiKey = BuildConfig.GOOGLE_ROUTES_API_KEY,
+            seoulOpenApiKey = BuildConfig.SEOUL_OPEN_API_KEY,
+            seoulBusServiceKey = BuildConfig.SEOUL_BUS_SERVICE_KEY,
         )
     }
 
@@ -111,5 +140,7 @@ class AppContainer(
         const val KAKAO_BASE_URL = "https://dapi.kakao.com/"
         const val ODSAY_BASE_URL = "https://api.odsay.com/"
         const val GOOGLE_ROUTES_BASE_URL = "https://routes.googleapis.com/"
+        const val SEOUL_SUBWAY_BASE_URL = "http://swopenapi.seoul.go.kr/"
+        const val SEOUL_BUS_BASE_URL = "http://ws.bus.go.kr/"
     }
 }

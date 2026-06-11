@@ -4,7 +4,7 @@ SoongSil University mobile programming team project
 
 MapMate는 반복되는 출퇴근/등교 루틴을 기준으로 사용자가 언제 출발해야 하는지 계산해 주는 Android 앱입니다.
 
-현재 프로젝트는 **Kakao Local API 기반 장소 검색**, ODsay/Google Routes 기반 경로 시간 provider, mock fallback, Room 기반 루틴/이동 기록 저장, DataStore 기반 설정 저장, WorkManager 기반 출발 전 재조회, AlarmManager 기반 출발 알림, Material 3 기반 출발 준비 대시보드와 루틴 관리 UI까지 구현한 상태입니다.
+현재 프로젝트는 **Kakao Local API 기반 장소 검색**, ODsay/Google Routes 기반 경로 시간 provider, 서울 버스/지하철 실시간 도착정보 provider, mock fallback, Room 기반 루틴/이동 기록 저장, DataStore 기반 설정 저장, WorkManager 기반 출발 전 재조회, AlarmManager 기반 출발 알림, Material 3 기반 출발 준비 대시보드와 루틴 관리 UI까지 구현한 상태입니다.
 
 ## 앱 목적
 
@@ -64,6 +64,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - WorkManager 기반 출발 30분 전 경로 재조회
 - AlarmManager 기반 다음 출발 알림 예약
 - 부팅/앱 업데이트 후 출발 알림 재예약
+- ODsay 첫 탑승 구간 기준 서울 버스/지하철 실시간 도착정보 조회 및 지연 보정
 - ODsay / Google Routes / Mock 이동 시간 기반 권장 출발 시각 계산
 - 실제 경로 API 실패 시 Mock 이동 시간 fallback
 - Room DB 기반 루틴 저장
@@ -97,16 +98,15 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - 기록 탭에서 저장된 이동 기록 목록과 empty state 표시
   - 알림 설정이 켜져 있으면 저장된 루틴과 경로 예상 시간을 기준으로 다음 출발 알림을 AlarmManager에 예약
   - 출발 30분 전 WorkManager 작업을 예약해 경로 예상 시간을 다시 조회하고 알림을 재예약
-  - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`에 구현 상태 반영
+  - ODsay 경로의 첫 탑승 구간에서 서울 버스/지하철 실시간 도착정보를 조회해 기본 예상 시간보다 대기가 길 때 지연분을 반영
+  - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`, `docs/API_STRATEGY.md`에 구현 상태 반영
 
 검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
 
 ## 아직 구현되지 않은 기능
 
 - 현재 위치 좌표의 주소 역지오코딩
-- 버스 실시간 도착정보 기반 대기 시간 보정
 - 버스 실시간 위치정보 기반 운행 상태 보조 판단
-- 지하철 실시간 도착정보 기반 대기 시간 보정
 - 지하철 열차 위치정보 기반 운행 상태 보조 판단
 - 실제 API 실패 시 마지막 성공값 캐시
 - Google Routes 도착 시각 기준 경로 조회
@@ -149,11 +149,13 @@ gradlew.bat build
 KAKAO_REST_API_KEY=API_KEY_PLACEHOLDER
 ODSAY_API_KEY=API_KEY_PLACEHOLDER
 GOOGLE_ROUTES_API_KEY=API_KEY_PLACEHOLDER
+SEOUL_OPEN_API_KEY=API_KEY_PLACEHOLDER
+SEOUL_BUS_SERVICE_KEY=API_KEY_PLACEHOLDER
 ```
 
 API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
-현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. 출발 전 WorkManager 재조회는 구현되어 있지만, 버스 지연, 도로 정체, 지하철 지연, 실제 정류장/역 도착 예정 시간을 완전히 보장하려면 버스/지하철 실시간 도착정보 provider가 추가로 필요합니다. 자세한 확장 계획은 `docs/API_STRATEGY.md`를 확인합니다.
+현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 추천 출발 시각을 보수적으로 늦추지 않도록 이동 시간을 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다.
 
 ## 브랜치 전략 요약
 

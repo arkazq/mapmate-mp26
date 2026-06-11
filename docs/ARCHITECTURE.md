@@ -2,7 +2,7 @@
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, WorkManager 기반 출발 전 재조회까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, WorkManager 기반 출발 전 재조회, 버스/지하철 실시간 도착정보 기반 대기 지연 보정까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -77,12 +77,15 @@ com.mapmate
 │  │  ├─ Destination.kt
 │  │  ├─ TransportMode.kt
 │  │  ├─ RepeatDay.kt
-│  │  └─ RouteEstimate.kt
+│  │  ├─ RouteEstimate.kt
+│  │  ├─ TransitArrivalEstimate.kt
+│  │  └─ TransitArrivalQuery.kt
 │  ├─ calculator
 │  │  └─ DepartureTimeCalculator.kt
 │  ├─ provider
 │  │  ├─ PlaceSearchProvider.kt
-│  │  └─ RouteEstimateProvider.kt
+│  │  ├─ RouteEstimateProvider.kt
+│  │  └─ TransitArrivalProvider.kt
 │  └─ repository
 │     ├─ CommuteRecordRepository.kt
 │     ├─ RoutineRepository.kt
@@ -205,6 +208,8 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 - `TransportMode`: `TRANSIT`, `WALK`, `CAR`
 - `RepeatDay`: `MONDAY`부터 `SUNDAY`
 - `RouteEstimate`: 예상 이동 시간, 요약, provider 이름, 계산 사유
+- `TransitArrivalQuery`: ODsay 첫 탑승 구간에서 추출한 버스/지하철 실시간 도착정보 조회 입력값
+- `TransitArrivalEstimate`: 실시간 도착정보 provider가 반환하는 첫 대기 시간, 요약, provider 이름, 계산 사유
 
 ## `domain/alarm`
 
@@ -237,6 +242,7 @@ recommended departure time
 
 - `PlaceSearchProvider`: 목적지 검색 후보를 반환
 - `RouteEstimateProvider`: 목적지와 이동 수단을 기준으로 예상 이동 시간을 반환
+- `TransitArrivalProvider`: 첫 탑승 버스/지하철 구간의 실시간 도착 예정 시간을 반환
 
 실제 API 구현체는 나중에 이 interface를 구현해서 교체합니다.
 
@@ -295,11 +301,21 @@ Android `AlarmManager`, `BroadcastReceiver`, `NotificationManager` 기반 출발
 - `DepartureAlarmNotificationPublisher`: notification channel 생성과 출발 알림 표시
 - `DepartureRecheckWorker`: 현재 루틴/설정과 경로 provider를 다시 사용해 다음 출발 알림과 다음 재조회 작업을 갱신
 
+## `data/remote`
+
+Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
+
+- `OdsayRouteEstimateProvider`: ODsay 대중교통 경로 결과를 기본 예상 이동 시간으로 사용하고, 첫 탑승 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정
+- `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환
+- `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산
+- `SeoulSubwayRealtimeArrivalProvider`: 서울 지하철 실시간 도착정보 JSON 응답에서 가장 빠른 첫 지하철 대기 시간을 계산
+- `network_security_config.xml`: 서울 공공 API의 HTTP endpoint에 한해 cleartext 통신을 허용
+
 ## `di`
 
 앱 수준 의존성 생성을 담당합니다.
 
-- `AppContainer`: `RoomRoutineRepository`, `RoomCommuteRecordRepository`, `DataStoreSettingsRepository`, `DepartureAlarmCoordinator`를 생성하고 `MainActivity`에 제공합니다.
+- `AppContainer`: `RoomRoutineRepository`, `RoomCommuteRecordRepository`, `DataStoreSettingsRepository`, `DepartureAlarmCoordinator`, 외부 API provider를 생성하고 `MainActivity`에 제공합니다.
 
 ## `data/mock`
 
@@ -318,7 +334,7 @@ User input
 → MapMateApp
 → HomeScreen / RoutinesScreen / RoutineRegistrationScreen / PredictionDetailScreen / TrackingScreen / SettingsScreen
 → HomeViewModel / RoutinesViewModel / RoutineRegistrationViewModel / PredictionDetailViewModel / TrackingViewModel / SettingsViewModel
-→ PlaceSearchProvider / RouteEstimateProvider
+→ PlaceSearchProvider / RouteEstimateProvider / TransitArrivalProvider
 → DepartureTimeCalculator
 → RoutineRepository
 → RoutineDao
@@ -337,7 +353,7 @@ User input
 3. `RoutineRegistrationViewModel`은 상태를 갱신하고 입력값을 검증합니다.
 4. 개인 보정 시간과 안전 여유 시간, 기본 이동수단, 알림 설정값이 변경되면 `SettingsRepository`를 통해 DataStore에 저장합니다.
 5. 목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
-6. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다.
+6. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로에서 첫 탑승 구간을 추출할 수 있으면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다.
 7. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다.
 8. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
 9. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
