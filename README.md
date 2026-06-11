@@ -65,6 +65,32 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 루틴 저장 성공 상태 표시
 - Material 3 기반 공통 카드, 하단 내비게이션, 아이콘 컴포넌트
 
+## 김홍균/Codex 누적 작업 요약
+
+이 섹션은 오늘 작업만이 아니라, 이 프로젝트에서 김홍균이 Codex로 진행해 `develop` 또는 현재 기능 브랜치에 반영한 주요 작업을 정리합니다.
+
+- [PR #8](https://github.com/arkazq/mapmate-mp26/pull/8) `feature/routine-room-storage`
+  - 루틴 저장을 mock/화면 상태가 아니라 Room DB 기반으로 전환
+  - `RoutineRepository`, Room entity/DAO/mapper, 저장/조회 흐름 추가
+  - 루틴 저장 관련 단위 테스트와 문서 정리
+- [PR #9](https://github.com/arkazq/mapmate-mp26/pull/9) `feature/datastore-settings`
+  - Preferences DataStore 기반 설정 저장 추가
+  - 개인 보정 시간, 안전 여유 시간, 알림 사용 여부, 기본 이동수단 저장/복원
+  - 설정 화면과 앱 상위 탭/내비게이션 흐름 정리
+- [PR #11](https://github.com/arkazq/mapmate-mp26/pull/11) `feature/home`
+  - 홈 탭을 앱 진입 화면으로 추가
+  - Room `Flow`로 저장된 루틴을 홈/루틴 화면에 표시
+  - 루틴 카드의 수정/삭제 동작 연결
+  - 루틴 표시용 공통 UI/라벨 정리와 Kotlin 단위 테스트 정리
+- 현재 브랜치 `feature/commute-history-storage`
+  - `CommuteRecord` 도메인 모델과 Room `commute_records` 테이블 추가
+  - 이동 기록 완료 시 루틴명, 출발지/목적지, 추천 출발 시각, 실제 도착 시각, 도착 오차 저장
+  - 기록 완료 화면을 저장된 기록 기반으로 표시
+  - 기록 탭에서 저장된 이동 기록 목록과 empty state 표시
+  - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`에 구현 상태 반영
+
+검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
+
 ## 아직 구현되지 않은 기능
 
 - 현재 위치 좌표의 주소 역지오코딩
