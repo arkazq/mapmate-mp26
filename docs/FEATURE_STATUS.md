@@ -29,12 +29,15 @@
 | 실제 ODsay API | 부분 완료 | ODsay 대중교통 경로 검색 provider를 연결했습니다. API 키와 데모 출발 좌표가 있어야 실제 호출합니다. | `data/remote/api/OdsayApi.kt`, `data/remote/provider/OdsayRouteEstimateProvider.kt` |
 | 실제 Google Routes API | 부분 완료 | Google Routes provider를 연결했습니다. 도보/자동차 경로와 대중교통 fallback에 사용할 수 있습니다. | `data/remote/api/GoogleRoutesApi.kt`, `data/remote/provider/GoogleRoutesEstimateProvider.kt` |
 | 버스 실시간 도착정보 | 완료 | ODsay 첫 버스 탑승 구간에서 정류소/노선 ID를 추출하고 서울특별시 버스도착정보조회 서비스로 첫 대기 시간을 조회해 기본 대기 기준보다 길 때 경로 시간을 보정합니다. 키가 없거나 매칭에 실패하면 기존 ODsay/Mock fallback을 유지합니다. | `data/remote/provider/SeoulBusRealtimeArrivalProvider.kt`, `data/remote/provider/SeoulBusArrivalXmlParser.kt` |
+| TAGO 버스정류소정보 | 미구현 | 전국 버스 확장을 위해 ODsay 첫 버스 탑승 정류장 좌표 기준으로 `cityCode`, `nodeId` 후보를 매칭하는 provider가 아직 없습니다. | 예정 |
+| TAGO 버스도착정보 | 미구현 | 전국 버스 확장을 위해 첫 탑승 정류장의 실제 버스 대기 시간을 `arrtime`으로 보정하는 provider가 아직 없습니다. | 예정 |
 | 버스 실시간 위치정보 | 미구현 | 도착정보 보조와 운행 지연 판단을 위한 ODsay 또는 서울특별시 버스위치정보 provider가 아직 없습니다. | 예정 |
 | 지하철 실시간 도착정보 | 완료 | ODsay 첫 지하철 탑승역을 서울 지하철 실시간 도착정보 API로 조회하고 가장 빠른 도착 예정 시간을 사용해 기본 대기 기준보다 긴 지연분을 보정합니다. 키가 없거나 조회에 실패하면 기존 ODsay/Mock fallback을 유지합니다. | `data/remote/api/SeoulSubwayRealtimeApi.kt`, `data/remote/provider/SeoulSubwayRealtimeArrivalProvider.kt` |
 | 지하철 열차 위치정보 | 미구현 | 지하철 도착정보 보조와 운행 상태 표시를 위한 열차 위치정보 provider가 아직 없습니다. | 예정 |
 | 자동차 traffic-aware 경로 | 미구현 | 자동차 이동수단에서 Google Routes `TRAFFIC_AWARE` 정책을 적용하는 provider 정책은 아직 없습니다. | 예정 |
 | 알림 | 완료 | 알림 사용 여부는 DataStore에 저장하며, 켜져 있으면 저장된 루틴과 경로 예상 시간을 기준으로 가장 가까운 다음 출발 알림을 `AlarmManager`에 예약합니다. Android 13 이상에서는 알림 권한을 요청합니다. | `data/alarm`, `presentation/settings/SettingsScreen.kt`, `MainActivity.kt` |
 | WorkManager 재조회 | 완료 | 다음 출발 알림 30분 전에 unique one-time work를 예약해 경로 예상 시간을 다시 조회하고 알림/재조회 예약을 갱신합니다. | `data/alarm/AndroidDepartureRecheckScheduler.kt`, `data/alarm/DepartureRecheckWorker.kt` |
+| 실시간 보정 스냅샷 | 미구현 | `adjustedRouteDurationMinutes`는 `Routine`이 아니라 `RouteRealtimeSnapshot` 같은 시점별 스냅샷으로 저장해야 합니다. | 예정 |
 | 상세 예측 화면 | 완료 | 권장 출발 시각, 계산 근거, 경로 요약을 표시하고 이동 기록 화면으로 진입합니다. | `presentation/prediction` |
 | 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 기록 흐름을 제공하고 도착 완료 시 Room에 기록을 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
 | 기록 완료 화면 UI | 완료 | 도착 액션 후 같은 페이지 내부 카드가 아니라 별도 기록 완료 화면으로 전환합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/MapMateApp.kt` |
@@ -81,3 +84,4 @@ MainActivity
 현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있습니다.
 
 ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하고, 첫 탑승 구간의 버스/지하철 실시간 도착정보가 조회되면 대기 지연분만 보수적으로 추가 보정합니다. 출발 전 WorkManager 재조회도 같은 `RouteEstimateProvider`를 다시 호출하므로, 키와 좌표/노선 매칭이 맞으면 출발 30분 전 알림에도 실시간 도착정보 보정이 반영됩니다.
+전국 버스 확장, TAGO 기반 정류장 매칭, 실시간 보정 스냅샷 저장, 유효기간 기반 fallback 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`에 정리되어 있습니다.

@@ -155,7 +155,7 @@ SEOUL_BUS_SERVICE_KEY=API_KEY_PLACEHOLDER
 
 API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
-현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 추천 출발 시각을 보수적으로 늦추지 않도록 이동 시간을 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다.
+현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 이동 시간을 보수적으로 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다. 전국 버스 확장, TAGO 기반 정류장 매칭, stale fallback 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 확인합니다.
 
 ## 브랜치 전략 요약
 
@@ -172,6 +172,7 @@ API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fall
 - `docs/MAPMATE_TEAM_GIT_GUIDE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/API_STRATEGY.md`
+- `docs/REALTIME_DEPARTURE_STRATEGY.md`
 - `docs/FEATURE_STATUS.md`
 
 ## 팀원

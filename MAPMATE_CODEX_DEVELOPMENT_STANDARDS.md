@@ -580,6 +580,7 @@ newPersonalAdjustmentMinutes = round(newPersonalAdjustment).coerceIn(-10, 20)
 ### 8.7 추천 로직 금지 사항
 
 - LLM이 추천 시각을 직접 산출하지 않는다.
+- Gemini 같은 LLM으로 개인보정 시간을 추론하지 않는다. 개인보정은 실제 출발/도착 기록 기반 계산식으로 처리한다.
 - ViewModel 또는 Composable에 계산 공식을 직접 작성하지 않는다.
 - API 응답 실패 시 앱이 크래시 나면 안 된다.
 - 기록이 없는 사용자에게 과도한 보정값을 적용하지 않는다.
@@ -642,6 +643,20 @@ data class RouteEstimate(
 
 MVP에서는 지도 화면 전체 구현을 목표로 하지 않는다.
 
+### 9.6 실시간 출발 시각 보정 기준
+
+실시간 출발 시각 보정은 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 기준으로 한다.
+
+- ODsay는 기본 대중교통 경로와 기본 예상 이동 시간을 산출한다.
+- TAGO 버스정류소정보와 버스도착정보는 첫 버스 탑승 대기시간 보정에 사용한다.
+- ODsay 첫 탑승 정류장 좌표를 기준으로 TAGO 정류소 후보를 찾는다. 집 좌표나 출발지 좌표만으로 정류소를 매칭하지 않는다.
+- 정류장 거리, 정류장명 유사도, 노선번호 정규화, 방향 정보를 기준으로 매칭 신뢰도를 계산한다.
+- 매칭 신뢰도가 낮거나 API 조회가 실패하면 ODsay 기본 예상시간으로 fallback한다.
+- `adjustedRouteDurationMinutes`는 `Routine`에 저장하지 않고 `RouteRealtimeSnapshot` 같은 시점별 스냅샷으로 저장한다.
+- 마지막 성공 보정값은 유효기간 안에서만 사용하고, 오래된 값은 `STALE_SNAPSHOT_FALLBACK`으로 처리한다.
+- 실시간 보정으로 재계산한 출발 시각이 현재 시각보다 빠르면 "지금 출발 권장"으로 clamp한다.
+- 1차 구현은 첫 버스 탑승 구간 1개 보정으로 제한한다. 지하철 실시간 provider는 지역별 API 검토 후 후순위로 추가한다.
+
 ---
 
 ## 10. 알림 및 백그라운드 작업 기준
@@ -663,6 +678,9 @@ MVP에서는 지도 화면 전체 구현을 목표로 하지 않는다.
 - 루틴이 삭제되거나 비활성화되면 예약된 알림을 취소한다.
 - 권장 출발 시각이 이미 지난 경우 당일 알림을 예약하지 않는다.
 - 반복 요일이 아닌 날에는 알림을 예약하지 않는다.
+- WorkManager 재조회로 최종 출발 시각이 변경되면 기존 알림을 취소하고 재예약한다.
+- Android 12 이상에서는 exact alarm 권한 또는 inexact alarm fallback을 고려한다.
+- Android 13 이상에서는 notification 권한을 고려한다.
 
 ### 10.3 WorkManager 기준
 
@@ -670,6 +688,8 @@ MVP에서는 지도 화면 전체 구현을 목표로 하지 않는다.
 - 재조회 결과로 예상 이동 시간이 바뀌면 권장 출발 시각을 다시 계산한다.
 - 재계산된 권장 출발 시각이 기존 알림보다 앞당겨지면 알림 갱신 여부를 판단한다.
 - 재조회 실패 시 기존 계산값을 유지한다.
+- WorkManager는 정확한 시각 실행용 타이머로 보지 않는다. 최종 출발 알림은 AlarmManager가 담당한다.
+- 재조회 결과는 `RouteRealtimeSnapshot`으로 저장하고, 마지막 성공값을 사용할 때는 유효기간을 확인한다.
 
 ### 10.4 알림 문구 기준
 
@@ -1094,6 +1114,7 @@ Codex 결과물을 merge하기 전 다음을 확인한다.
 
 - AlarmManager 기반 출발 알림 예약
 - WorkManager 기반 출발 전 재조회
+- TAGO 기반 첫 버스 실시간 보정 결과를 반영한 알림 재예약
 - 탑승/도착 기록 저장
 - 도착 오차 계산
 
@@ -1102,6 +1123,24 @@ Codex 결과물을 merge하기 전 다음을 확인한다.
 - 실제 지도 API 연결
 - API 실패 fallback 구현
 - 데모용 고정 구간 또는 Mock 응답 유지
+
+### 18.6.1 실시간 출발 보정 구현 순서
+
+1. ODsay 세부 경로 DTO 확장
+2. 첫 버스 구간 추출
+3. TAGO 정류소정보 provider 구현
+4. TAGO 도착정보 provider 구현
+5. 노선번호 정규화와 매칭 점수식 구현
+6. `RouteRealtimeSnapshot` 저장
+7. `adjustedRouteDurationMinutes` 계산
+8. fallback과 stale 처리
+9. `finalDepartureTime < now` clamp 처리
+10. AlarmManager 기본 알림
+11. WorkManager 출발 전 재조회
+12. AlarmManager 재예약
+13. 이동 기록 저장
+14. 개인보정 자동 계산
+15. 지하철 지역별 provider
 
 ### 18.7 7단계: 발표 안정화
 
