@@ -59,6 +59,22 @@ class DataStoreSettingsRepository(
         }
     }
 
+    override suspend fun updatePersonalBufferForArrivalDelta(arrivalDeltaMinutes: Int): Int {
+        var updatedPersonalBufferMinutes = AppSettings.DEFAULT_PERSONAL_BUFFER_MINUTES
+        dataStore.edit { preferences ->
+            val currentMinutes = AppSettings.bufferMinutesOrDefault(
+                minutes = preferences[PERSONAL_BUFFER_MINUTES],
+                defaultMinutes = AppSettings.DEFAULT_PERSONAL_BUFFER_MINUTES,
+            )
+            updatedPersonalBufferMinutes = AppSettings.adjustedPersonalBufferMinutes(
+                currentMinutes = currentMinutes,
+                arrivalDeltaMinutes = arrivalDeltaMinutes,
+            )
+            preferences[PERSONAL_BUFFER_MINUTES] = updatedPersonalBufferMinutes
+        }
+        return updatedPersonalBufferMinutes
+    }
+
     override suspend fun updateSafetyMarginMinutes(minutes: Int) {
         requireValidBufferMinutes(minutes)
         dataStore.edit { preferences ->

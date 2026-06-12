@@ -1,5 +1,11 @@
 package com.mapmate.presentation.settings
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,9 +26,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,12 +56,46 @@ fun SettingsRoute(
         factory = SettingsViewModel.factory(settingsRepository),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.onEvent(
+            if (granted) {
+                SettingsEvent.NotificationsEnabledChanged(true)
+            } else {
+                SettingsEvent.NotificationPermissionDenied
+            },
+        )
+    }
+
+    LaunchedEffect(uiState.notificationsEnabled) {
+        if (uiState.notificationsEnabled && !context.canPostNotifications()) {
+            viewModel.onEvent(SettingsEvent.NotificationPermissionDenied)
+        }
+    }
+
+    fun handleSettingsEvent(event: SettingsEvent) {
+        if (event is SettingsEvent.NotificationsEnabledChanged &&
+            event.enabled &&
+            !context.canPostNotifications()
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        viewModel.onEvent(event)
+    }
 
     SettingsScreen(
         uiState = uiState,
-        onEvent = viewModel::onEvent,
+        onEvent = { handleSettingsEvent(it) },
         modifier = Modifier.padding(contentPadding),
     )
+}
+
+private fun Context.canPostNotifications(): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }
 
 @Composable
@@ -142,7 +184,7 @@ fun SettingsScreen(
                         onEvent(SettingsEvent.NotificationsEnabledChanged(it))
                     },
                 )
-                // TODO: 출발 전 재조회 WorkManager가 연결되면 DataStore 상태로 승격한다.
+                // TODO: 실시간 도착정보 provider가 추가되면 별도 변경 알림 설정으로 승격한다.
                 SettingsSwitchRow(
                     title = "추천 시간 재계산 알림",
                     description = "교통 상황 변화 시 새로운 추천 시간을 알려드립니다.",

@@ -27,6 +27,7 @@ class SettingsViewModel(
             is SettingsEvent.PersonalBufferChanged -> onPersonalBufferChanged(event.minutesText)
             is SettingsEvent.SafetyMarginChanged -> onSafetyMarginChanged(event.minutesText)
             is SettingsEvent.NotificationsEnabledChanged -> onNotificationsEnabledChanged(event.enabled)
+            SettingsEvent.NotificationPermissionDenied -> onNotificationPermissionDenied()
             is SettingsEvent.DefaultTransportModeSelected -> onDefaultTransportModeSelected(event.transportMode)
             SettingsEvent.MessageCleared -> clearMessage()
         }
@@ -75,6 +76,20 @@ class SettingsViewModel(
             }
             if (result.isFailure) {
                 showPersistenceError()
+            }
+        }
+    }
+
+    private fun onNotificationPermissionDenied() {
+        _uiState.update {
+            it.copy(
+                notificationsEnabled = false,
+                errorMessage = "알림 권한이 없어 출발 알림을 켤 수 없습니다.",
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                settingsRepository.updateNotificationsEnabled(false)
             }
         }
     }

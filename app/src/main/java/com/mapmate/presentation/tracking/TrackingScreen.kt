@@ -32,11 +32,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.repository.CommuteRecordRepository
+import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.presentation.common.DetailTopBar
 import com.mapmate.presentation.common.IconBadge
 import com.mapmate.presentation.common.MapMateIcon
@@ -50,7 +53,9 @@ import com.mapmate.presentation.common.toKoreanDescription
 import com.mapmate.presentation.common.toKoreanLabel
 import com.mapmate.presentation.common.transportModeIcon
 import com.mapmate.ui.theme.MapMateTheme
+import java.time.Instant
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -58,21 +63,25 @@ fun TrackingRoute(
     contentPadding: PaddingValues,
     routine: Routine,
     routeEstimateProvider: RouteEstimateProvider,
+    commuteRecordRepository: CommuteRecordRepository,
+    settingsRepository: SettingsRepository,
     onBackClick: () -> Unit,
-    onCompleted: () -> Unit,
+    onCompleted: (CommuteRecord) -> Unit,
 ) {
     val viewModel: TrackingViewModel = viewModel(
         key = "tracking-${routine.id ?: routine.name}",
         factory = TrackingViewModel.factory(
             routine = routine,
             routeEstimateProvider = routeEstimateProvider,
+            commuteRecordRepository = commuteRecordRepository,
+            settingsRepository = settingsRepository,
         ),
     )
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(uiState.isCompleted) {
-        if (uiState.isCompleted) {
-            onCompleted()
+    LaunchedEffect(uiState.completedRecord) {
+        uiState.completedRecord?.let {
+            onCompleted(it)
         }
     }
 
@@ -142,6 +151,7 @@ fun TrackingScreen(
                     item {
                         Button(
                             onClick = onPrimaryActionClick,
+                            enabled = !uiState.isSavingRecord,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp),
@@ -154,13 +164,28 @@ fun TrackingScreen(
                                 tint = MaterialTheme.colorScheme.onPrimary,
                             )
                             Text(
-                                text = uiState.stage.primaryActionLabel(recommendation.routine.transportMode),
+                                text = if (uiState.isSavingRecord) {
+                                    "기록 저장 중"
+                                } else {
+                                    uiState.stage.primaryActionLabel(recommendation.routine.transportMode)
+                                },
                                 modifier = Modifier.padding(start = 10.dp),
                                 style = MaterialTheme.typography.titleMedium,
                             )
                         }
                     }
                 }
+            }
+        }
+
+        uiState.errorMessage?.let { message ->
+            item {
+                Text(
+                    text = message,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
 
@@ -376,12 +401,13 @@ private fun CurrentMovementCard(
 @Composable
 fun TrackingCompletionScreen(
     contentPadding: PaddingValues,
-    routine: Routine,
+    record: CommuteRecord,
     onBackClick: () -> Unit,
     onRecordsClick: () -> Unit,
     onHomeClick: () -> Unit,
 ) {
-    val targetArrivalTime = routine.targetArrivalTime.format(DateTimeFormatter.ofPattern("HH:mm"))
+    val actualArrivalTime = record.arrivedAtEpochMillis.toLocalTimeText()
+    val deltaText = record.arrivalDeltaMinutes.toDeltaText()
 
     LazyColumn(
         modifier = Modifier
@@ -430,7 +456,7 @@ fun TrackingCompletionScreen(
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                     Text(
-                        text = "예상보다 2분 늦게 도착했어요.",
+                        text = record.arrivalDeltaMinutes.toDeltaSentence(),
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -461,7 +487,7 @@ fun TrackingCompletionScreen(
                 ) {
                     CompletionMetric(
                         label = "도착 시각",
-                        value = targetArrivalTime.plusTwoMinutes(),
+                        value = actualArrivalTime,
                         modifier = Modifier.weight(1f),
                     )
                     Surface(
@@ -471,7 +497,7 @@ fun TrackingCompletionScreen(
                     )
                     CompletionMetric(
                         label = "오차",
-                        value = "+2분",
+                        value = deltaText,
                         emphasized = true,
                         modifier = Modifier.weight(1f),
                     )
@@ -541,18 +567,6 @@ private fun CompletionMetric(
     }
 }
 
-private fun String.plusTwoMinutes(): String {
-    return runCatching {
-        LocalTime.parse(this, DateTimeFormatter.ofPattern("HH:mm"))
-            .plusMinutes(2)
-            .format(DateTimeFormatter.ofPattern("HH:mm"))
-    }.getOrElse {
-        "09:02"
-    }
-}
-
-// TODO: 실제 CommuteRecord 저장이 연결되면 완료 화면은 저장된 도착 시각과 오차를 전달받아 표시한다.
-
 private val TrackingStage.title: String
     get() = when (this) {
         TrackingStage.Planned -> "출발 예정"
@@ -581,6 +595,29 @@ private fun TrackingStage.primaryActionLabel(transportMode: TransportMode): Stri
     }
 }
 
+private fun Long.toLocalTimeText(): String {
+    return Instant.ofEpochMilli(this)
+        .atZone(ZoneId.systemDefault())
+        .toLocalTime()
+        .format(DateTimeFormatter.ofPattern("HH:mm"))
+}
+
+private fun Int.toDeltaText(): String {
+    return when {
+        this > 0 -> "+${this}분"
+        this < 0 -> "${this}분"
+        else -> "정시"
+    }
+}
+
+private fun Int.toDeltaSentence(): String {
+    return when {
+        this > 0 -> "목표보다 ${this}분 늦게 도착했어요."
+        this < 0 -> "목표보다 ${kotlin.math.abs(this)}분 일찍 도착했어요."
+        else -> "목표 도착 시간에 맞춰 도착했어요."
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun TrackingScreenPreview() {
@@ -603,7 +640,7 @@ private fun TrackingCompletionScreenPreview() {
     MapMateTheme {
         TrackingCompletionScreen(
             contentPadding = PaddingValues(),
-            routine = sampleRoutine,
+            record = sampleRecord,
             onBackClick = {},
             onRecordsClick = {},
             onHomeClick = {},
@@ -636,4 +673,19 @@ private val sampleRoutine = Routine(
     transportMode = TransportMode.TRANSIT,
     personalBufferMinutes = 6,
     safetyMarginMinutes = 5,
+)
+
+private val sampleRecord = CommuteRecord(
+    routineId = 1L,
+    routineName = "going school",
+    originName = "서울역",
+    destinationName = "숭실대학교",
+    transportMode = TransportMode.TRANSIT,
+    targetArrivalTime = LocalTime.of(9, 0),
+    recommendedDepartureTime = LocalTime.of(8, 7),
+    routeDurationMinutes = 42,
+    routeSummary = "대중교통 기준 42분 예상",
+    startedAtEpochMillis = 1_800_000L,
+    arrivedAtEpochMillis = 2_000_000L,
+    arrivalDeltaMinutes = 2,
 )
