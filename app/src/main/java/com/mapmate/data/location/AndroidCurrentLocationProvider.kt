@@ -12,12 +12,14 @@ import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.provider.CurrentLocationProvider
+import com.mapmate.domain.provider.ReverseGeocodingProvider
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 class AndroidCurrentLocationProvider(
     context: Context,
+    private val reverseGeocodingProvider: ReverseGeocodingProvider? = null,
 ) : CurrentLocationProvider {
     private val applicationContext = context.applicationContext
     private val locationManager = applicationContext.getSystemService(LocationManager::class.java)
@@ -28,12 +30,24 @@ class AndroidCurrentLocationProvider(
         }
 
         val location = getFreshLocationOrLastKnown()
+        val address = resolveAddress(location)
         return Destination(
             name = "현재 위치",
-            address = "휴대폰 위치 기반 출발지",
+            address = address,
             latitude = location.latitude,
             longitude = location.longitude,
         )
+    }
+
+    private suspend fun resolveAddress(location: Location): String {
+        return reverseGeocodingProvider?.let { provider ->
+            runCatching {
+                provider.getAddress(
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                )
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+        } ?: "휴대폰 위치 기반 출발지"
     }
 
     private fun hasLocationPermission(): Boolean {

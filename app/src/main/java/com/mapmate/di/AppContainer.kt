@@ -20,6 +20,7 @@ import com.mapmate.data.remote.provider.FallbackPlaceSearchProvider
 import com.mapmate.data.remote.provider.FallbackRouteEstimateProvider
 import com.mapmate.data.remote.provider.GoogleRoutesEstimateProvider
 import com.mapmate.data.remote.provider.KakaoPlaceSearchProvider
+import com.mapmate.data.remote.provider.KakaoReverseGeocodingProvider
 import com.mapmate.data.remote.provider.OdsayRouteEstimateProvider
 import com.mapmate.data.remote.provider.SeoulBusRealtimeArrivalProvider
 import com.mapmate.data.remote.provider.SeoulSubwayRealtimeArrivalProvider
@@ -56,16 +57,19 @@ class AppContainer(
     }
 
     val currentLocationProvider: CurrentLocationProvider by lazy {
-        AndroidCurrentLocationProvider(applicationContext)
+        AndroidCurrentLocationProvider(
+            context = applicationContext,
+            reverseGeocodingProvider = KakaoReverseGeocodingProvider(
+                api = kakaoLocalApi,
+                config = remoteApiConfig,
+            ),
+        )
     }
 
     val placeSearchProvider: PlaceSearchProvider by lazy {
         FallbackPlaceSearchProvider(
             primary = KakaoPlaceSearchProvider(
-                api = MapMateRetrofitFactory.create(
-                    baseUrl = KAKAO_BASE_URL,
-                    serviceClass = KakaoLocalApi::class.java,
-                ),
+                api = kakaoLocalApi,
                 config = remoteApiConfig,
             ),
             fallback = MockPlaceSearchProvider(),
@@ -133,6 +137,13 @@ class AppContainer(
             googleRoutesApiKey = BuildConfig.GOOGLE_ROUTES_API_KEY,
             seoulOpenApiKey = BuildConfig.SEOUL_OPEN_API_KEY,
             seoulBusServiceKey = BuildConfig.SEOUL_BUS_SERVICE_KEY,
+        )
+    }
+
+    private val kakaoLocalApi: KakaoLocalApi by lazy {
+        MapMateRetrofitFactory.create(
+            baseUrl = KAKAO_BASE_URL,
+            serviceClass = KakaoLocalApi::class.java,
         )
     }
 
