@@ -7,6 +7,7 @@
 ## 현재 상태
 
 - `KakaoPlaceSearchProvider` 구현: Kakao Local API 키워드 장소 검색 사용
+- `KakaoReverseGeocodingProvider` 구현: Kakao Local API 좌표→주소 변환으로 현재 위치 출발지 주소 표시
 - `OdsayRouteEstimateProvider` 구현: ODsay 대중교통 경로 검색 사용
 - `SeoulBusRealtimeArrivalProvider` 구현: 서울특별시 버스도착정보조회 서비스로 첫 버스 대기 시간 보정
 - `SeoulSubwayRealtimeArrivalProvider` 구현: 서울 지하철 실시간 도착정보로 첫 지하철 대기 시간 보정
@@ -14,7 +15,7 @@
 - `FallbackPlaceSearchProvider` 구현: Kakao 실패 또는 빈 결과 시 mock 장소 후보 사용
 - `FallbackRouteEstimateProvider` 구현: ODsay/Google 실패 시 mock 이동 시간 사용
 - 루틴 등록 화면에서 출발지를 Kakao 장소 검색으로 선택 가능
-- 루틴 등록 화면에서 Android 현재 위치 권한을 받아 휴대폰 위치를 출발지로 설정 가능
+- 루틴 등록 화면에서 Android 현재 위치 권한을 받아 휴대폰 위치를 출발지로 설정하고, Kakao 키가 있으면 좌표를 주소로 변환 가능
 - Retrofit2와 Kotlinx Serialization 사용
 - API key는 `local.properties`에서 BuildConfig로 주입
 - Room 기반 루틴/이동 기록 저장, DataStore 기반 설정 저장과 도착 오차 기반 개인 보정 자동 업데이트는 이미 구현되어 있음
@@ -33,13 +34,13 @@ SEOUL_OPEN_API_KEY=API_KEY_PLACEHOLDER
 SEOUL_BUS_SERVICE_KEY=API_KEY_PLACEHOLDER
 ```
 
-출발지는 앱의 루틴 등록 화면에서 검색으로 선택하거나 `현재 위치 사용` 버튼으로 설정합니다. ODsay/Google Routes 실제 경로 조회는 선택된 출발지와 목적지에 위도/경도 좌표가 있을 때 우선 시도합니다.
+출발지는 앱의 루틴 등록 화면에서 검색으로 선택하거나 `현재 위치 사용` 버튼으로 설정합니다. 현재 위치는 Kakao 좌표→주소 API로 읽기 쉬운 주소 변환을 시도하고, ODsay/Google Routes 실제 경로 조회는 선택된 출발지와 목적지에 위도/경도 좌표가 있을 때 우선 시도합니다.
 
 ## API 후보별 역할
 
 | API | 현재 역할 | 비고 |
 |---|---|---|
-| Kakao Local API | 장소 검색, 주소, 좌표 조회 | `PlaceSearchProvider` 실제 구현 |
+| Kakao Local API | 장소 검색, 주소, 좌표 조회 | `PlaceSearchProvider`, `ReverseGeocodingProvider` 실제 구현 |
 | ODsay API | 한국 대중교통 예상 이동 시간 | `TRANSIT` 우선 provider |
 | TAGO 버스정류소정보 API | 미구현 | 전국 버스 첫 탑승 정류장의 `cityCode`, `nodeId` 후보 매칭 |
 | TAGO 버스도착정보 API | 미구현 | 전국 버스 첫 탑승 대기시간 `arrtime` 보정 |
@@ -96,6 +97,13 @@ PlaceSearchProvider
 │   └── MockPlaceSearchProvider
 ```
 
+현재 위치 좌표의 주소 변환은 `ReverseGeocodingProvider` interface 뒤에 숨깁니다.
+
+```text
+ReverseGeocodingProvider
+└── KakaoReverseGeocodingProvider
+```
+
 이동 시간 조회는 `RouteEstimateProvider` interface 뒤에 숨깁니다.
 
 ```text
@@ -117,7 +125,7 @@ RouteEstimateProvider
 origin + destination + transportMode
 ```
 
-`origin`은 사용자가 검색으로 선택한 출발지 또는 Android 현재 위치 provider가 반환한 좌표입니다.
+`origin`은 사용자가 검색으로 선택한 출발지 또는 Android 현재 위치 provider가 반환한 좌표입니다. 현재 위치 provider는 Kakao 좌표→주소 API 호출이 성공하면 주소 문자열을 함께 채우고, 실패하면 기존 fallback 주소를 사용합니다.
 
 ## 현재 한계
 
@@ -130,20 +138,19 @@ origin + destination + transportMode
 - ODsay/Google API 실패 이유는 UI에 세부 노출하지 않고 mock fallback으로 복구합니다.
 - API 응답 캐시나 유효기간이 있는 마지막 성공 보정값 fallback은 아직 없습니다.
 - 실제 API 키는 저장소에 포함하지 않습니다.
-- 현재 위치 주소 역지오코딩은 아직 하지 않고 `현재 위치`라는 이름과 좌표만 저장합니다.
+- 현재 위치 주소 역지오코딩은 Kakao 키와 네트워크가 유효할 때만 성공하므로, 실패 시에는 `현재 위치` 이름과 fallback 주소를 저장합니다.
 - 개인 보정 자동 업데이트는 단일 기록의 도착 오차를 제한적으로 반영하며, 최근 기록 평균이나 이동수단별 보정 분리는 아직 하지 않습니다.
 - 출발 전 재조회는 현재 경로 provider/fallback을 다시 호출하므로, 첫 탑승 구간 매칭과 실시간 API 키가 유효하면 버스/지하철 도착정보 보정까지 함께 반영됩니다.
 
 ## 다음 권장 작업
 
-1. 현재 위치 좌표를 Kakao 좌표→주소 API로 변환해 더 읽기 쉬운 출발지 주소를 표시합니다.
-2. TAGO 버스정류소정보 provider를 추가해 ODsay 첫 탑승 정류장 좌표 기준으로 `cityCode`, `nodeId` 후보를 찾습니다.
-3. TAGO 버스도착정보 provider를 추가해 첫 버스 `arrtime`을 조회합니다.
-4. ODsay 노선번호와 TAGO `routeno` 정규화, 정류장 거리, 정류장명 유사도 기반 매칭 점수식을 구현합니다.
-5. `RouteRealtimeSnapshot` 저장 구조와 유효기간 기반 stale fallback을 추가합니다.
-6. `adjustedRouteDurationMinutes` 계산과 `finalDepartureTime < now` clamp 처리를 추가합니다.
-7. 버스 실시간 위치정보와 지하철 열차 위치정보 provider를 추가해 도착정보 보조와 운행 상태 표시를 강화합니다.
-8. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결하고, 자동차 모드에는 `TRAFFIC_AWARE` 정책을 검토합니다.
-9. API 실패/좌표 없음/실시간 매칭 실패 상태를 사용자가 이해할 수 있는 UI 메시지로 분리합니다.
-10. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
-11. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.
+1. TAGO 버스정류소정보 provider를 추가해 ODsay 첫 탑승 정류장 좌표 기준으로 `cityCode`, `nodeId` 후보를 찾습니다.
+2. TAGO 버스도착정보 provider를 추가해 첫 버스 `arrtime`을 조회합니다.
+3. ODsay 노선번호와 TAGO `routeno` 정규화, 정류장 거리, 정류장명 유사도 기반 매칭 점수식을 구현합니다.
+4. `RouteRealtimeSnapshot` 저장 구조와 유효기간 기반 stale fallback을 추가합니다.
+5. `adjustedRouteDurationMinutes` 계산과 `finalDepartureTime < now` clamp 처리를 추가합니다.
+6. 버스 실시간 위치정보와 지하철 열차 위치정보 provider를 추가해 도착정보 보조와 운행 상태 표시를 강화합니다.
+7. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결하고, 자동차 모드에는 `TRAFFIC_AWARE` 정책을 검토합니다.
+8. API 실패/좌표 없음/실시간 매칭 실패 상태를 사용자가 이해할 수 있는 UI 메시지로 분리합니다.
+9. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
+10. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.

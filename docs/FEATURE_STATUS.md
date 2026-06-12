@@ -12,7 +12,7 @@
 | 목적지 후보 표시 | 완료 | Kakao Local API 키가 있으면 실제 장소 검색 결과를 표시하고, 실패하거나 키가 없으면 mock 후보를 표시합니다. | `data/remote/provider/KakaoPlaceSearchProvider.kt`, `data/mock/MockPlaceSearchProvider.kt` |
 | 목적지 선택 | 완료 | 목적지 후보를 선택하면 `selectedDestination`에 반영됩니다. | `presentation/routine/RoutineRegistrationViewModel.kt` |
 | 출발지 검색 선택 | 완료 | Kakao Local API 또는 mock 장소 후보에서 출발지를 검색하고 선택할 수 있습니다. | `presentation/routine/RoutineRegistrationScreen.kt`, `presentation/routine/RoutineRegistrationViewModel.kt` |
-| 현재 위치 출발지 선택 | 완료 | Android 위치 권한을 요청하고 휴대폰 현재 위치 좌표를 출발지로 설정할 수 있습니다. | `data/location/AndroidCurrentLocationProvider.kt`, `presentation/routine/RoutineRegistrationScreen.kt` |
+| 현재 위치 출발지 선택 | 완료 | Android 위치 권한을 요청하고 휴대폰 현재 위치 좌표를 출발지로 설정합니다. Kakao 키가 있으면 좌표를 주소로 변환해 출발지 주소로 표시하고, 실패하면 기존 fallback 주소를 유지합니다. | `data/location/AndroidCurrentLocationProvider.kt`, `data/remote/provider/KakaoReverseGeocodingProvider.kt`, `presentation/routine/RoutineRegistrationScreen.kt` |
 | 반복 요일 선택 | 완료 | 월~일 반복 요일을 선택/해제할 수 있습니다. | `presentation/common/MapMateSelectors.kt` |
 | 이동 수단 선택 | 완료 | `TRANSIT`, `WALK`, `CAR` 이동 수단을 선택할 수 있으며 설정 화면에서는 3개 카드가 동일 폭으로 배치됩니다. | `domain/model/TransportMode.kt`, `presentation/common/MapMateSelectors.kt` |
 | 권장 출발 시각 계산 | 완료 | 실제 경로 API 또는 mock 예상 이동 시간과 보정 시간을 기준으로 권장 출발 시각을 계산합니다. | `presentation/routine/RoutineRegistrationViewModel.kt` |
@@ -25,7 +25,7 @@
 | 저장된 루틴 목록 표시 | 완료 | Room `Flow`를 관찰해 저장된 루틴을 홈 대시보드와 루틴 목록 화면에 표시합니다. | `presentation/home`, `presentation/routine/RoutinesScreen.kt` |
 | 루틴 수정/삭제 | 완료 | 루틴 목록 카드에서 기존 값을 루틴 등록 화면으로 불러와 수정하거나 Room DB에서 삭제할 수 있습니다. | `presentation/routine`, `data/local/RoutineDao.kt` |
 | DataStore 설정 저장 | 완료 | 개인 보정 시간, 안전 여유 시간, 알림 설정값, 기본 이동수단을 Preferences DataStore에 저장하고 앱 시작 시 복원합니다. | `data/preferences/DataStoreSettingsRepository.kt`, `domain/repository/SettingsRepository.kt` |
-| 실제 Kakao API | 부분 완료 | Kakao Local API 키워드 장소 검색을 연결했습니다. API 키가 없거나 실패하면 mock 후보를 사용합니다. | `data/remote/api/KakaoLocalApi.kt`, `data/remote/provider/KakaoPlaceSearchProvider.kt` |
+| 실제 Kakao API | 완료 | Kakao Local API 키워드 장소 검색과 좌표→주소 변환을 연결했습니다. 키가 없거나 호출이 실패하면 장소 검색은 mock 후보, 현재 위치 주소는 fallback 문구를 사용합니다. | `data/remote/api/KakaoLocalApi.kt`, `data/remote/provider/KakaoPlaceSearchProvider.kt`, `data/remote/provider/KakaoReverseGeocodingProvider.kt` |
 | 실제 ODsay API | 부분 완료 | ODsay 대중교통 경로 검색 provider를 연결했습니다. API 키와 데모 출발 좌표가 있어야 실제 호출합니다. | `data/remote/api/OdsayApi.kt`, `data/remote/provider/OdsayRouteEstimateProvider.kt` |
 | 실제 Google Routes API | 부분 완료 | Google Routes provider를 연결했습니다. 도보/자동차 경로와 대중교통 fallback에 사용할 수 있습니다. | `data/remote/api/GoogleRoutesApi.kt`, `data/remote/provider/GoogleRoutesEstimateProvider.kt` |
 | 버스 실시간 도착정보 | 완료 | ODsay 첫 버스 탑승 구간에서 정류소/노선 ID를 추출하고 서울특별시 버스도착정보조회 서비스로 첫 대기 시간을 조회해 기본 대기 기준보다 길 때 경로 시간을 보정합니다. 키가 없거나 매칭에 실패하면 기존 ODsay/Mock fallback을 유지합니다. | `data/remote/provider/SeoulBusRealtimeArrivalProvider.kt`, `data/remote/provider/SeoulBusArrivalXmlParser.kt` |
@@ -79,9 +79,9 @@ MainActivity
 
 ## 현재 API 동작
 
-`local.properties`에 `KAKAO_REST_API_KEY`, `ODSAY_API_KEY`, `GOOGLE_ROUTES_API_KEY`, `SEOUL_OPEN_API_KEY`, `SEOUL_BUS_SERVICE_KEY`를 설정하면 실제 provider가 우선 동작합니다. 키가 없거나 API 호출이 실패하면 `FallbackPlaceSearchProvider`, `FallbackRouteEstimateProvider`가 기존 mock provider 결과를 반환하므로 발표용 MVP 흐름은 유지됩니다.
+`local.properties`에 `KAKAO_REST_API_KEY`, `ODSAY_API_KEY`, `GOOGLE_ROUTES_API_KEY`, `SEOUL_OPEN_API_KEY`, `SEOUL_BUS_SERVICE_KEY`를 설정하면 실제 provider가 우선 동작합니다. 키가 없거나 API 호출이 실패하면 `FallbackPlaceSearchProvider`, `FallbackRouteEstimateProvider`가 기존 mock provider 결과를 반환하므로 발표용 MVP 흐름은 유지됩니다. 현재 위치 좌표의 주소 변환은 Kakao 키가 있을 때만 시도하고 실패 시 기존 현재 위치 fallback 주소를 사용합니다.
 
-현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있습니다.
+현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있으며, Kakao 키가 있으면 현재 위치 좌표를 주소로 변환해 표시합니다.
 
 ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하고, 첫 탑승 구간의 버스/지하철 실시간 도착정보가 조회되면 대기 지연분만 보수적으로 추가 보정합니다. 출발 전 WorkManager 재조회도 같은 `RouteEstimateProvider`를 다시 호출하므로, 키와 좌표/노선 매칭이 맞으면 출발 30분 전 알림에도 실시간 도착정보 보정이 반영됩니다.
 전국 버스 확장, TAGO 기반 정류장 매칭, 실시간 보정 스냅샷 저장, 유효기간 기반 fallback 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`에 정리되어 있습니다.
