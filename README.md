@@ -101,7 +101,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - 출발 30분 전 WorkManager 작업을 예약해 경로 예상 시간을 다시 조회하고 알림을 재예약
   - ODsay 경로의 첫 탑승 구간에서 서울 버스/지하철 실시간 도착정보를 조회해 기본 예상 시간보다 대기가 길 때 지연분을 반영
   - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`, `docs/API_STRATEGY.md`에 구현 상태 반영
-- 현재 브랜치 `codex/current-location-reverse-geocode`
+- [PR #18](https://github.com/arkazq/mapmate-mp26/pull/18) `codex/current-location-reverse-geocode`
   - Kakao Local API 좌표→주소 변환 endpoint를 `KakaoLocalApi`에 추가
   - `ReverseGeocodingProvider`와 `KakaoReverseGeocodingProvider`를 추가해 현재 위치 좌표를 읽기 쉬운 주소로 변환
   - 키 누락/호출 실패 시 기존 현재 위치 fallback 주소를 유지
