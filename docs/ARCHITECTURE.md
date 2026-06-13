@@ -78,6 +78,7 @@ com.mapmate
 │  │  ├─ TransportMode.kt
 │  │  ├─ RepeatDay.kt
 │  │  ├─ RouteEstimate.kt
+│  │  ├─ RouteRealtimeSnapshot.kt
 │  │  ├─ TransitArrivalEstimate.kt
 │  │  └─ TransitArrivalQuery.kt
 │  ├─ calculator
@@ -89,6 +90,7 @@ com.mapmate
 │  │  └─ TransitArrivalProvider.kt
 │  └─ repository
 │     ├─ CommuteRecordRepository.kt
+│     ├─ RouteRealtimeSnapshotRepository.kt
 │     ├─ RoutineRepository.kt
 │     └─ SettingsRepository.kt
 └─ data
@@ -105,6 +107,9 @@ com.mapmate
    │  ├─ CommuteRecordEntity.kt
    │  ├─ CommuteRecordMapper.kt
    │  ├─ MapMateDatabase.kt
+   │  ├─ RouteRealtimeSnapshotDao.kt
+   │  ├─ RouteRealtimeSnapshotEntity.kt
+   │  ├─ RouteRealtimeSnapshotMapper.kt
    │  ├─ RoutineDao.kt
    │  ├─ RoutineEntity.kt
    │  └─ RoutineMapper.kt
@@ -122,6 +127,7 @@ com.mapmate
    │  └─ provider
    └─ repository
       ├─ RoomCommuteRecordRepository.kt
+      ├─ RoomRouteRealtimeSnapshotRepository.kt
       └─ RoomRoutineRepository.kt
 ```
 
@@ -209,6 +215,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 - `TransportMode`: `TRANSIT`, `WALK`, `CAR`
 - `RepeatDay`: `MONDAY`부터 `SUNDAY`
 - `RouteEstimate`: 예상 이동 시간, 요약, provider 이름, 계산 사유, fallback 여부, 사용자용 상태 메시지
+- `RouteRealtimeSnapshot`: 특정 경로/첫 탑승 구간의 실시간 보정 성공값과 만료 시각
 - `TransitArrivalQuery`: ODsay 첫 탑승 구간에서 추출한 버스/지하철 실시간 도착정보 조회 입력값
 - `TransitArrivalEstimate`: 실시간 도착정보 provider가 반환하는 첫 대기 시간, 요약, provider 이름, 계산 사유
 
@@ -252,6 +259,7 @@ recommended departure time
 루틴 저장소, 이동 기록 저장소, 앱 설정 저장소를 추상화합니다.
 
 - `CommuteRecordRepository`: 이동 기록 저장과 저장된 기록 관찰 동작을 정의
+- `RouteRealtimeSnapshotRepository`: 실시간 보정 성공값 저장, fresh snapshot 조회, 만료 snapshot 정리를 정의
 - `RoutineRepository`: 루틴 저장, 삭제, 저장된 루틴 관찰 동작을 정의
 - `SettingsRepository`: 앱 설정 관찰, 보정값/알림 설정값/기본 이동수단 저장, 도착 오차 기반 개인 보정 자동 업데이트 동작을 정의
 
@@ -265,6 +273,9 @@ Room 기반 로컬 저장 구조입니다.
 - `CommuteRecordDao`: `commute_records` 테이블 insert/observe DAO
 - `CommuteRecordEntity`: Room 저장용 이동 기록 entity
 - `CommuteRecordMapper`: domain `CommuteRecord`와 Room `CommuteRecordEntity` 사이 변환
+- `RouteRealtimeSnapshotDao`: `route_realtime_snapshots` 테이블 insert/query/delete DAO
+- `RouteRealtimeSnapshotEntity`: Room 저장용 실시간 보정 snapshot entity
+- `RouteRealtimeSnapshotMapper`: domain `RouteRealtimeSnapshot`과 Room `RouteRealtimeSnapshotEntity` 사이 변환
 - `RoutineDao`: `routines` 테이블 insert/query/observe DAO
 - `RoutineEntity`: Room 저장용 entity
 - `RoutineMapper`: domain `Routine`과 Room `RoutineEntity` 사이 변환
@@ -283,6 +294,7 @@ domain repository interface의 Room 구현체입니다.
 
 - `RoomRoutineRepository`: `RoutineDao`를 통해 루틴을 Room DB에 저장하고 `Flow<List<Routine>>`으로 관찰
 - `RoomCommuteRecordRepository`: `CommuteRecordDao`를 통해 이동 기록을 Room DB에 저장하고 `Flow<List<CommuteRecord>>`로 관찰
+- `RoomRouteRealtimeSnapshotRepository`: 실시간 보정 성공값을 Room DB에 저장하고 20분 이내 fresh snapshot fallback 조회에 사용
 
 ## `data/preferences`
 
@@ -308,7 +320,7 @@ Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 
 - `KakaoPlaceSearchProvider`: Kakao Local API 키워드 장소 검색 결과를 `Destination` 후보로 변환
 - `KakaoReverseGeocodingProvider`: 현재 위치 좌표를 Kakao Local API 좌표→주소 응답으로 변환
-- `OdsayRouteEstimateProvider`: ODsay 대중교통 경로 결과를 기본 예상 이동 시간으로 사용하고, 첫 탑승 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정
+- `OdsayRouteEstimateProvider`: ODsay 대중교통 경로 결과를 기본 예상 이동 시간으로 사용하고, 첫 탑승 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정하며 성공값은 `RouteRealtimeSnapshotRepository`에 저장
 - `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환
 - `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산
 - `SeoulSubwayRealtimeArrivalProvider`: 서울 지하철 실시간 도착정보 JSON 응답에서 가장 빠른 첫 지하철 대기 시간을 계산
@@ -318,7 +330,7 @@ Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 
 앱 수준 의존성 생성을 담당합니다.
 
-- `AppContainer`: `RoomRoutineRepository`, `RoomCommuteRecordRepository`, `DataStoreSettingsRepository`, `DepartureAlarmCoordinator`, 외부 API provider를 생성하고 `MainActivity`에 제공합니다.
+- `AppContainer`: `RoomRoutineRepository`, `RoomCommuteRecordRepository`, `RoomRouteRealtimeSnapshotRepository`, `DataStoreSettingsRepository`, `DepartureAlarmCoordinator`, 외부 API provider를 생성하고 `MainActivity`에 제공합니다.
 
 ## `data/mock`
 
@@ -341,6 +353,8 @@ User input
 → DepartureTimeCalculator
 → RoutineRepository
 → RoutineDao
+→ RouteRealtimeSnapshotRepository
+→ RouteRealtimeSnapshotDao
 → CommuteRecordRepository
 → CommuteRecordDao
 → Room Flow
@@ -357,7 +371,7 @@ User input
 4. 개인 보정 시간과 안전 여유 시간, 기본 이동수단, 알림 설정값이 변경되면 `SettingsRepository`를 통해 DataStore에 저장합니다.
 5. 출발지/목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
 6. 현재 위치 출발지는 `CurrentLocationProvider`가 좌표를 가져오고, Kakao 키가 있으면 `ReverseGeocodingProvider`로 주소 변환을 시도합니다.
-7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로에서 첫 탑승 구간을 추출할 수 있으면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다.
+7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로에서 첫 탑승 구간을 추출할 수 있으면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정하고, 성공값은 `RouteRealtimeSnapshotRepository`에 저장합니다. 실시간 조회/매칭이 실패하면 20분 이내 fresh snapshot이 있을 때만 마지막 성공 보정값을 재사용합니다.
 8. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다.
 9. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
 10. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.

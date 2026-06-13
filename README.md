@@ -112,6 +112,11 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - ODsay/Google Routes 실패 시 `API key 없음`, `좌표 없음`, `이동수단 미지원`, `경로 없음`, `요청 실패` 수준으로 사유를 요약
   - 루틴 등록 결과, 홈, 루틴 목록, 상세 예측, 이동 기록 화면에서 fallback 상태 메시지 표시
   - ODsay API 호출 없이 단위 테스트와 임시 clean copy 기준 `./gradlew.bat build`로 검증
+- `codex/realtime-snapshot-fallback`
+  - ODsay 첫 탑승 실시간 보정 성공 결과를 `RouteRealtimeSnapshot`으로 Room DB에 저장
+  - 실시간 도착정보가 실패/매칭 실패하면 20분 이내의 마지막 성공 보정값만 재사용
+  - 만료된 스냅샷은 조회 전 정리하고, 만료 후에는 ODsay 기본 예상 시간으로 fallback
+  - 실제 API 호출 없이 fake provider 기반 단위 테스트로 저장/재사용/만료 흐름 검증
 
 검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
 
@@ -119,7 +124,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 
 - 버스 실시간 위치정보 기반 운행 상태 보조 판단
 - 지하철 열차 위치정보 기반 운행 상태 보조 판단
-- 실제 API 실패 시 마지막 성공값 캐시
+- 전체 경로 API 응답 마지막 성공값 캐시
 - Google Routes 도착 시각 기준 경로 조회
 - 자동차 모드의 Google Routes traffic-aware 경로 조회
 - 통계/기록 분석 화면
@@ -174,7 +179,7 @@ SEOUL_BUS_SERVICE_KEY=API_KEY_PLACEHOLDER
 
 API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
-현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 이동 시간을 보수적으로 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다. 전국 버스 확장, TAGO 기반 정류장 매칭, stale fallback 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 확인합니다.
+현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 이동 시간을 보수적으로 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 20분 이내의 `RouteRealtimeSnapshot`을 먼저 재사용하고, 없거나 만료되면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다. 전국 버스 확장과 TAGO 기반 정류장 매칭 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 확인합니다.
 
 ## 브랜치 전략 요약
 

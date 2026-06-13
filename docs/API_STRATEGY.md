@@ -11,6 +11,7 @@
 - `OdsayRouteEstimateProvider` 구현: ODsay 대중교통 경로 검색 사용
 - `SeoulBusRealtimeArrivalProvider` 구현: 서울특별시 버스도착정보조회 서비스로 첫 버스 대기 시간 보정
 - `SeoulSubwayRealtimeArrivalProvider` 구현: 서울 지하철 실시간 도착정보로 첫 지하철 대기 시간 보정
+- `RouteRealtimeSnapshot` 구현: 실시간 보정 성공값을 Room에 저장하고 20분 이내 fresh snapshot만 fallback으로 재사용
 - `GoogleRoutesEstimateProvider` 구현: Google Routes API 경로 시간 조회 사용
 - `FallbackPlaceSearchProvider` 구현: Kakao 실패 또는 빈 결과 시 mock 장소 후보 사용
 - `FallbackRouteEstimateProvider` 구현: ODsay/Google 실패 시 mock 이동 시간 사용, fallback 사유를 사용자용 상태 메시지로 요약
@@ -72,7 +73,7 @@ ODsay 대중교통 길찾기 API의 `totalTime`은 대중교통 경로의 기본
 2. ODsay 경로 응답에서 첫 탑승 수단, 정류장/역 이름, 노선 정보를 추출합니다.
 3. 첫 탑승 구간이 버스이면 서울 버스 실시간 도착정보를 조회해 대기 시간을 보정합니다.
 4. 첫 탑승 구간이 지하철이면 서울 지하철 실시간 도착정보를 조회해 대기 시간을 보정합니다.
-5. 실시간 정보 조회 실패, 낮은 매칭 신뢰도, 오래된 마지막 성공값은 ODsay 기본 예상시간으로 fallback합니다.
+5. 실시간 정보 조회 실패/매칭 실패 시 20분 이내 `RouteRealtimeSnapshot`이 있으면 마지막 성공 보정값을 재사용하고, 없거나 만료되면 ODsay 기본 예상시간으로 fallback합니다.
 6. 전국 버스 확장 시에는 ODsay 첫 탑승 정류장 좌표 기준으로 TAGO 버스정류소정보 API의 근접 정류소 후보를 조회합니다.
 7. 전국 버스 확장 시 정류장 거리, 정류장명 유사도, 노선번호 정규화, 방향 정보를 기준으로 `cityCode`, `nodeId` 후보의 매칭 신뢰도를 계산합니다.
 8. 보정 결과를 영속화할 때는 `Routine`이 아니라 특정 시점의 `RouteRealtimeSnapshot`에 저장합니다.
@@ -133,10 +134,10 @@ origin + destination + transportMode
 - ODsay 길찾기 결과만으로는 현재 버스/지하철 지연과 실제 정류장/역 도착 예정 시간을 완전히 보장하지 않습니다.
 - 실시간 버스 도착정보와 지하철 실시간 도착정보 provider는 구현되어 있지만, ODsay 응답의 정류소/노선 ID 또는 역명 매칭이 실패하면 보정하지 않고 기존 ODsay 예상 시간을 유지합니다.
 - 버스 위치정보와 지하철 열차 위치정보는 아직 provider로 구현되어 있지 않습니다.
-- 실시간 보정 결과를 저장하는 `RouteRealtimeSnapshot` 저장 구조는 아직 없습니다.
+- `RouteRealtimeSnapshot` fallback은 같은 ODsay 기본 경로와 첫 탑승 구간에서 20분 이내 성공값만 재사용합니다.
 - TAGO 버스정류소정보와 TAGO 버스도착정보 provider는 아직 구현되어 있지 않습니다.
 - ODsay/Google API 실패 이유는 상세 예외문 대신 `API key 없음`, `좌표 없음`, `이동수단 미지원`, `경로 없음`, `요청 실패` 수준의 사용자용 메시지로 요약하고 mock fallback으로 복구합니다.
-- API 응답 캐시나 유효기간이 있는 마지막 성공 보정값 fallback은 아직 없습니다.
+- 전체 경로 API 응답 자체의 마지막 성공값 캐시는 아직 없습니다. 현재는 첫 탑승 실시간 보정 스냅샷만 저장합니다.
 - 실제 API 키는 저장소에 포함하지 않습니다.
 - 현재 위치 주소 역지오코딩은 Kakao 키와 네트워크가 유효할 때만 성공하므로, 실패 시에는 `현재 위치` 이름과 fallback 주소를 저장합니다.
 - 개인 보정 자동 업데이트는 단일 기록의 도착 오차를 제한적으로 반영하며, 최근 기록 평균이나 이동수단별 보정 분리는 아직 하지 않습니다.
@@ -147,10 +148,9 @@ origin + destination + transportMode
 1. TAGO 버스정류소정보 provider를 추가해 ODsay 첫 탑승 정류장 좌표 기준으로 `cityCode`, `nodeId` 후보를 찾습니다.
 2. TAGO 버스도착정보 provider를 추가해 첫 버스 `arrtime`을 조회합니다.
 3. ODsay 노선번호와 TAGO `routeno` 정규화, 정류장 거리, 정류장명 유사도 기반 매칭 점수식을 구현합니다.
-4. `RouteRealtimeSnapshot` 저장 구조와 유효기간 기반 stale fallback을 추가합니다.
-5. `adjustedRouteDurationMinutes` 계산과 `finalDepartureTime < now` clamp 처리를 추가합니다.
-6. 버스 실시간 위치정보와 지하철 열차 위치정보 provider를 추가해 도착정보 보조와 운행 상태 표시를 강화합니다.
-7. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결하고, 자동차 모드에는 `TRAFFIC_AWARE` 정책을 검토합니다.
-8. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
-9. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
-10. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.
+4. `finalDepartureTime < now` clamp 처리를 추가합니다.
+5. 버스 실시간 위치정보와 지하철 열차 위치정보 provider를 추가해 도착정보 보조와 운행 상태 표시를 강화합니다.
+6. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결하고, 자동차 모드에는 `TRAFFIC_AWARE` 정책을 검토합니다.
+7. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
+8. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
+9. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.
