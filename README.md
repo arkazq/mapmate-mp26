@@ -4,7 +4,7 @@ SoongSil University mobile programming team project
 
 MapMate는 반복되는 출퇴근/등교 루틴을 기준으로 사용자가 언제 출발해야 하는지 계산해 주는 Android 앱입니다.
 
-현재 프로젝트는 **Kakao Local API 기반 장소 검색**, ODsay/Google Routes 기반 경로 시간 provider, 서울 버스/지하철 실시간 도착정보 provider, mock fallback, Room 기반 루틴/이동 기록 저장, DataStore 기반 설정 저장, WorkManager 기반 출발 전 재조회, AlarmManager 기반 출발 알림, Material 3 기반 출발 준비 대시보드와 루틴 관리 UI까지 구현한 상태입니다.
+현재 프로젝트는 **Kakao Local API 기반 장소 검색/좌표 역지오코딩**, ODsay/Google Routes 기반 경로 시간 provider, 서울 버스/지하철 실시간 도착정보 provider, mock fallback, Room 기반 루틴/이동 기록 저장, DataStore 기반 설정 저장, WorkManager 기반 출발 전 재조회, AlarmManager 기반 출발 알림, Material 3 기반 출발 준비 대시보드와 루틴 관리 UI까지 구현한 상태입니다.
 
 ## 앱 목적
 
@@ -40,6 +40,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 출발지 검색어 입력
 - 출발지 후보 표시 및 선택
 - 휴대폰 현재 위치 기반 출발지 선택
+- Kakao 좌표→주소 API 기반 현재 위치 출발지 주소 표시
 - 목적지 검색어 입력
 - Kakao Local API 기반 목적지 후보 표시 및 선택
 - API 키 누락 또는 API 실패 시 Mock 장소 후보 fallback
@@ -90,7 +91,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - Room `Flow`로 저장된 루틴을 홈/루틴 화면에 표시
   - 루틴 카드의 수정/삭제 동작 연결
   - 루틴 표시용 공통 UI/라벨 정리와 Kotlin 단위 테스트 정리
-- 현재 브랜치 `feature/commute-history-storage`
+- [PR #16](https://github.com/arkazq/mapmate-mp26/pull/16) `feature/commute-history-storage`
   - `CommuteRecord` 도메인 모델과 Room `commute_records` 테이블 추가
   - 이동 기록 완료 시 루틴명, 출발지/목적지, 추천 출발 시각, 실제 도착 시각, 도착 오차 저장
   - 도착 오차를 기준으로 DataStore 개인 보정값을 자동 조정
@@ -100,12 +101,16 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - 출발 30분 전 WorkManager 작업을 예약해 경로 예상 시간을 다시 조회하고 알림을 재예약
   - ODsay 경로의 첫 탑승 구간에서 서울 버스/지하철 실시간 도착정보를 조회해 기본 예상 시간보다 대기가 길 때 지연분을 반영
   - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`, `docs/API_STRATEGY.md`에 구현 상태 반영
+- [PR #18](https://github.com/arkazq/mapmate-mp26/pull/18) `codex/current-location-reverse-geocode`
+  - Kakao Local API 좌표→주소 변환 endpoint를 `KakaoLocalApi`에 추가
+  - `ReverseGeocodingProvider`와 `KakaoReverseGeocodingProvider`를 추가해 현재 위치 좌표를 읽기 쉬운 주소로 변환
+  - 키 누락/호출 실패 시 기존 현재 위치 fallback 주소를 유지
+  - `scripts/verify-local-apis.ps1`로 로컬 `local.properties` 기반 실제 Kakao/ODsay 호출 검증 가능
 
 검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
 
 ## 아직 구현되지 않은 기능
 
-- 현재 위치 좌표의 주소 역지오코딩
 - 버스 실시간 위치정보 기반 운행 상태 보조 판단
 - 지하철 열차 위치정보 기반 운행 상태 보조 판단
 - 실제 API 실패 시 마지막 성공값 캐시
@@ -129,6 +134,14 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - Android NotificationManager
 - Mock Provider
 - JUnit
+
+## 실제 API 검증
+
+실제 API 호출을 확인하려면 Git에 커밋되지 않는 `local.properties`에 필요한 키를 넣은 뒤 아래 명령을 실행합니다. 스크립트는 키 값을 출력하지 않고 존재 여부와 응답 요약만 표시합니다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local-apis.ps1
+```
 
 ## 실행 방법
 

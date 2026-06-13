@@ -20,6 +20,7 @@ import com.mapmate.data.remote.provider.FallbackPlaceSearchProvider
 import com.mapmate.data.remote.provider.FallbackRouteEstimateProvider
 import com.mapmate.data.remote.provider.GoogleRoutesEstimateProvider
 import com.mapmate.data.remote.provider.KakaoPlaceSearchProvider
+import com.mapmate.data.remote.provider.KakaoReverseGeocodingProvider
 import com.mapmate.data.remote.provider.OdsayRouteEstimateProvider
 import com.mapmate.data.remote.provider.SeoulBusRealtimeArrivalProvider
 import com.mapmate.data.remote.provider.SeoulSubwayRealtimeArrivalProvider
@@ -56,7 +57,10 @@ class AppContainer(
     }
 
     val currentLocationProvider: CurrentLocationProvider by lazy {
-        AndroidCurrentLocationProvider(applicationContext)
+        AndroidCurrentLocationProvider(
+            context = applicationContext,
+            reverseGeocodingProvider = reverseGeocodingProvider,
+        )
     }
 
     val placeSearchProvider: PlaceSearchProvider by lazy {
@@ -113,6 +117,16 @@ class AppContainer(
                     config = remoteApiConfig,
                 ),
             ),
+        )
+    }
+
+    private val reverseGeocodingProvider by lazy {
+        KakaoReverseGeocodingProvider(
+            api = MapMateRetrofitFactory.create(
+                baseUrl = KAKAO_BASE_URL,
+                serviceClass = KakaoLocalApi::class.java,
+            ),
+            config = remoteApiConfig,
         )
     }
 

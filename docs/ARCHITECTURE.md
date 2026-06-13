@@ -84,6 +84,7 @@ com.mapmate
 │  │  └─ DepartureTimeCalculator.kt
 │  ├─ provider
 │  │  ├─ PlaceSearchProvider.kt
+│  │  ├─ ReverseGeocodingProvider.kt
 │  │  ├─ RouteEstimateProvider.kt
 │  │  └─ TransitArrivalProvider.kt
 │  └─ repository
@@ -305,6 +306,8 @@ Android `AlarmManager`, `BroadcastReceiver`, `NotificationManager` 기반 출발
 
 Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 
+- `KakaoPlaceSearchProvider`: Kakao Local API 키워드 장소 검색 결과를 `Destination` 후보로 변환
+- `KakaoReverseGeocodingProvider`: 현재 위치 좌표를 Kakao Local API 좌표→주소 응답으로 변환
 - `OdsayRouteEstimateProvider`: ODsay 대중교통 경로 결과를 기본 예상 이동 시간으로 사용하고, 첫 탑승 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정
 - `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환
 - `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산
@@ -334,7 +337,7 @@ User input
 → MapMateApp
 → HomeScreen / RoutinesScreen / RoutineRegistrationScreen / PredictionDetailScreen / TrackingScreen / SettingsScreen
 → HomeViewModel / RoutinesViewModel / RoutineRegistrationViewModel / PredictionDetailViewModel / TrackingViewModel / SettingsViewModel
-→ PlaceSearchProvider / RouteEstimateProvider / TransitArrivalProvider
+→ PlaceSearchProvider / CurrentLocationProvider / ReverseGeocodingProvider / RouteEstimateProvider / TransitArrivalProvider
 → DepartureTimeCalculator
 → RoutineRepository
 → RoutineDao
@@ -352,24 +355,25 @@ User input
 2. `RoutineRegistrationScreen`은 입력 이벤트를 `RoutineRegistrationEvent`로 ViewModel에 전달합니다.
 3. `RoutineRegistrationViewModel`은 상태를 갱신하고 입력값을 검증합니다.
 4. 개인 보정 시간과 안전 여유 시간, 기본 이동수단, 알림 설정값이 변경되면 `SettingsRepository`를 통해 DataStore에 저장합니다.
-5. 목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
-6. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로에서 첫 탑승 구간을 추출할 수 있으면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다.
-7. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다.
-8. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
-9. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
-10. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.
-11. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`와 `RoutinesUiState.recommendations`에 반영됩니다.
-12. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
-13. 상세 예측 화면과 이동 기록 화면은 선택된 루틴을 기준으로 `RouteEstimateProvider`를 호출해 권장 출발 시각 UI 모델을 구성합니다.
-14. 이동 기록 화면에서 도착을 완료하면 `CommuteRecordRepository.saveRecord()`를 통해 Room DB에 기록을 저장합니다.
-15. 기록 저장이 성공하면 `SettingsRepository.updatePersonalBufferForArrivalDelta()`가 도착 오차를 개인 보정값에 반영합니다.
-16. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
-17. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
-18. 앱 실행 중 `DepartureAlarmCoordinator`는 알림 설정과 저장된 루틴 목록을 관찰해 다음 출발 알림을 예약하거나 취소합니다.
-19. 다음 출발 알림이 30분보다 더 남아 있으면 `AndroidDepartureRecheckScheduler`가 WorkManager one-time work를 예약합니다.
-20. `DepartureRecheckWorker`는 출발 전 경로 예상 시간을 다시 조회하고 다음 출발 알림과 재조회 작업을 갱신합니다.
-21. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
-22. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
+5. 출발지/목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
+6. 현재 위치 출발지는 `CurrentLocationProvider`가 좌표를 가져오고, Kakao 키가 있으면 `ReverseGeocodingProvider`로 주소 변환을 시도합니다.
+7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로에서 첫 탑승 구간을 추출할 수 있으면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다.
+8. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다.
+9. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
+10. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
+11. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.
+12. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`와 `RoutinesUiState.recommendations`에 반영됩니다.
+13. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
+14. 상세 예측 화면과 이동 기록 화면은 선택된 루틴을 기준으로 `RouteEstimateProvider`를 호출해 권장 출발 시각 UI 모델을 구성합니다.
+15. 이동 기록 화면에서 도착을 완료하면 `CommuteRecordRepository.saveRecord()`를 통해 Room DB에 기록을 저장합니다.
+16. 기록 저장이 성공하면 `SettingsRepository.updatePersonalBufferForArrivalDelta()`가 도착 오차를 개인 보정값에 반영합니다.
+17. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
+18. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
+19. 앱 실행 중 `DepartureAlarmCoordinator`는 알림 설정과 저장된 루틴 목록을 관찰해 다음 출발 알림을 예약하거나 취소합니다.
+20. 다음 출발 알림이 30분보다 더 남아 있으면 `AndroidDepartureRecheckScheduler`가 WorkManager one-time work를 예약합니다.
+21. `DepartureRecheckWorker`는 출발 전 경로 예상 시간을 다시 조회하고 다음 출발 알림과 재조회 작업을 갱신합니다.
+22. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
+23. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
 
 ## 설계 원칙
 
