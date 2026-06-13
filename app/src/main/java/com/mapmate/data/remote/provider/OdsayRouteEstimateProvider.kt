@@ -6,11 +6,14 @@ import com.mapmate.data.remote.dto.OdsayPath
 import com.mapmate.data.remote.dto.OdsayPathInfo
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RouteEstimate
+import com.mapmate.domain.model.RouteRealtimeSnapshot
 import com.mapmate.domain.model.TransitArrivalEstimate
 import com.mapmate.domain.model.TransitArrivalQuery
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.provider.TransitArrivalProvider
+import com.mapmate.domain.repository.RouteRealtimeSnapshotRepository
+import java.util.Locale
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -19,6 +22,9 @@ class OdsayRouteEstimateProvider(
     private val api: OdsayApi,
     private val config: RemoteApiConfig,
     private val transitArrivalProvider: TransitArrivalProvider? = null,
+    private val routeRealtimeSnapshotRepository: RouteRealtimeSnapshotRepository? = null,
+    private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
+    private val snapshotTtlMillis: Long = DEFAULT_SNAPSHOT_TTL_MILLIS,
 ) : RouteEstimateProvider {
     override suspend fun getRouteEstimate(
         origin: Destination,
@@ -58,27 +64,78 @@ class OdsayRouteEstimateProvider(
             response.error?.msg ?: "ODsay route estimate was empty."
         }
 
-        val realtimeArrival = path.firstTransitArrivalQuery()?.let { query ->
+        val transitArrivalQuery = path.firstTransitArrivalQuery()
+        val snapshotCacheKey = transitArrivalQuery?.toSnapshotCacheKey(
+            origin = origin,
+            destination = destination,
+            totalTime = totalTime,
+        )
+        val now = nowEpochMillis()
+        cleanupExpiredSnapshots(now)
+
+        val realtimeArrival = transitArrivalQuery?.let { query ->
             runCatching {
                 transitArrivalProvider?.getArrivalEstimate(query)
             }.getOrNull()
         }
-        val realtimeDelayMinutes = realtimeArrival?.extraDelayMinutes().orZero()
-        val estimatedMinutes = totalTime + realtimeDelayMinutes
+
+        if (realtimeArrival != null) {
+            val realtimeDelayMinutes = realtimeArrival.extraDelayMinutes()
+            val estimatedMinutes = totalTime + realtimeDelayMinutes
+            snapshotCacheKey?.let { cacheKey ->
+                saveRealtimeSnapshot(
+                    cacheKey = cacheKey,
+                    baseRouteDurationMinutes = totalTime,
+                    estimatedMinutes = estimatedMinutes,
+                    realtimeDelayMinutes = realtimeDelayMinutes,
+                    realtimeArrival = realtimeArrival,
+                    capturedAtEpochMillis = now,
+                )
+            }
+
+            return RouteEstimate(
+                estimatedMinutes = estimatedMinutes,
+                summary = "${origin.name} to ${destination.name} transit estimate ${estimatedMinutes} min",
+                providerName = "ODsay + ${realtimeArrival.providerName}",
+                reason = buildOdsayReason(
+                    pathInfo = pathInfo,
+                    realtimeArrival = realtimeArrival,
+                    realtimeDelayMinutes = realtimeDelayMinutes,
+                ),
+            )
+        }
+
+        val cachedSnapshot = snapshotCacheKey?.let { cacheKey ->
+            findFreshSnapshot(
+                cacheKey = cacheKey,
+                nowEpochMillis = now,
+            )
+        }
+        val estimatedMinutes = cachedSnapshot?.adjustedRouteDurationMinutes ?: totalTime
 
         return RouteEstimate(
             estimatedMinutes = estimatedMinutes,
             summary = "${origin.name} to ${destination.name} transit estimate ${estimatedMinutes} min",
-            providerName = if (realtimeArrival != null) {
-                "ODsay + ${realtimeArrival.providerName}"
+            providerName = if (cachedSnapshot != null) {
+                "ODsay + ${cachedSnapshot.providerName} snapshot"
             } else {
                 "ODsay"
             },
-            reason = buildOdsayReason(
-                pathInfo = pathInfo,
-                realtimeArrival = realtimeArrival,
-                realtimeDelayMinutes = realtimeDelayMinutes,
-            ),
+            reason = if (cachedSnapshot != null) {
+                buildCachedSnapshotReason(
+                    pathInfo = pathInfo,
+                    snapshot = cachedSnapshot,
+                )
+            } else {
+                buildOdsayReason(
+                    pathInfo = pathInfo,
+                    realtimeArrival = null,
+                    realtimeDelayMinutes = 0,
+                )
+            },
+            statusMessage = cachedSnapshot?.let {
+                "실시간 도착정보를 새로 확인하지 못해 최근 성공 보정값을 사용했습니다."
+            },
         )
     }
 
@@ -107,6 +164,63 @@ class OdsayRouteEstimateProvider(
         ).filterNotNull().joinToString(" ")
     }
 
+    private fun buildCachedSnapshotReason(
+        pathInfo: OdsayPathInfo,
+        snapshot: RouteRealtimeSnapshot,
+    ): String {
+        return listOf(
+            buildOdsayReason(
+                pathInfo = pathInfo,
+                realtimeArrival = null,
+                realtimeDelayMinutes = 0,
+            ),
+            "Cached realtime snapshot added ${snapshot.realtimeDelayMinutes} min delay.",
+            snapshot.summary.takeIf(String::isNotBlank),
+        ).filterNotNull().joinToString(" ")
+    }
+
+    private suspend fun saveRealtimeSnapshot(
+        cacheKey: String,
+        baseRouteDurationMinutes: Int,
+        estimatedMinutes: Int,
+        realtimeDelayMinutes: Int,
+        realtimeArrival: TransitArrivalEstimate,
+        capturedAtEpochMillis: Long,
+    ) {
+        val snapshot = RouteRealtimeSnapshot(
+            cacheKey = cacheKey,
+            baseRouteDurationMinutes = baseRouteDurationMinutes,
+            adjustedRouteDurationMinutes = estimatedMinutes,
+            realtimeDelayMinutes = realtimeDelayMinutes,
+            providerName = realtimeArrival.providerName,
+            summary = realtimeArrival.summary,
+            reason = realtimeArrival.reason,
+            capturedAtEpochMillis = capturedAtEpochMillis,
+            expiresAtEpochMillis = capturedAtEpochMillis + snapshotTtlMillis,
+        )
+        runCatching {
+            routeRealtimeSnapshotRepository?.saveSnapshot(snapshot)
+        }
+    }
+
+    private suspend fun findFreshSnapshot(
+        cacheKey: String,
+        nowEpochMillis: Long,
+    ): RouteRealtimeSnapshot? {
+        return runCatching {
+            routeRealtimeSnapshotRepository?.findFreshSnapshot(
+                cacheKey = cacheKey,
+                nowEpochMillis = nowEpochMillis,
+            )
+        }.getOrNull()
+    }
+
+    private suspend fun cleanupExpiredSnapshots(nowEpochMillis: Long) {
+        runCatching {
+            routeRealtimeSnapshotRepository?.deleteExpiredSnapshots(nowEpochMillis)
+        }
+    }
+
     private fun OdsayPath?.firstTransitArrivalQuery(): TransitArrivalQuery? {
         val transitSubPath = this?.subPath?.firstOrNull {
             it.trafficType == TRAFFIC_TYPE_SUBWAY || it.trafficType == TRAFFIC_TYPE_BUS
@@ -133,11 +247,56 @@ class OdsayRouteEstimateProvider(
         }
     }
 
+    private fun TransitArrivalQuery.toSnapshotCacheKey(
+        origin: Destination,
+        destination: Destination,
+        totalTime: Int,
+    ): String {
+        return listOf(
+            "transit",
+            origin.latitude.cacheCoordinate(),
+            origin.longitude.cacheCoordinate(),
+            destination.latitude.cacheCoordinate(),
+            destination.longitude.cacheCoordinate(),
+            totalTime.toString(),
+            toCachePart(),
+        ).joinToString("|")
+    }
+
+    private fun TransitArrivalQuery.toCachePart(): String {
+        return when (this) {
+            is TransitArrivalQuery.Bus -> listOf(
+                "bus",
+                stationName.cacheValue(),
+                stationId.cacheValue(),
+                stationArsId.cacheValue(),
+                busRouteId.cacheValue(),
+                routeName.cacheValue(),
+            )
+            is TransitArrivalQuery.Subway -> listOf(
+                "subway",
+                stationName.cacheValue(),
+                lineName.cacheValue(),
+                direction.cacheValue(),
+            )
+        }.joinToString(":")
+    }
+
+    private fun Double?.cacheCoordinate(): String {
+        return this?.let { String.format(Locale.US, "%.5f", it) } ?: "_"
+    }
+
+    private fun String?.cacheValue(): String {
+        return this
+            ?.trim()
+            ?.lowercase(Locale.US)
+            ?.takeIf(String::isNotBlank)
+            ?: "_"
+    }
+
     private fun TransitArrivalEstimate.extraDelayMinutes(): Int {
         return (waitMinutes - PLANNED_WAIT_BASELINE_MINUTES).coerceAtLeast(0)
     }
-
-    private fun Int?.orZero(): Int = this ?: 0
 
     private fun JsonElement?.asString(): String? {
         val primitive = this as? JsonPrimitive ?: return null
@@ -150,5 +309,6 @@ class OdsayRouteEstimateProvider(
         const val TRAFFIC_TYPE_SUBWAY = 1
         const val TRAFFIC_TYPE_BUS = 2
         const val PLANNED_WAIT_BASELINE_MINUTES = 5
+        const val DEFAULT_SNAPSHOT_TTL_MILLIS = 20 * 60 * 1000L
     }
 }

@@ -8,14 +8,16 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [RoutineEntity::class, CommuteRecordEntity::class],
-    version = 3,
+    entities = [RoutineEntity::class, CommuteRecordEntity::class, RouteRealtimeSnapshotEntity::class],
+    version = 4,
     exportSchema = false,
 )
 abstract class MapMateDatabase : RoomDatabase() {
     abstract fun routineDao(): RoutineDao
 
     abstract fun commuteRecordDao(): CommuteRecordDao
+
+    abstract fun routeRealtimeSnapshotDao(): RouteRealtimeSnapshotDao
 
     companion object {
         private const val DATABASE_NAME = "mapmate.db"
@@ -30,7 +32,7 @@ abstract class MapMateDatabase : RoomDatabase() {
                     MapMateDatabase::class.java,
                     DATABASE_NAME,
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }
@@ -67,6 +69,33 @@ abstract class MapMateDatabase : RoomDatabase() {
                     """.trimIndent(),
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_commute_records_routineId ON commute_records(routineId)")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS route_realtime_snapshots (
+                        cacheKey TEXT NOT NULL,
+                        baseRouteDurationMinutes INTEGER NOT NULL,
+                        adjustedRouteDurationMinutes INTEGER NOT NULL,
+                        realtimeDelayMinutes INTEGER NOT NULL,
+                        providerName TEXT NOT NULL,
+                        summary TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        capturedAtEpochMillis INTEGER NOT NULL,
+                        expiresAtEpochMillis INTEGER NOT NULL,
+                        PRIMARY KEY(cacheKey)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_route_realtime_snapshots_expiresAtEpochMillis
+                    ON route_realtime_snapshots(expiresAtEpochMillis)
+                    """.trimIndent(),
+                )
             }
         }
     }

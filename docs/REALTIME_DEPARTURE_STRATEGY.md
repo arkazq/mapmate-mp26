@@ -227,14 +227,13 @@ ODsay가 이미 사용자가 실제로 걸어갈 첫 탑승 정류장을 선택�
 ```kotlin
 fun isFreshSnapshot(
     snapshot: RouteRealtimeSnapshot,
-    now: LocalDateTime,
-    maxAgeMinutes: Long = 20,
+    nowEpochMillis: Long,
 ): Boolean {
-    return Duration.between(snapshot.checkedAt, now).toMinutes() <= maxAgeMinutes
+    return snapshot.expiresAtEpochMillis >= nowEpochMillis
 }
 ```
 
-최종 알림 재예약에는 10~20분 정도의 짧은 유효기간을 사용합니다. 유효기간이 지난 스냅샷은 `STALE_SNAPSHOT_FALLBACK`으로 처리하고 ODsay 기본 예상시간을 사용합니다.
+현재 구현은 20분 TTL을 사용합니다. 유효기간이 지난 스냅샷은 조회 전에 정리하고 ODsay 기본 예상시간을 사용합니다.
 
 ## Fallback 기준
 
@@ -301,9 +300,9 @@ data class CommuteHistory(
 3. TAGO 정류소정보 provider
 4. TAGO 도착정보 provider
 5. 노선번호 정규화와 매칭 점수식
-6. `RouteRealtimeSnapshot` 저장
+6. `RouteRealtimeSnapshot` 저장 (구현 완료)
 7. `adjustedRouteDurationMinutes` 계산
-8. fallback과 stale 처리
+8. fallback과 stale 처리 (20분 이내 fresh snapshot 재사용 구현 완료)
 9. `finalDepartureTime < now` clamp 처리
 10. `AlarmManager` 기본 알림
 11. `WorkManager` 출발 전 재조회
