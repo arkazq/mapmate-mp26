@@ -38,6 +38,23 @@ function Format-KeyState {
     return "${Name}: present (length=$($Value.Length))"
 }
 
+function Invoke-ApiCheck {
+    param(
+        [string]$Name,
+        [scriptblock]$Check
+    )
+
+    try {
+        & $Check
+    } catch {
+        $message = $_.ErrorDetails.Message
+        if ([string]::IsNullOrWhiteSpace($message)) {
+            $message = $_.Exception.Message
+        }
+        Write-Output "${Name}: failed, $message"
+    }
+}
+
 function Invoke-KakaoKeywordSearch {
     param([string]$ApiKey)
 
@@ -111,14 +128,20 @@ Write-Output (Format-KeyState -Name "KAKAO_REST_API_KEY" -Value $kakaoKey)
 Write-Output (Format-KeyState -Name "ODSAY_API_KEY" -Value $odsayKey)
 
 if (-not [string]::IsNullOrWhiteSpace($kakaoKey)) {
-    Invoke-KakaoKeywordSearch -ApiKey $kakaoKey
-    Invoke-KakaoReverseGeocode -ApiKey $kakaoKey
+    Invoke-ApiCheck -Name "Kakao keyword search" -Check {
+        Invoke-KakaoKeywordSearch -ApiKey $kakaoKey
+    }
+    Invoke-ApiCheck -Name "Kakao reverse geocode" -Check {
+        Invoke-KakaoReverseGeocode -ApiKey $kakaoKey
+    }
 } else {
     Write-Output "Kakao API validation: skipped because KAKAO_REST_API_KEY is missing"
 }
 
 if (-not [string]::IsNullOrWhiteSpace($odsayKey)) {
-    Invoke-OdsayTransitRoute -ApiKey $odsayKey
+    Invoke-ApiCheck -Name "ODsay transit route" -Check {
+        Invoke-OdsayTransitRoute -ApiKey $odsayKey
+    }
 } else {
     Write-Output "ODsay API validation: skipped because ODSAY_API_KEY is missing"
 }
