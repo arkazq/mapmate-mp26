@@ -13,7 +13,7 @@
 - `SeoulSubwayRealtimeArrivalProvider` 구현: 서울 지하철 실시간 도착정보로 첫 지하철 대기 시간 보정
 - `GoogleRoutesEstimateProvider` 구현: Google Routes API 경로 시간 조회 사용
 - `FallbackPlaceSearchProvider` 구현: Kakao 실패 또는 빈 결과 시 mock 장소 후보 사용
-- `FallbackRouteEstimateProvider` 구현: ODsay/Google 실패 시 mock 이동 시간 사용
+- `FallbackRouteEstimateProvider` 구현: ODsay/Google 실패 시 mock 이동 시간 사용, fallback 사유를 사용자용 상태 메시지로 요약
 - 루틴 등록 화면에서 출발지를 Kakao 장소 검색으로 선택 가능
 - 루틴 등록 화면에서 Android 현재 위치 권한을 받아 휴대폰 위치를 출발지로 설정하고, Kakao 키가 있으면 좌표를 주소로 변환 가능
 - Retrofit2와 Kotlinx Serialization 사용
@@ -82,7 +82,7 @@ ODsay 대중교통 길찾기 API의 `totalTime`은 대중교통 경로의 기본
 12. 이동 기록 저장 시 목표 대비 도착 오차를 개인 보정값에 반영합니다. 현재는 한 번의 기록이 보정값을 과도하게 흔들지 않도록 최대 ±5분 범위에서 조정합니다.
 13. 자동차 모드는 Google Routes `TRAFFIC_AWARE` 옵션을 별도 provider 정책으로 적용합니다.
 
-MVP에서는 실시간 API가 실패해도 기존 `ODsay/Google Routes → Mock fallback` 흐름을 유지해야 합니다. 실시간 API 결과는 권장 출발 시각을 보정하는 추가 입력값으로만 사용하고, 추천 공식 자체는 변경하지 않습니다.
+MVP에서는 실시간 API가 실패해도 기존 `ODsay/Google Routes → Mock fallback` 흐름을 유지해야 합니다. 실시간 API 결과는 권장 출발 시각을 보정하는 추가 입력값으로만 사용하고, 추천 공식 자체는 변경하지 않습니다. 실제 경로 API가 mock fallback으로 내려가면 화면에는 기본 예상 시간을 사용했다는 상태와 요약 사유만 표시합니다.
 
 자세한 실시간 출발 시각 보정 기준은 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 따릅니다.
 
@@ -135,7 +135,7 @@ origin + destination + transportMode
 - 버스 위치정보와 지하철 열차 위치정보는 아직 provider로 구현되어 있지 않습니다.
 - 실시간 보정 결과를 저장하는 `RouteRealtimeSnapshot` 저장 구조는 아직 없습니다.
 - TAGO 버스정류소정보와 TAGO 버스도착정보 provider는 아직 구현되어 있지 않습니다.
-- ODsay/Google API 실패 이유는 UI에 세부 노출하지 않고 mock fallback으로 복구합니다.
+- ODsay/Google API 실패 이유는 상세 예외문 대신 `API key 없음`, `좌표 없음`, `이동수단 미지원`, `경로 없음`, `요청 실패` 수준의 사용자용 메시지로 요약하고 mock fallback으로 복구합니다.
 - API 응답 캐시나 유효기간이 있는 마지막 성공 보정값 fallback은 아직 없습니다.
 - 실제 API 키는 저장소에 포함하지 않습니다.
 - 현재 위치 주소 역지오코딩은 Kakao 키와 네트워크가 유효할 때만 성공하므로, 실패 시에는 `현재 위치` 이름과 fallback 주소를 저장합니다.
@@ -151,6 +151,6 @@ origin + destination + transportMode
 5. `adjustedRouteDurationMinutes` 계산과 `finalDepartureTime < now` clamp 처리를 추가합니다.
 6. 버스 실시간 위치정보와 지하철 열차 위치정보 provider를 추가해 도착정보 보조와 운행 상태 표시를 강화합니다.
 7. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결하고, 자동차 모드에는 `TRAFFIC_AWARE` 정책을 검토합니다.
-8. API 실패/좌표 없음/실시간 매칭 실패 상태를 사용자가 이해할 수 있는 UI 메시지로 분리합니다.
+8. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
 9. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
 10. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.

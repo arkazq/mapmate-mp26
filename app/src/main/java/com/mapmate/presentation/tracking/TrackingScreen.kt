@@ -46,6 +46,7 @@ import com.mapmate.presentation.common.MapMateIcon
 import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
 import com.mapmate.presentation.common.MetricRow
+import com.mapmate.presentation.common.RouteEstimateStatusMessage
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.SectionCard
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
@@ -393,6 +394,7 @@ private fun CurrentMovementCard(
             ) {
                 MetricRow(label = "현재 위치", value = "${recommendation.routine.origin.name} 근처")
                 MetricRow(label = "예상 소요 시간", value = "${recommendation.routeDurationMinutes}분")
+                RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
             }
         }
     }

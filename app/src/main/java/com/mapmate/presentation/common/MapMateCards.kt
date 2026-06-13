@@ -763,6 +763,8 @@ fun RoutineCard(
             )
             RoutineFactRow(icon = transportModeIcon(routine.transportMode), label = "교통수단", value = routine.transportMode.toKoreanLabel())
 
+            RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
+
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -922,10 +924,50 @@ fun MetricRow(
 }
 
 @Composable
+fun RouteEstimateStatusMessage(
+    message: String?,
+    modifier: Modifier = Modifier,
+    inverse: Boolean = false,
+) {
+    val visibleMessage = message?.takeIf(String::isNotBlank) ?: return
+    val containerColor = if (inverse) {
+        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.12f)
+    } else {
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.68f)
+    }
+    val contentColor = if (inverse) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onErrorContainer
+    }
+    val borderColor = if (inverse) {
+        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.18f)
+    } else {
+        MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
+    }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Text(
+            text = visibleMessage,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = contentColor,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
 fun CompactRoutineCard(
     routine: Routine,
     recommendationText: String,
     targetArrivalTimeText: String,
+    statusMessage: String? = null,
     modifier: Modifier = Modifier,
     onManageClick: () -> Unit,
     onDetailClick: () -> Unit,
@@ -960,6 +1002,7 @@ fun CompactRoutineCard(
                     Text("루틴 관리")
                 }
             }
+            RouteEstimateStatusMessage(message = statusMessage)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

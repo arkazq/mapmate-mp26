@@ -5,4 +5,6 @@ data class RouteEstimate(
     val summary: String,
     val providerName: String,
     val reason: String,
+    val isFallbackEstimate: Boolean = false,
+    val statusMessage: String? = null,
 )

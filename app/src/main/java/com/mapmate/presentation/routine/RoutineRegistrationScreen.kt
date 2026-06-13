@@ -60,6 +60,7 @@ import com.mapmate.presentation.common.MapMateIcon
 import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
 import com.mapmate.presentation.common.MetricRow
+import com.mapmate.presentation.common.RouteEstimateStatusMessage
 import com.mapmate.presentation.common.SectionCard
 import com.mapmate.presentation.common.TransportModeSelector as CommonTransportModeSelector
 import com.mapmate.ui.theme.MapMateTheme
@@ -466,6 +467,10 @@ private fun ResultArea(uiState: RoutineRegistrationUiState) {
                         text = it.reason,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
+                    )
+                    RouteEstimateStatusMessage(
+                        message = it.statusMessage,
+                        inverse = true,
                     )
                 }
             } else {
