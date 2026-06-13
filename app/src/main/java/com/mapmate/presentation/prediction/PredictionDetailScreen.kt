@@ -43,6 +43,7 @@ import com.mapmate.presentation.common.MapMateSpacing
 import com.mapmate.presentation.common.NotificationCircle
 import com.mapmate.presentation.common.RouteTimeline
 import com.mapmate.presentation.common.RouteTimelineItem
+import com.mapmate.presentation.common.RouteEstimateStatusMessage
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.SectionCard
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
@@ -181,6 +182,7 @@ private fun CompactCalculationBasisCard(
                     fontWeight = FontWeight.Bold,
                 )
             }
+            RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
             CompactCalculationLine(text = "${recommendation.targetArrivalTimeText} 도착 목표")
             CompactCalculationLine(text = "-${recommendation.routeDurationMinutes}분 예상 이동 시간")
             CompactCalculationLine(text = "-${recommendation.personalBufferMinutes}분 개인 보정 시간")

@@ -40,6 +40,7 @@ import com.mapmate.presentation.common.MapMateIcon
 import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
 import com.mapmate.presentation.common.NotificationCircle
+import com.mapmate.presentation.common.RouteEstimateStatusMessage
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.ScreenHeader
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
@@ -124,6 +125,9 @@ fun HomeScreen(
                 RecommendationReasonCard()
             }
             item {
+                RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
+            }
+            item {
                 CompactMetricCards(recommendation = recommendation)
             }
             item {
@@ -138,6 +142,7 @@ fun HomeScreen(
                     routine = recommendation.routine,
                     recommendationText = recommendation.recommendedDepartureTimeText,
                     targetArrivalTimeText = recommendation.targetArrivalTimeText,
+                    statusMessage = recommendation.routeStatusMessage,
                     onManageClick = onRoutinesClick,
                     onDetailClick = { onPredictionClick(recommendation.routine) },
                 )

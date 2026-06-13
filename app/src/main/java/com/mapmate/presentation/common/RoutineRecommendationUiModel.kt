@@ -15,6 +15,8 @@ data class RoutineRecommendationUiModel(
     val safetyMarginMinutes: Int,
     val routeSummary: String,
     val reason: String,
+    val isFallbackEstimate: Boolean = false,
+    val routeStatusMessage: String? = null,
 )
 
 fun Routine.toRecommendationUiModel(
@@ -40,6 +42,8 @@ fun Routine.toRecommendationUiModel(
         reason = routeEstimate.reason.ifBlank {
             "기본 예상 이동 시간과 보정 ${personalBufferMinutes}분 반영"
         },
+        isFallbackEstimate = routeEstimate.isFallbackEstimate,
+        routeStatusMessage = routeEstimate.statusMessage,
     )
 }
 
@@ -56,6 +60,8 @@ fun Routine.toFallbackRecommendationUiModel(
         summary = "${origin.name}에서 ${destination.name}까지 ${transportMode.toKoreanLabel()} 기준 ${estimatedMinutes}분 예상",
         providerName = "MapMateFallback",
         reason = "기본 예상 이동 시간과 보정 ${personalBufferMinutes}분 반영",
+        isFallbackEstimate = true,
+        statusMessage = "경로 계산에 실패해 기본 예상 시간을 사용했습니다.",
     )
 
     return toRecommendationUiModel(

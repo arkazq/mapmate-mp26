@@ -6,6 +6,8 @@ import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FallbackRouteEstimateProviderTest {
@@ -34,6 +36,8 @@ class FallbackRouteEstimateProviderTest {
         )
 
         assertEquals(primaryEstimate, result)
+        assertEquals(false, result.isFallbackEstimate)
+        assertNull(result.statusMessage)
     }
 
     @Test
@@ -55,7 +59,11 @@ class FallbackRouteEstimateProviderTest {
             transportMode = TransportMode.TRANSIT,
         )
 
-        assertEquals(fallbackEstimate, result)
+        assertEquals(fallbackEstimate.estimatedMinutes, result.estimatedMinutes)
+        assertEquals(fallbackEstimate.providerName, result.providerName)
+        assertTrue(result.isFallbackEstimate)
+        assertTrue(result.statusMessage.orEmpty().contains("기본 예상 시간"))
+        assertTrue(result.statusMessage.orEmpty().contains("Failing"))
     }
 
     private object FailingRouteEstimateProvider : RouteEstimateProvider {

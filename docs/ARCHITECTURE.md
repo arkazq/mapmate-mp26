@@ -132,7 +132,7 @@ com.mapmate
 - `RoutineSummaryCard`: 저장된 루틴 요약 카드 표시
 - `RoutineDisplayLabels`: 요일과 이동 수단의 한국어 표시 문자열 제공
 - `MapMateScaffold`: 앱 공통 Scaffold와 하단 내비게이션 제공
-- `MapMateCards`: 화면 헤더, 섹션 카드, 히어로 카드, 계산/타임라인/루틴 카드 등 공통 Compose UI 제공
+- `MapMateCards`: 화면 헤더, 섹션 카드, 히어로 카드, 계산/타임라인/루틴 카드, 경로 fallback 상태 메시지 등 공통 Compose UI 제공
 - `MapMateSelectors`: 요일과 이동수단 선택 UI 제공
 - `MapMateIcon`: 로컬 vector drawable 기반 아이콘 래퍼 제공
 - `MapMateDesign`: 화면 여백, 카드 radius, elevation 등 presentation 전용 디자인 토큰 제공
@@ -208,7 +208,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 - `Destination`: 장소 이름, 주소, 위도, 경도
 - `TransportMode`: `TRANSIT`, `WALK`, `CAR`
 - `RepeatDay`: `MONDAY`부터 `SUNDAY`
-- `RouteEstimate`: 예상 이동 시간, 요약, provider 이름, 계산 사유
+- `RouteEstimate`: 예상 이동 시간, 요약, provider 이름, 계산 사유, fallback 여부, 사용자용 상태 메시지
 - `TransitArrivalQuery`: ODsay 첫 탑승 구간에서 추출한 버스/지하철 실시간 도착정보 조회 입력값
 - `TransitArrivalEstimate`: 실시간 도착정보 provider가 반환하는 첫 대기 시간, 요약, provider 이름, 계산 사유
 
@@ -383,7 +383,7 @@ User input
 - 외부 API는 provider interface 뒤에 숨깁니다.
 - 로컬 저장은 repository interface 뒤에 숨깁니다.
 - 앱 수준 의존성 생성은 `AppContainer`에 모읍니다.
-- 실제 API provider는 fallback provider 뒤에 두고, 키 누락/호출 실패 시 mock provider 결과로 복구합니다.
+- 실제 API provider는 fallback provider 뒤에 두고, 키 누락/호출 실패 시 mock provider 결과로 복구합니다. 경로 fallback은 UI 모델로 전달되어 주요 화면에 상태 메시지로 표시됩니다.
 - domain 계층에는 Android, Compose, Room, Retrofit 의존성을 넣지 않습니다.
 
 ## 앞으로 확장할 영역

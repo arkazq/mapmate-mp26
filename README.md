@@ -68,6 +68,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - ODsay 첫 탑승 구간 기준 서울 버스/지하철 실시간 도착정보 조회 및 지연 보정
 - ODsay / Google Routes / Mock 이동 시간 기반 권장 출발 시각 계산
 - 실제 경로 API 실패 시 Mock 이동 시간 fallback
+- 실제 경로 API 실패/좌표 누락/미지원 이동수단 fallback 상태 메시지 표시
 - Room DB 기반 루틴 저장
 - Room DB 기반 출발지 / 목적지 저장
 - 입력 검증 오류 표시
@@ -106,6 +107,11 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - `ReverseGeocodingProvider`와 `KakaoReverseGeocodingProvider`를 추가해 현재 위치 좌표를 읽기 쉬운 주소로 변환
   - 키 누락/호출 실패 시 기존 현재 위치 fallback 주소를 유지
   - `scripts/verify-local-apis.ps1`로 로컬 `local.properties` 기반 실제 Kakao/ODsay 호출 검증 가능
+- `codex/api-status-messages`
+  - `RouteEstimate`와 추천 UI 모델에 fallback 여부와 사용자용 상태 메시지 필드 추가
+  - ODsay/Google Routes 실패 시 `API key 없음`, `좌표 없음`, `이동수단 미지원`, `경로 없음`, `요청 실패` 수준으로 사유를 요약
+  - 루틴 등록 결과, 홈, 루틴 목록, 상세 예측, 이동 기록 화면에서 fallback 상태 메시지 표시
+  - ODsay API 호출 없이 단위 테스트와 임시 clean copy 기준 `./gradlew.bat build`로 검증
 
 검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
 
