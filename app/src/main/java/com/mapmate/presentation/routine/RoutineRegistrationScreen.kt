@@ -439,10 +439,18 @@ private fun ResultArea(uiState: RoutineRegistrationUiState) {
 
             if (uiState.hasCalculationResult) {
                 Text(
-                    text = "${uiState.recommendedDepartureTimeText} 출발",
+                    text = if (uiState.isImmediateDepartureRecommended) {
+                        uiState.recommendedDepartureDisplayText
+                    } else {
+                        "${uiState.recommendedDepartureDisplayText} 출발"
+                    },
                     style = MaterialTheme.typography.displaySmall,
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontWeight = FontWeight.Bold,
+                )
+                RouteEstimateStatusMessage(
+                    message = uiState.departureStatusMessage,
+                    inverse = true,
                 )
                 uiState.routeEstimate?.let {
                     MetricRow(
@@ -607,6 +615,7 @@ private fun RoutineRegistrationScreenPreview() {
                     reason = "Mock 대중교통 예상 시간입니다.",
                 ),
                 recommendedDepartureTimeText = "08:07",
+                calculatedDepartureTimeText = "08:07",
             ),
             onEvent = {},
             onBackClick = {},

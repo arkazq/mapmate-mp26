@@ -28,6 +28,8 @@ data class RoutineRegistrationUiState(
     val safetyMarginMinutes: String = AppSettings.DEFAULT_SAFETY_MARGIN_MINUTES.toString(),
     val routeEstimate: RouteEstimate? = null,
     val recommendedDepartureTimeText: String = "",
+    val calculatedDepartureTimeText: String = "",
+    val isImmediateDepartureRecommended: Boolean = false,
     val errorMessage: String? = null,
     val successMessage: String? = null,
     val isGettingCurrentLocation: Boolean = false,
@@ -41,4 +43,14 @@ data class RoutineRegistrationUiState(
 
     val hasCalculationResult: Boolean
         get() = routeEstimate != null && recommendedDepartureTimeText.isNotBlank()
+
+    val recommendedDepartureDisplayText: String
+        get() = if (isImmediateDepartureRecommended) "지금 출발" else recommendedDepartureTimeText
+
+    val departureStatusMessage: String?
+        get() = if (isImmediateDepartureRecommended) {
+            "계산상 출발 시각 $calculatedDepartureTimeText 이 이미 지나 지금 출발하는 것으로 표시했습니다."
+        } else {
+            null
+        }
 }

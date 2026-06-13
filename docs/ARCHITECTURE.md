@@ -232,7 +232,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 
 순수 계산 로직을 담당합니다.
 
-- `DepartureTimeCalculator`: 목표 도착 시각에서 예상 이동 시간, 개인 보정 시간, 안전 여유 시간을 빼서 권장 출발 시각을 계산
+- `DepartureTimeCalculator`: 목표 도착 시각에서 예상 이동 시간, 개인 보정 시간, 안전 여유 시간을 빼서 권장 출발 시각을 계산하고, 오늘 권장 출발 시각이 이미 지났지만 목표 도착 시각이 아직 남은 경우 `지금 출발` 상태로 보정
 
 계산 공식은 다음과 같습니다.
 
@@ -372,7 +372,7 @@ User input
 5. 출발지/목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
 6. 현재 위치 출발지는 `CurrentLocationProvider`가 좌표를 가져오고, Kakao 키가 있으면 `ReverseGeocodingProvider`로 주소 변환을 시도합니다.
 7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로에서 첫 탑승 구간을 추출할 수 있으면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정하고, 성공값은 `RouteRealtimeSnapshotRepository`에 저장합니다. 실시간 조회/매칭이 실패하면 20분 이내 fresh snapshot이 있을 때만 마지막 성공 보정값을 재사용합니다.
-8. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다.
+8. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다. 계산 결과가 이미 지난 시간이면서 목표 도착 시각이 아직 남아 있으면 UI 모델은 `지금 출발`로 표시하고, 알림 플래너는 즉시 알림을 예약합니다.
 9. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
 10. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
 11. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.

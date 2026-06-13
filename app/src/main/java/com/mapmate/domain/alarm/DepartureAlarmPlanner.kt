@@ -4,8 +4,10 @@ import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
 import java.time.DayOfWeek
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 
 class DepartureAlarmPlanner(
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
@@ -38,7 +40,7 @@ class DepartureAlarmPlanner(
             personalBufferMinutes = routine.personalBufferMinutes,
             safetyMarginMinutes = routine.safetyMarginMinutes,
         )
-        val triggerAt = nextTriggerDateTime(
+        val nextTrigger = nextTriggerDateTime(
             repeatDays = routine.repeatDays,
             targetArrivalTime = routine.targetArrivalTime,
             recommendedDepartureTime = recommendedDepartureTime,
@@ -50,18 +52,18 @@ class DepartureAlarmPlanner(
             routineName = routine.name,
             destinationName = routine.destination.name,
             targetArrivalTime = routine.targetArrivalTime,
-            recommendedDepartureTime = recommendedDepartureTime,
+            recommendedDepartureTime = nextTrigger.recommendedDepartureTime,
             routeDurationMinutes = routeDurationMinutes,
-            triggerAtEpochMillis = triggerAt.toInstant().toEpochMilli(),
+            triggerAtEpochMillis = nextTrigger.triggerAt.toInstant().toEpochMilli(),
         )
     }
 
     private fun nextTriggerDateTime(
         repeatDays: Set<RepeatDay>,
-        targetArrivalTime: java.time.LocalTime,
-        recommendedDepartureTime: java.time.LocalTime,
+        targetArrivalTime: LocalTime,
+        recommendedDepartureTime: LocalTime,
         now: ZonedDateTime,
-    ): ZonedDateTime? {
+    ): NextDepartureAlarmTrigger? {
         val repeatDayOfWeeks = repeatDays.mapTo(mutableSetOf()) { it.toDayOfWeek() }
         if (repeatDayOfWeeks.isEmpty()) return null
 
@@ -75,12 +77,30 @@ class DepartureAlarmPlanner(
                 } else {
                     arrivalDate
                 }
-                departureDate.atTime(recommendedDepartureTime).atZone(now.zone)
+                val plannedTriggerAt = departureDate.atTime(recommendedDepartureTime).atZone(now.zone)
+                val arrivalAt = arrivalDate.atTime(targetArrivalTime).atZone(now.zone)
+
+                if (plannedTriggerAt.isBefore(now) && !arrivalAt.isBefore(now)) {
+                    NextDepartureAlarmTrigger(
+                        triggerAt = now,
+                        recommendedDepartureTime = now.toLocalTime().truncatedTo(ChronoUnit.MINUTES),
+                    )
+                } else {
+                    NextDepartureAlarmTrigger(
+                        triggerAt = plannedTriggerAt,
+                        recommendedDepartureTime = recommendedDepartureTime,
+                    )
+                }
             }
-            .firstOrNull { triggerAt -> triggerAt.isAfter(now) }
+            .firstOrNull { trigger -> !trigger.triggerAt.isBefore(now) }
     }
 
     private fun RepeatDay.toDayOfWeek(): DayOfWeek {
         return DayOfWeek.valueOf(name)
     }
+
+    private data class NextDepartureAlarmTrigger(
+        val triggerAt: ZonedDateTime,
+        val recommendedDepartureTime: LocalTime,
+    )
 }

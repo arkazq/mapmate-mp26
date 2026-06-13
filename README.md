@@ -117,6 +117,11 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - 실시간 도착정보가 실패/매칭 실패하면 20분 이내의 마지막 성공 보정값만 재사용
   - 만료된 스냅샷은 조회 전 정리하고, 만료 후에는 ODsay 기본 예상 시간으로 fallback
   - 실제 API 호출 없이 fake provider 기반 단위 테스트로 저장/재사용/만료 흐름 검증
+- `codex/departure-now-clamp`
+  - 권장 출발 시각이 현재 시각보다 이미 지났고 도착 목표가 아직 남아 있으면 `지금 출발`로 표시
+  - 루틴 등록, 홈, 루틴 목록, 상세 예측, 이동 기록 화면의 추천 출발 표시를 즉시 출발 상태에 맞게 정리
+  - AlarmManager 예약도 오늘 도착 목표가 아직 남은 경우 다음 주로 넘기지 않고 즉시 알림으로 처리
+  - 실제 API 호출 없이 계산기/알림 플래너/추천 UI 모델 단위 테스트로 검증
 
 검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
 
@@ -179,7 +184,7 @@ SEOUL_BUS_SERVICE_KEY=API_KEY_PLACEHOLDER
 
 API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
-현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 이동 시간을 보수적으로 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 20분 이내의 `RouteRealtimeSnapshot`을 먼저 재사용하고, 없거나 만료되면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다. 전국 버스 확장과 TAGO 기반 정류장 매칭 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 확인합니다.
+현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 이동 시간을 보수적으로 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 20분 이내의 `RouteRealtimeSnapshot`을 먼저 재사용하고, 없거나 만료되면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다. 보정 후 권장 출발 시각이 이미 지났고 목표 도착 시각이 아직 남아 있으면 앱은 `지금 출발` 상태로 표시합니다. 전국 버스 확장과 TAGO 기반 정류장 매칭 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 확인합니다.
 
 ## 브랜치 전략 요약
 

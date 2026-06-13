@@ -247,7 +247,7 @@ class RoutineRegistrationViewModel(
                 destination = validatedInput.destination,
                 transportMode = validatedInput.transportMode,
             )
-            val recommendedDepartureTime = departureTimeCalculator.calculate(
+            val departureRecommendation = departureTimeCalculator.calculateWithNowClamp(
                 targetArrivalTime = validatedInput.targetArrivalTime,
                 routeDurationMinutes = routeEstimate.estimatedMinutes,
                 personalBufferMinutes = validatedInput.personalBufferMinutes,
@@ -257,7 +257,9 @@ class RoutineRegistrationViewModel(
             _uiState.update {
                 it.copy(
                     routeEstimate = routeEstimate,
-                    recommendedDepartureTimeText = recommendedDepartureTime.format(timeFormatter),
+                    recommendedDepartureTimeText = departureRecommendation.recommendedDepartureTime.format(timeFormatter),
+                    calculatedDepartureTimeText = departureRecommendation.calculatedDepartureTime.format(timeFormatter),
+                    isImmediateDepartureRecommended = departureRecommendation.isImmediateDepartureRecommended,
                     isCalculating = false,
                     errorMessage = null,
                 )

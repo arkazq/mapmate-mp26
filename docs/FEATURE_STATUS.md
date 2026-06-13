@@ -16,8 +16,8 @@
 | 반복 요일 선택 | 완료 | 월~일 반복 요일을 선택/해제할 수 있습니다. | `presentation/common/MapMateSelectors.kt` |
 | 이동 수단 선택 | 완료 | `TRANSIT`, `WALK`, `CAR` 이동 수단을 선택할 수 있으며 설정 화면에서는 3개 카드가 동일 폭으로 배치됩니다. | `domain/model/TransportMode.kt`, `presentation/common/MapMateSelectors.kt` |
 | 권장 출발 시각 계산 | 완료 | 실제 경로 API 또는 mock 예상 이동 시간과 보정 시간을 기준으로 권장 출발 시각을 계산합니다. | `presentation/routine/RoutineRegistrationViewModel.kt` |
-| `DepartureTimeCalculator` | 완료 | 순수 Kotlin 계산기로 권장 출발 시각을 계산합니다. | `domain/calculator/DepartureTimeCalculator.kt` |
-| 계산 로직 테스트 | 완료 | 09:00, 42분, 6분, 5분 입력 시 08:07을 검증합니다. | `app/src/test/kotlin/com/mapmate/domain/calculator/DepartureTimeCalculatorTest.kt` |
+| `DepartureTimeCalculator` | 완료 | 순수 Kotlin 계산기로 권장 출발 시각을 계산하고, 계산 결과가 이미 지난 시간이면서 목표 도착 시각이 아직 남아 있으면 `지금 출발` 상태로 보정합니다. | `domain/calculator/DepartureTimeCalculator.kt` |
+| 계산 로직 테스트 | 완료 | 기본 권장 출발 시각, 즉시 출발 보정, 도착 목표가 이미 지난 경우를 검증합니다. | `app/src/test/kotlin/com/mapmate/domain/calculator/DepartureTimeCalculatorTest.kt`, `app/src/test/kotlin/com/mapmate/presentation/common/RoutineRecommendationUiModelTest.kt` |
 | Mock 장소 검색 provider | 완료 | `PlaceSearchProvider`의 mock 구현체가 있습니다. | `data/mock/MockPlaceSearchProvider.kt` |
 | Mock 이동 시간 provider | 완료 | 이동 수단별 고정 예상 시간을 반환합니다. | `data/mock/MockRouteEstimateProvider.kt` |
 | API fallback provider | 완료 | 실제 API 실패, 키 누락, 좌표 누락 시 기존 mock 결과로 복구하고, 경로 fallback은 사용자용 상태 메시지로 사유를 요약합니다. | `data/remote/provider/FallbackPlaceSearchProvider.kt`, `data/remote/provider/FallbackRouteEstimateProvider.kt`, `presentation/common/MapMateCards.kt` |
@@ -38,6 +38,7 @@
 | 알림 | 완료 | 알림 사용 여부는 DataStore에 저장하며, 켜져 있으면 저장된 루틴과 경로 예상 시간을 기준으로 가장 가까운 다음 출발 알림을 `AlarmManager`에 예약합니다. Android 13 이상에서는 알림 권한을 요청합니다. | `data/alarm`, `presentation/settings/SettingsScreen.kt`, `MainActivity.kt` |
 | WorkManager 재조회 | 완료 | 다음 출발 알림 30분 전에 unique one-time work를 예약해 경로 예상 시간을 다시 조회하고 알림/재조회 예약을 갱신합니다. | `data/alarm/AndroidDepartureRecheckScheduler.kt`, `data/alarm/DepartureRecheckWorker.kt` |
 | 실시간 보정 스냅샷 | 완료 | ODsay 첫 탑승 실시간 보정 성공 결과를 `RouteRealtimeSnapshot`으로 Room DB에 저장하고, 실시간 도착정보 실패/매칭 실패 시 20분 이내의 마지막 성공 보정값만 재사용합니다. | `domain/model/RouteRealtimeSnapshot.kt`, `data/local/RouteRealtimeSnapshotDao.kt`, `data/repository/RoomRouteRealtimeSnapshotRepository.kt`, `data/remote/provider/OdsayRouteEstimateProvider.kt` |
+| 지금 출발 권장 처리 | 완료 | 보정된 권장 출발 시각이 이미 지났고 목표 도착 시각이 아직 남아 있으면 루틴 등록/홈/루틴 목록/상세 예측/이동 기록 화면에 `지금 출발`로 표시하고, 출발 알림도 즉시 예약합니다. | `domain/calculator/DepartureTimeCalculator.kt`, `domain/alarm/DepartureAlarmPlanner.kt`, `presentation/common/RoutineRecommendationUiModel.kt` |
 | 상세 예측 화면 | 완료 | 권장 출발 시각, 계산 근거, 경로 요약을 표시하고 이동 기록 화면으로 진입합니다. | `presentation/prediction` |
 | 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 기록 흐름을 제공하고 도착 완료 시 Room에 기록을 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
 | 기록 완료 화면 UI | 완료 | 도착 액션 후 같은 페이지 내부 카드가 아니라 별도 기록 완료 화면으로 전환합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/MapMateApp.kt` |

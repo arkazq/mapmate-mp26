@@ -183,13 +183,14 @@ private fun CompactCalculationBasisCard(
                 )
             }
             RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
+            RouteEstimateStatusMessage(message = recommendation.departureStatusMessage)
             CompactCalculationLine(text = "${recommendation.targetArrivalTimeText} 도착 목표")
             CompactCalculationLine(text = "-${recommendation.routeDurationMinutes}분 예상 이동 시간")
             CompactCalculationLine(text = "-${recommendation.personalBufferMinutes}분 개인 보정 시간")
             CompactCalculationLine(text = "-${recommendation.safetyMarginMinutes}분 안전 여유 시간")
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
             CompactCalculationLine(
-                text = "=${recommendation.recommendedDepartureTimeText} 권장 출발 시각",
+                text = "=${recommendation.recommendedDepartureDisplayText} 권장 출발",
                 emphasized = true,
             )
             Surface(
@@ -208,7 +209,7 @@ private fun CompactCalculationBasisCard(
                     FormulaToken(text = "-")
                     FormulaToken(text = "${recommendation.personalBufferMinutes + recommendation.safetyMarginMinutes}분")
                     FormulaToken(text = "=")
-                    FormulaToken(text = recommendation.recommendedDepartureTimeText, emphasized = true)
+                    FormulaToken(text = recommendation.recommendedDepartureDisplayText, emphasized = true)
                 }
             }
         }
@@ -323,7 +324,7 @@ private fun PredictionHeroCard(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = recommendation.recommendedDepartureTimeText,
+                    text = recommendation.recommendedDepartureDisplayText,
                     style = MaterialTheme.typography.displaySmall,
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontWeight = FontWeight.Bold,
@@ -354,7 +355,7 @@ private fun predictionTimelineItems(
         RouteTimelineItem(
             title = routine.origin.name,
             description = "출발",
-            timeText = recommendation.recommendedDepartureTimeText,
+            timeText = recommendation.recommendedDepartureDisplayText,
             icon = MapMateIconType.Location,
         ),
         RouteTimelineItem(
