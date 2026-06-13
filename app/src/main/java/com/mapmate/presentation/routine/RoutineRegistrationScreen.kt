@@ -216,6 +216,15 @@ fun RoutineRegistrationScreen(
                     }
                 }
 
+                uiState.selectedOrigin
+                    ?.takeIf { selectedOrigin -> selectedOrigin !in uiState.originCandidates }
+                    ?.let { selectedOrigin ->
+                        SelectedDestinationSummary(
+                            label = "선택된 출발지",
+                            destination = selectedOrigin,
+                        )
+                    }
+
                 DestinationCandidateList(
                     candidates = uiState.originCandidates,
                     selectedDestination = uiState.selectedOrigin,

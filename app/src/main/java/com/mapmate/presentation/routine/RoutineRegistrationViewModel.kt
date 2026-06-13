@@ -359,6 +359,7 @@ class RoutineRegistrationViewModel(
                         state.copy(
                             originQuery = origin.name,
                             selectedOrigin = origin,
+                            originCandidates = emptyList(),
                             routeEstimate = null,
                             recommendedDepartureTimeText = "",
                             isGettingCurrentLocation = false,
