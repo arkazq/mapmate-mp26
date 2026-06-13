@@ -110,6 +110,10 @@ fun RecordsScreen(
             }
 
             else -> {
+                item {
+                    RecordsStatsCard(stats = uiState.stats)
+                }
+
                 items(
                     items = uiState.records,
                     key = { it.id ?: it.arrivedAtEpochMillis },
@@ -122,6 +126,55 @@ fun RecordsScreen(
         item {
             Spacer(modifier = Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun RecordsStatsCard(
+    stats: RecordsStats,
+) {
+    SectionCard(
+        title = "기록 분석",
+        subtitle = "최근 저장 기록을 기준으로 추천 정확도를 요약합니다.",
+        leadingIcon = MapMateIconType.Records,
+    ) {
+        MetricRow(
+            icon = MapMateIconType.Check,
+            label = "전체 기록",
+            value = "${stats.totalRecords}회",
+        )
+        MetricRow(
+            icon = MapMateIconType.Time,
+            label = "평균 도착 오차",
+            value = stats.averageArrivalDeltaMinutes.toSignedDeltaText(),
+            valueColor = stats.averageArrivalDeltaMinutes.toDeltaColor(),
+        )
+        MetricRow(
+            icon = MapMateIconType.Flag,
+            label = "정시/빠른 도착률",
+            value = "${stats.onTimeRatePercent}%",
+        )
+        MetricRow(
+            icon = MapMateIconType.Notifications,
+            label = "늦은 도착",
+            value = "${stats.lateRecords}회",
+            valueColor = if (stats.lateRecords > 0) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+        )
+        MetricRow(
+            icon = stats.mostUsedTransportMode?.let(::transportModeIcon) ?: MapMateIconType.Route,
+            label = "자주 쓴 이동수단",
+            value = stats.mostUsedTransportMode?.toKoreanLabel() ?: "기록 없음",
+        )
+        MetricRow(
+            icon = MapMateIconType.Route,
+            label = "최근 5회 평균",
+            value = stats.recentAverageDeltaMinutes.toSignedDeltaText(),
+            valueColor = stats.recentAverageDeltaMinutes.toDeltaColor(),
+        )
     }
 }
 
@@ -200,6 +253,21 @@ private fun Int.toDeltaText(): String {
     }
 }
 
+@Composable
+private fun Int.toDeltaColor() = if (this > 0) {
+    MaterialTheme.colorScheme.error
+} else {
+    MaterialTheme.colorScheme.primary
+}
+
+private fun Int.toSignedDeltaText(): String {
+    return when {
+        this > 0 -> "+${this}분"
+        this < 0 -> "${this}분"
+        else -> "0분"
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun RecordsScreenPreview() {
@@ -208,6 +276,7 @@ private fun RecordsScreenPreview() {
             uiState = RecordsUiState(
                 records = listOf(sampleRecord),
                 isLoading = false,
+                stats = RecordsStats.from(listOf(sampleRecord)),
             ),
             contentPadding = PaddingValues(),
             onRegisterRoutineClick = {},

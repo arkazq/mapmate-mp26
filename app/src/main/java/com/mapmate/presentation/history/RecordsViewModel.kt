@@ -27,6 +27,7 @@ class RecordsViewModel(
                     it.copy(
                         records = records,
                         isLoading = false,
+                        stats = RecordsStats.from(records),
                     )
                 }
             }

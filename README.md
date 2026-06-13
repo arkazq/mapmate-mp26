@@ -56,6 +56,7 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 이동 기록 완료 별도 화면 UI
 - 이동 기록 Room 저장
 - 저장된 이동 기록 목록
+- 기록 탭의 전체 기록 수, 평균 도착 오차, 정시/빠른 도착률, 최근 5회 평균 분석
 - 실제 도착 오차 기반 개인 보정 자동 업데이트
 - 설정 화면
 - DataStore 기반 개인 보정 시간 / 안전 여유 시간 저장
@@ -66,8 +67,12 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - AlarmManager 기반 다음 출발 알림 예약
 - 부팅/앱 업데이트 후 출발 알림 재예약
 - ODsay 첫 탑승 구간 기준 서울 버스/지하철 실시간 도착정보 조회 및 지연 보정
+- ODsay 첫 버스 탑승 좌표 기준 TAGO 정류소/도착정보 조회 및 전국 버스 대기 시간 보정 fallback
+- 서울 버스 위치정보와 서울 지하철 열차 위치정보 기반 운행 상태 보조 설명
 - ODsay / Google Routes / Mock 이동 시간 기반 권장 출발 시각 계산
+- Google Routes 자동차 모드 `TRAFFIC_AWARE` 경로 시간 조회
 - 실제 경로 API 실패 시 Mock 이동 시간 fallback
+- 실제 경로 API 실패 시 6시간 이내 마지막 성공 경로 예상값을 Room 캐시에서 우선 재사용
 - 실제 경로 API 실패/좌표 누락/미지원 이동수단 fallback 상태 메시지 표시
 - Room DB 기반 루틴 저장
 - Room DB 기반 출발지 / 목적지 저장
@@ -122,17 +127,21 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
   - 루틴 등록, 홈, 루틴 목록, 상세 예측, 이동 기록 화면의 추천 출발 표시를 즉시 출발 상태에 맞게 정리
   - AlarmManager 예약도 오늘 도착 목표가 아직 남은 경우 다음 주로 넘기지 않고 즉시 알림으로 처리
   - 실제 API 호출 없이 계산기/알림 플래너/추천 UI 모델 단위 테스트로 검증
+- `develop` 직접 정리
+  - 기록 탭 상단에 추천 정확도 통계 요약 추가
+  - Google Routes 자동차 모드에 `TRAFFIC_AWARE` routing preference 적용
+  - 실제 ODsay/Google 경로 provider 성공값을 6시간 Room cache로 저장하고 실패 시 mock 전 cache fallback 적용
+  - TAGO 버스정류소정보/버스도착정보 provider 추가
+  - 서울 버스 위치정보, 서울 지하철 열차 위치정보 provider를 운행 상태 보조 설명으로 연결
+  - PR #19의 중복 역지오코딩 구현 중 남은 출발지 선택 UX만 `develop`에 반영
 
 검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
 
 ## 아직 구현되지 않은 기능
 
-- 버스 실시간 위치정보 기반 운행 상태 보조 판단
-- 지하철 열차 위치정보 기반 운행 상태 보조 판단
-- 전체 경로 API 응답 마지막 성공값 캐시
 - Google Routes 도착 시각 기준 경로 조회
-- 자동차 모드의 Google Routes traffic-aware 경로 조회
-- 통계/기록 분석 화면
+- 통계 기반 개인 보정 정책 고도화
+- TAGO 정류소/노선 매칭의 실기기 API 검증 및 지역별 예외 보강
 
 ## 기술 스택
 
@@ -180,11 +189,12 @@ ODSAY_API_KEY=API_KEY_PLACEHOLDER
 GOOGLE_ROUTES_API_KEY=API_KEY_PLACEHOLDER
 SEOUL_OPEN_API_KEY=API_KEY_PLACEHOLDER
 SEOUL_BUS_SERVICE_KEY=API_KEY_PLACEHOLDER
+TAGO_SERVICE_KEY=API_KEY_PLACEHOLDER
 ```
 
 API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
-현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 이동 시간을 보수적으로 늘립니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 20분 이내의 `RouteRealtimeSnapshot`을 먼저 재사용하고, 없거나 만료되면 기존 ODsay/Google/Mock fallback 흐름을 유지합니다. 보정 후 권장 출발 시각이 이미 지났고 목표 도착 시각이 아직 남아 있으면 앱은 `지금 출발` 상태로 표시합니다. 전국 버스 확장과 TAGO 기반 정류장 매칭 같은 후속 전략은 `docs/API_STRATEGY.md`와 `docs/REALTIME_DEPARTURE_STRATEGY.md`를 확인합니다.
+현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답에서 첫 탑승 구간이 버스이면 서울 버스도착정보조회 서비스 또는 TAGO 버스도착정보, 지하철이면 서울 지하철 실시간 도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때만 이동 시간을 보수적으로 늘립니다. 버스/지하철 위치정보는 계산값을 직접 대체하지 않고 운행 상태 보조 설명으로 reason에 반영합니다. 실시간 API 키가 없거나 호출/매칭에 실패하면 20분 이내의 `RouteRealtimeSnapshot`을 먼저 재사용하고, 없거나 만료되면 6시간 이내의 전체 경로 예상 cache, 기존 ODsay/Google/Mock fallback 흐름을 순서대로 사용합니다. 보정 후 권장 출발 시각이 이미 지났고 목표 도착 시각이 아직 남아 있으면 앱은 `지금 출발` 상태로 표시합니다. TAGO 정류소/노선 매칭의 지역별 예외는 실제 API 키 기반 검증으로 계속 보강합니다.
 
 ## 브랜치 전략 요약
 

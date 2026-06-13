@@ -2,7 +2,7 @@
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, WorkManager 기반 출발 전 재조회, 버스/지하철 실시간 도착정보 기반 대기 지연 보정까지 구현되어 있습니다. Room 기반 루틴/이동 기록 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록/통계 요약, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, WorkManager 기반 출발 전 재조회, 버스/지하철 실시간 도착정보 기반 대기 지연 보정, TAGO 버스 도착정보 fallback, 버스/지하철 위치정보 기반 운행 상태 보조 설명, 전체 경로 예상값 cache까지 구현되어 있습니다. Room 기반 루틴/이동 기록/경로 cache 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -388,6 +388,18 @@ User input
 21. `DepartureRecheckWorker`는 출발 전 경로 예상 시간을 다시 조회하고 다음 출발 알림과 재조회 작업을 갱신합니다.
 22. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
 23. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
+
+## 최근 확장 구조
+
+기록 탭은 `RecordsViewModel`이 `CommuteRecordRepository.observeRecords()`를 관찰하면서 `RecordsStats`를 함께 계산합니다. `RecordsScreen`은 저장된 이동 기록 목록 위에 전체 기록 수, 평균 도착 오차, 정시/빠른 도착률, 늦은 도착 수, 자주 쓴 이동수단, 최근 5회 평균 오차를 표시합니다. 이 통계는 현재 표시용이며, 개인 보정 자동 업데이트 정책에는 아직 직접 연결하지 않습니다.
+
+전체 경로 예상값 cache는 `RouteEstimateCacheRepository`와 Room `route_estimate_cache` 테이블이 담당합니다. `CachingRouteEstimateProvider`는 ODsay/Google 실제 provider가 성공하면 6시간 TTL로 예상값을 저장하고, 이후 해당 provider가 실패하면 mock fallback 전에 fresh cache를 반환합니다. 실시간 첫 탑승 보정값은 기존처럼 `RouteRealtimeSnapshot`에 별도로 저장됩니다.
+
+대중교통 실시간 보정은 `CompositeTransitArrivalProvider`가 서울 버스 도착정보, TAGO 버스 도착정보, 서울 지하철 실시간 도착정보를 순서대로 시도합니다. TAGO provider는 ODsay 첫 버스 탑승 정류장 좌표가 있을 때 근접 정류소를 조회하고, 정류장명/거리/노선번호 매칭으로 `arrtime`을 선택합니다. 좌표, 키, 매칭이 없으면 null을 반환해 기존 provider/fallback 흐름을 유지합니다.
+
+운행 상태 보조 설명은 `TransitOperationStatusProvider` 계층이 담당합니다. `SeoulBusOperationStatusProvider`는 서울 버스 위치정보에서 운행 중 차량 수와 정류장 접근 차량 수를 요약하고, `SeoulSubwayOperationStatusProvider`는 서울 지하철 실시간 열차 위치정보에서 호선 운행 상태와 현재 역 주변 열차 수를 요약합니다. 이 값은 권장 출발 시각 계산값을 직접 대체하지 않고 ODsay reason에 보조 설명으로 붙습니다.
+
+Google Routes 자동차 모드는 `GoogleRoutesEstimateProvider`에서 `routingPreference = TRAFFIC_AWARE`를 보냅니다. Google Routes 문서상 이 값은 `DRIVE` 계열에서 사용하는 옵션이므로 도보/대중교통 요청에는 넣지 않습니다.
 
 ## 설계 원칙
 

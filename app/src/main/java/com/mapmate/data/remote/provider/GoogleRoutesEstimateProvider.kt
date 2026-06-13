@@ -43,6 +43,7 @@ class GoogleRoutesEstimateProvider(
                 origin = waypoint(originLatitude, originLongitude),
                 destination = waypoint(destinationLatitude, destinationLongitude),
                 travelMode = transportMode.toGoogleTravelMode(),
+                routingPreference = transportMode.toGoogleRoutingPreference(),
             ),
         )
         val route = response.routes.firstOrNull()
@@ -57,6 +58,7 @@ class GoogleRoutesEstimateProvider(
             summary = "${origin.name}에서 ${destination.name}까지 ${transportLabel} 기준 ${estimatedMinutes}분 예상",
             providerName = "Google Routes",
             reason = listOfNotNull(
+                transportMode.trafficAwareReason(),
                 route.localizedValues?.duration?.text?.let { "Google Routes ${it} 경로 기준입니다." },
                 route.description?.takeIf(String::isNotBlank),
             ).joinToString(" ").ifBlank {
@@ -89,6 +91,20 @@ class GoogleRoutesEstimateProvider(
             TransportMode.TRANSIT -> "TRANSIT"
             TransportMode.WALK -> "WALK"
             TransportMode.CAR -> "DRIVE"
+        }
+    }
+
+    private fun TransportMode.toGoogleRoutingPreference(): String? {
+        return when (this) {
+            TransportMode.CAR -> "TRAFFIC_AWARE"
+            TransportMode.TRANSIT, TransportMode.WALK -> null
+        }
+    }
+
+    private fun TransportMode.trafficAwareReason(): String? {
+        return when (this) {
+            TransportMode.CAR -> "현재 교통 상황을 반영하는 traffic-aware 자동차 경로 기준입니다."
+            TransportMode.TRANSIT, TransportMode.WALK -> null
         }
     }
 

@@ -67,6 +67,7 @@ class SeoulSubwayRealtimeArrivalProviderTest {
             googleRoutesApiKey = "",
             seoulOpenApiKey = "seoul-key",
             seoulBusServiceKey = "",
+            tagoServiceKey = "",
         )
     }
 }

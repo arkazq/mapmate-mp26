@@ -9,6 +9,8 @@ sealed interface TransitArrivalQuery {
         val stationArsId: String?,
         val busRouteId: String?,
         val routeName: String?,
+        val stationLatitude: Double? = null,
+        val stationLongitude: Double? = null,
     ) : TransitArrivalQuery
 
     data class Subway(

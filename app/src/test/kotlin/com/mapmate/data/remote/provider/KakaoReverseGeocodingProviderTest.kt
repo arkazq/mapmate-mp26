@@ -146,6 +146,7 @@ class KakaoReverseGeocodingProviderTest {
             googleRoutesApiKey = "",
             seoulOpenApiKey = "",
             seoulBusServiceKey = "",
+            tagoServiceKey = "",
         )
 
         val configWithMissingKakaoKey = RemoteApiConfig(
@@ -154,6 +155,7 @@ class KakaoReverseGeocodingProviderTest {
             googleRoutesApiKey = "",
             seoulOpenApiKey = "",
             seoulBusServiceKey = "",
+            tagoServiceKey = "",
         )
     }
 }

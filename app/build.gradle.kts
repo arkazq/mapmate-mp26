@@ -40,6 +40,7 @@ android {
         buildConfigField("String", "GOOGLE_ROUTES_API_KEY", "\"${localProperty("GOOGLE_ROUTES_API_KEY")}\"")
         buildConfigField("String", "SEOUL_OPEN_API_KEY", "\"${localProperty("SEOUL_OPEN_API_KEY")}\"")
         buildConfigField("String", "SEOUL_BUS_SERVICE_KEY", "\"${localProperty("SEOUL_BUS_SERVICE_KEY")}\"")
+        buildConfigField("String", "TAGO_SERVICE_KEY", "\"${localProperty("TAGO_SERVICE_KEY")}\"")
     }
 
     buildTypes {

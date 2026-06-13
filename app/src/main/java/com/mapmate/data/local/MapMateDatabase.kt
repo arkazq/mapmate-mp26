@@ -8,8 +8,13 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [RoutineEntity::class, CommuteRecordEntity::class, RouteRealtimeSnapshotEntity::class],
-    version = 4,
+    entities = [
+        RoutineEntity::class,
+        CommuteRecordEntity::class,
+        RouteRealtimeSnapshotEntity::class,
+        RouteEstimateCacheEntity::class,
+    ],
+    version = 5,
     exportSchema = false,
 )
 abstract class MapMateDatabase : RoomDatabase() {
@@ -18,6 +23,8 @@ abstract class MapMateDatabase : RoomDatabase() {
     abstract fun commuteRecordDao(): CommuteRecordDao
 
     abstract fun routeRealtimeSnapshotDao(): RouteRealtimeSnapshotDao
+
+    abstract fun routeEstimateCacheDao(): RouteEstimateCacheDao
 
     companion object {
         private const val DATABASE_NAME = "mapmate.db"
@@ -32,7 +39,7 @@ abstract class MapMateDatabase : RoomDatabase() {
                     MapMateDatabase::class.java,
                     DATABASE_NAME,
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { instance = it }
             }
@@ -94,6 +101,41 @@ abstract class MapMateDatabase : RoomDatabase() {
                     """
                     CREATE INDEX IF NOT EXISTS index_route_realtime_snapshots_expiresAtEpochMillis
                     ON route_realtime_snapshots(expiresAtEpochMillis)
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS route_estimate_cache (
+                        cacheKey TEXT NOT NULL,
+                        cacheNamespace TEXT NOT NULL,
+                        transportMode TEXT NOT NULL,
+                        originName TEXT NOT NULL,
+                        originAddress TEXT NOT NULL,
+                        originLatitude REAL,
+                        originLongitude REAL,
+                        destinationName TEXT NOT NULL,
+                        destinationAddress TEXT NOT NULL,
+                        destinationLatitude REAL,
+                        destinationLongitude REAL,
+                        estimatedMinutes INTEGER NOT NULL,
+                        summary TEXT NOT NULL,
+                        providerName TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        capturedAtEpochMillis INTEGER NOT NULL,
+                        expiresAtEpochMillis INTEGER NOT NULL,
+                        PRIMARY KEY(cacheKey)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_route_estimate_cache_expiresAtEpochMillis
+                    ON route_estimate_cache(expiresAtEpochMillis)
                     """.trimIndent(),
                 )
             }

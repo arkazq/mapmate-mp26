@@ -123,9 +123,17 @@ function Invoke-OdsayTransitRoute {
 $properties = Read-LocalProperties -Path $LocalPropertiesPath
 $kakaoKey = $properties["KAKAO_REST_API_KEY"]
 $odsayKey = $properties["ODSAY_API_KEY"]
+$googleRoutesKey = $properties["GOOGLE_ROUTES_API_KEY"]
+$seoulOpenApiKey = $properties["SEOUL_OPEN_API_KEY"]
+$seoulBusServiceKey = $properties["SEOUL_BUS_SERVICE_KEY"]
+$tagoServiceKey = $properties["TAGO_SERVICE_KEY"]
 
 Write-Output (Format-KeyState -Name "KAKAO_REST_API_KEY" -Value $kakaoKey)
 Write-Output (Format-KeyState -Name "ODSAY_API_KEY" -Value $odsayKey)
+Write-Output (Format-KeyState -Name "GOOGLE_ROUTES_API_KEY" -Value $googleRoutesKey)
+Write-Output (Format-KeyState -Name "SEOUL_OPEN_API_KEY" -Value $seoulOpenApiKey)
+Write-Output (Format-KeyState -Name "SEOUL_BUS_SERVICE_KEY" -Value $seoulBusServiceKey)
+Write-Output (Format-KeyState -Name "TAGO_SERVICE_KEY" -Value $tagoServiceKey)
 
 if (-not [string]::IsNullOrWhiteSpace($kakaoKey)) {
     Invoke-ApiCheck -Name "Kakao keyword search" -Check {

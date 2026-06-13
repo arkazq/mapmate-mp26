@@ -52,6 +52,10 @@ data class OdsaySubPath(
     val startArsId: JsonElement? = null,
     @SerialName("endArsID")
     val endArsId: JsonElement? = null,
+    val startX: Double? = null,
+    val startY: Double? = null,
+    val endX: Double? = null,
+    val endY: Double? = null,
     val lane: List<OdsayLane> = emptyList(),
 )
 

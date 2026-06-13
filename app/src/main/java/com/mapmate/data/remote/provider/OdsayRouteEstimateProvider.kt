@@ -9,9 +9,11 @@ import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.RouteRealtimeSnapshot
 import com.mapmate.domain.model.TransitArrivalEstimate
 import com.mapmate.domain.model.TransitArrivalQuery
+import com.mapmate.domain.model.TransitOperationStatus
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.provider.TransitArrivalProvider
+import com.mapmate.domain.provider.TransitOperationStatusProvider
 import com.mapmate.domain.repository.RouteRealtimeSnapshotRepository
 import java.util.Locale
 import kotlinx.serialization.json.JsonElement
@@ -22,6 +24,7 @@ class OdsayRouteEstimateProvider(
     private val api: OdsayApi,
     private val config: RemoteApiConfig,
     private val transitArrivalProvider: TransitArrivalProvider? = null,
+    private val transitOperationStatusProvider: TransitOperationStatusProvider? = null,
     private val routeRealtimeSnapshotRepository: RouteRealtimeSnapshotRepository? = null,
     private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
     private val snapshotTtlMillis: Long = DEFAULT_SNAPSHOT_TTL_MILLIS,
@@ -78,6 +81,11 @@ class OdsayRouteEstimateProvider(
                 transitArrivalProvider?.getArrivalEstimate(query)
             }.getOrNull()
         }
+        val operationStatus = transitArrivalQuery?.let { query ->
+            runCatching {
+                transitOperationStatusProvider?.getOperationStatus(query)
+            }.getOrNull()
+        }
 
         if (realtimeArrival != null) {
             val realtimeDelayMinutes = realtimeArrival.extraDelayMinutes()
@@ -101,6 +109,7 @@ class OdsayRouteEstimateProvider(
                     pathInfo = pathInfo,
                     realtimeArrival = realtimeArrival,
                     realtimeDelayMinutes = realtimeDelayMinutes,
+                    operationStatus = operationStatus,
                 ),
             )
         }
@@ -131,6 +140,7 @@ class OdsayRouteEstimateProvider(
                     pathInfo = pathInfo,
                     realtimeArrival = null,
                     realtimeDelayMinutes = 0,
+                    operationStatus = operationStatus,
                 )
             },
             statusMessage = cachedSnapshot?.let {
@@ -143,6 +153,7 @@ class OdsayRouteEstimateProvider(
         pathInfo: OdsayPathInfo,
         realtimeArrival: TransitArrivalEstimate?,
         realtimeDelayMinutes: Int,
+        operationStatus: TransitOperationStatus? = null,
     ): String {
         val transitCount = listOfNotNull(
             pathInfo.busTransitCount?.let { "bus ${it}" },
@@ -155,12 +166,16 @@ class OdsayRouteEstimateProvider(
         val realtimeSummary = realtimeArrival?.let {
             "Realtime first arrival ${it.waitMinutes} min; added ${realtimeDelayMinutes} min delay."
         }
+        val operationSummary = operationStatus?.let {
+            "${it.providerName}: ${it.reason}"
+        }
 
         return listOf(
             "ODsay transit route estimate.",
             transitCount.takeIf(String::isNotBlank),
             stationSummary.takeIf(String::isNotBlank),
             realtimeSummary,
+            operationSummary,
         ).filterNotNull().joinToString(" ")
     }
 
@@ -237,6 +252,8 @@ class OdsayRouteEstimateProvider(
                 routeName = firstLane?.busNo
                     ?: firstLane?.routeNm
                     ?: firstLane?.name,
+                stationLatitude = transitSubPath.startY,
+                stationLongitude = transitSubPath.startX,
             )
             TRAFFIC_TYPE_SUBWAY -> TransitArrivalQuery.Subway(
                 stationName = transitSubPath.startName,
@@ -272,6 +289,8 @@ class OdsayRouteEstimateProvider(
                 stationArsId.cacheValue(),
                 busRouteId.cacheValue(),
                 routeName.cacheValue(),
+                stationLatitude.cacheCoordinate(),
+                stationLongitude.cacheCoordinate(),
             )
             is TransitArrivalQuery.Subway -> listOf(
                 "subway",

@@ -240,6 +240,7 @@ class OdsayRouteEstimateProviderTest {
             googleRoutesApiKey = "",
             seoulOpenApiKey = "",
             seoulBusServiceKey = "",
+            tagoServiceKey = "",
         )
 
         val origin = Destination(

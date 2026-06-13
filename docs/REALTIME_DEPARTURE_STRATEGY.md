@@ -295,11 +295,11 @@ data class CommuteHistory(
 
 ## 구현 우선순위
 
-1. ODsay 세부 경로 DTO 확장
-2. 첫 버스 구간 추출
-3. TAGO 정류소정보 provider
-4. TAGO 도착정보 provider
-5. 노선번호 정규화와 매칭 점수식
+1. ODsay 세부 경로 DTO 확장 (구현 완료)
+2. 첫 버스 구간 추출 (구현 완료)
+3. TAGO 정류소정보 provider (구현 완료, 실제 키 기반 지역별 검증 필요)
+4. TAGO 도착정보 provider (구현 완료, 실제 키 기반 지역별 검증 필요)
+5. 노선번호 정규화와 매칭 점수식 (기본 구현 완료, 지역별 표기 예외 보강 필요)
 6. `RouteRealtimeSnapshot` 저장 (구현 완료)
 7. `adjustedRouteDurationMinutes` 계산
 8. fallback과 stale 처리 (20분 이내 fresh snapshot 재사용 구현 완료)
@@ -309,8 +309,8 @@ data class CommuteHistory(
 12. `AlarmManager` 재예약
 13. 이동 기록 저장
 14. 개인보정 자동 계산
-15. 지하철 지역별 provider
+15. 지하철 지역별 provider (서울 지하철 실시간 도착/위치 provider 구현 완료, 수도권 외 확장 필요)
 
 ## 최종 기준
 
-초기 경로 계산은 ODsay가 담당하고, 버스 실시간 보정은 TAGO가 담당합니다. 보정 결과는 `Routine`이 아니라 `RouteRealtimeSnapshot`에 저장하며, 마지막 성공 보정값은 유효기간 안에서만 사용합니다. 실시간 정류장/노선 매칭 신뢰도가 낮거나 재조회가 지연된 경우에는 ODsay 기본 예상시간으로 fallback합니다. 현재 MapMate에서 중요한 것은 실시간 데이터를 무조건 믿는 것이 아니라, 매칭 신뢰도, 스냅샷 유효기간, fallback을 갖춘 안정적인 보정 구조입니다.
+초기 경로 계산은 ODsay가 담당하고, 버스 실시간 보정은 서울 버스 도착정보와 TAGO 도착정보가 순차적으로 담당합니다. 보정 결과는 `Routine`이 아니라 `RouteRealtimeSnapshot`에 저장하며, 마지막 성공 보정값은 유효기간 안에서만 사용합니다. 전체 경로 API 성공값은 별도 `RouteEstimateCache`에 6시간 저장해 실제 provider 실패 시 mock fallback 전에 재사용합니다. 실시간 정류장/노선 매칭 신뢰도가 낮거나 재조회가 지연된 경우에는 ODsay 기본 예상시간 또는 fresh cache/mock fallback으로 복구합니다. 현재 MapMate에서 중요한 것은 실시간 데이터를 무조건 믿는 것이 아니라, 매칭 신뢰도, 스냅샷/cache 유효기간, fallback을 갖춘 안정적인 보정 구조입니다.

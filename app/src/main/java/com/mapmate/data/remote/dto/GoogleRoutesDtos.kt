@@ -7,6 +7,7 @@ data class GoogleRoutesRequest(
     val origin: GoogleWaypoint,
     val destination: GoogleWaypoint,
     val travelMode: String,
+    val routingPreference: String? = null,
     val languageCode: String = "ko-KR",
     val units: String = "METRIC",
 )
