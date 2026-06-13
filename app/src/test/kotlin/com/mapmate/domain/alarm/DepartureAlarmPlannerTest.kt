@@ -36,7 +36,7 @@ class DepartureAlarmPlannerTest {
     }
 
     @Test
-    fun nextAlarmForRoutine_returnsNextWeekWhenTodayDepartureTimeAlreadyPassed() {
+    fun nextAlarmForRoutine_returnsNowWhenTodayDepartureTimePassedButArrivalIsAhead() {
         val routine = sampleRoutine(repeatDays = setOf(RepeatDay.MONDAY))
         val now = ZonedDateTime.of(2026, 6, 8, 8, 8, 0, 0, zoneId)
 
@@ -47,9 +47,29 @@ class DepartureAlarmPlannerTest {
         )
 
         assertNotNull(result)
+        assertEquals(LocalTime.of(8, 8), result!!.recommendedDepartureTime)
+        assertEquals(
+            now.toEpochMillis(),
+            result.triggerAtEpochMillis,
+        )
+    }
+
+    @Test
+    fun nextAlarmForRoutine_returnsNextWeekWhenTodayArrivalTimeAlreadyPassed() {
+        val routine = sampleRoutine(repeatDays = setOf(RepeatDay.MONDAY))
+        val now = ZonedDateTime.of(2026, 6, 8, 9, 1, 0, 0, zoneId)
+
+        val result = planner.nextAlarmForRoutine(
+            routine = routine,
+            routeDurationMinutes = 42,
+            now = now,
+        )
+
+        assertNotNull(result)
+        assertEquals(LocalTime.of(8, 7), result!!.recommendedDepartureTime)
         assertEquals(
             ZonedDateTime.of(2026, 6, 15, 8, 7, 0, 0, zoneId).toEpochMillis(),
-            result!!.triggerAtEpochMillis,
+            result.triggerAtEpochMillis,
         )
     }
 

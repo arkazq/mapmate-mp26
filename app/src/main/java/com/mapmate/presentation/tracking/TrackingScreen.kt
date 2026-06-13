@@ -260,7 +260,7 @@ private fun TrackingRoutineSummaryCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = recommendation.recommendedDepartureTimeText,
+                            text = recommendation.recommendedDepartureDisplayText,
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
@@ -279,7 +279,7 @@ private fun TrackingTimelineCard(
 ) {
     SectionCard(
         title = stage.title,
-        subtitle = stage.subtitle(recommendation.recommendedDepartureTimeText),
+        subtitle = stage.subtitle(recommendation.recommendedDepartureDisplayText),
         leadingIcon = MapMateIconType.Records,
     ) {
         AssistChip(
@@ -288,7 +288,11 @@ private fun TrackingTimelineCard(
         )
         StageRow(
             title = "출발 예정",
-            description = "${recommendation.recommendedDepartureTimeText} 이후 출발을 권장해요.",
+            description = if (recommendation.isImmediateDepartureRecommended) {
+                "지금 출발을 권장해요."
+            } else {
+                "${recommendation.recommendedDepartureDisplayText} 이후 출발을 권장해요."
+            },
             isActive = stage == TrackingStage.Planned,
             icon = MapMateIconType.Time,
         )
@@ -578,7 +582,11 @@ private val TrackingStage.title: String
 
 private fun TrackingStage.subtitle(recommendedDepartureTimeText: String): String {
     return when (this) {
-        TrackingStage.Planned -> "${recommendedDepartureTimeText} 이후 출발을 권장해요."
+        TrackingStage.Planned -> if (recommendedDepartureTimeText == "지금 출발") {
+            "지금 출발을 권장해요."
+        } else {
+            "${recommendedDepartureTimeText} 이후 출발을 권장해요."
+        }
         TrackingStage.Boarded -> "이동 중입니다. 도착하면 기록을 완료해 주세요."
         TrackingStage.Arrived -> "오늘 이동 기록 흐름을 완료했습니다."
     }

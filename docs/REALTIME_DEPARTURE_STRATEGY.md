@@ -303,7 +303,7 @@ data class CommuteHistory(
 6. `RouteRealtimeSnapshot` 저장 (구현 완료)
 7. `adjustedRouteDurationMinutes` 계산
 8. fallback과 stale 처리 (20분 이내 fresh snapshot 재사용 구현 완료)
-9. `finalDepartureTime < now` clamp 처리
+9. `finalDepartureTime < now` clamp 처리 (구현 완료)
 10. `AlarmManager` 기본 알림
 11. `WorkManager` 출발 전 재조회
 12. `AlarmManager` 재예약

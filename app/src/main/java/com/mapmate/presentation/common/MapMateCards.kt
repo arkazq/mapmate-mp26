@@ -797,7 +797,7 @@ fun RoutineCard(
                             )
                         }
                         Text(
-                            text = recommendation.recommendedDepartureTimeText,
+                            text = recommendation.recommendedDepartureDisplayText,
                             style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.ExtraBold,

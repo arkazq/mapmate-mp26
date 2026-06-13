@@ -4,11 +4,13 @@ import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 data class RoutineRecommendationUiModel(
     val routine: Routine,
     val recommendedDepartureTimeText: String,
+    val calculatedDepartureTimeText: String = recommendedDepartureTimeText,
     val targetArrivalTimeText: String,
     val routeDurationMinutes: Int,
     val personalBufferMinutes: Int,
@@ -17,23 +19,37 @@ data class RoutineRecommendationUiModel(
     val reason: String,
     val isFallbackEstimate: Boolean = false,
     val routeStatusMessage: String? = null,
-)
+    val isImmediateDepartureRecommended: Boolean = false,
+) {
+    val recommendedDepartureDisplayText: String
+        get() = if (isImmediateDepartureRecommended) "지금 출발" else recommendedDepartureTimeText
+
+    val departureStatusMessage: String?
+        get() = if (isImmediateDepartureRecommended) {
+            "계산상 출발 시각 $calculatedDepartureTimeText 이 이미 지나 지금 출발하는 것으로 표시했습니다."
+        } else {
+            null
+        }
+}
 
 fun Routine.toRecommendationUiModel(
     routeEstimate: RouteEstimate,
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
+    now: LocalTime = LocalTime.now(),
 ): RoutineRecommendationUiModel {
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
-    val recommendedDepartureTime = departureTimeCalculator.calculate(
+    val departureRecommendation = departureTimeCalculator.calculateWithNowClamp(
         targetArrivalTime = targetArrivalTime,
         routeDurationMinutes = routeEstimate.estimatedMinutes,
         personalBufferMinutes = personalBufferMinutes,
         safetyMarginMinutes = safetyMarginMinutes,
+        now = now,
     )
 
     return RoutineRecommendationUiModel(
         routine = this,
-        recommendedDepartureTimeText = recommendedDepartureTime.format(formatter),
+        recommendedDepartureTimeText = departureRecommendation.recommendedDepartureTime.format(formatter),
+        calculatedDepartureTimeText = departureRecommendation.calculatedDepartureTime.format(formatter),
         targetArrivalTimeText = targetArrivalTime.format(formatter),
         routeDurationMinutes = routeEstimate.estimatedMinutes,
         personalBufferMinutes = personalBufferMinutes,
@@ -44,11 +60,13 @@ fun Routine.toRecommendationUiModel(
         },
         isFallbackEstimate = routeEstimate.isFallbackEstimate,
         routeStatusMessage = routeEstimate.statusMessage,
+        isImmediateDepartureRecommended = departureRecommendation.isImmediateDepartureRecommended,
     )
 }
 
 fun Routine.toFallbackRecommendationUiModel(
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
+    now: LocalTime = LocalTime.now(),
 ): RoutineRecommendationUiModel {
     val estimatedMinutes = when (transportMode) {
         TransportMode.TRANSIT -> 42
@@ -67,5 +85,6 @@ fun Routine.toFallbackRecommendationUiModel(
     return toRecommendationUiModel(
         routeEstimate = routeEstimate,
         departureTimeCalculator = departureTimeCalculator,
+        now = now,
     )
 }

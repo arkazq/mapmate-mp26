@@ -148,9 +148,8 @@ origin + destination + transportMode
 1. TAGO 버스정류소정보 provider를 추가해 ODsay 첫 탑승 정류장 좌표 기준으로 `cityCode`, `nodeId` 후보를 찾습니다.
 2. TAGO 버스도착정보 provider를 추가해 첫 버스 `arrtime`을 조회합니다.
 3. ODsay 노선번호와 TAGO `routeno` 정규화, 정류장 거리, 정류장명 유사도 기반 매칭 점수식을 구현합니다.
-4. `finalDepartureTime < now` clamp 처리를 추가합니다.
-5. 버스 실시간 위치정보와 지하철 열차 위치정보 provider를 추가해 도착정보 보조와 운행 상태 표시를 강화합니다.
-6. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결하고, 자동차 모드에는 `TRAFFIC_AWARE` 정책을 검토합니다.
-7. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
-8. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
-9. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.
+4. 버스 실시간 위치정보와 지하철 열차 위치정보 provider를 추가해 도착정보 보조와 운행 상태 표시를 강화합니다.
+5. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결하고, 자동차 모드에는 `TRAFFIC_AWARE` 정책을 검토합니다.
+6. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
+7. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
+8. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.

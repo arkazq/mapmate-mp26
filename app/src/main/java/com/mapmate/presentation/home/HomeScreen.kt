@@ -128,6 +128,9 @@ fun HomeScreen(
                 RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
             }
             item {
+                RouteEstimateStatusMessage(message = recommendation.departureStatusMessage)
+            }
+            item {
                 CompactMetricCards(recommendation = recommendation)
             }
             item {
@@ -140,7 +143,7 @@ fun HomeScreen(
             item {
                 CompactRoutineCard(
                     routine = recommendation.routine,
-                    recommendationText = recommendation.recommendedDepartureTimeText,
+                    recommendationText = recommendation.recommendedDepartureDisplayText,
                     targetArrivalTimeText = recommendation.targetArrivalTimeText,
                     statusMessage = recommendation.routeStatusMessage,
                     onManageClick = onRoutinesClick,
@@ -245,7 +248,7 @@ private fun CompactHomeHeroCard(
                 }
             }
             Text(
-                text = recommendation.recommendedDepartureTimeText,
+                text = recommendation.recommendedDepartureDisplayText,
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onPrimary,
                 fontWeight = FontWeight.ExtraBold,
@@ -275,7 +278,7 @@ private fun CountdownProgressCard(
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Text(
-                text = "출발까지 23분 남았어요",
+                text = recommendation.departureStatusMessage ?: "출발까지 23분 남았어요",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
