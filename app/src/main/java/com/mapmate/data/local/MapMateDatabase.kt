@@ -13,8 +13,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CommuteRecordEntity::class,
         RouteRealtimeSnapshotEntity::class,
         RouteEstimateCacheEntity::class,
+        RouteSegmentEntity::class,
+        SegmentTimeAdjustmentEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class MapMateDatabase : RoomDatabase() {
@@ -25,6 +27,10 @@ abstract class MapMateDatabase : RoomDatabase() {
     abstract fun routeRealtimeSnapshotDao(): RouteRealtimeSnapshotDao
 
     abstract fun routeEstimateCacheDao(): RouteEstimateCacheDao
+
+    abstract fun routeSegmentDao(): RouteSegmentDao
+
+    abstract fun segmentTimeAdjustmentDao(): SegmentTimeAdjustmentDao
 
     companion object {
         private const val DATABASE_NAME = "mapmate.db"
@@ -39,7 +45,7 @@ abstract class MapMateDatabase : RoomDatabase() {
                     MapMateDatabase::class.java,
                     DATABASE_NAME,
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                     .also { instance = it }
             }
@@ -136,6 +142,63 @@ abstract class MapMateDatabase : RoomDatabase() {
                     """
                     CREATE INDEX IF NOT EXISTS index_route_estimate_cache_expiresAtEpochMillis
                     ON route_estimate_cache(expiresAtEpochMillis)
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS route_segments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        commuteRecordId INTEGER NOT NULL,
+                        routineId INTEGER,
+                        segmentIndex INTEGER NOT NULL,
+                        segmentType TEXT NOT NULL,
+                        trafficType INTEGER,
+                        routeName TEXT,
+                        startName TEXT,
+                        endName TEXT,
+                        plannedDurationMinutes INTEGER NOT NULL,
+                        actualStartedAtEpochMillis INTEGER,
+                        actualEndedAtEpochMillis INTEGER,
+                        actualDurationMinutes INTEGER,
+                        isUserEdited INTEGER NOT NULL,
+                        status TEXT NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_route_segments_commuteRecordId ON route_segments(commuteRecordId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_route_segments_routineId ON route_segments(routineId)")
+                db.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_route_segments_routineId_segmentType_routeName_startName_endName
+                    ON route_segments(routineId, segmentType, routeName, startName, endName)
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS segment_time_adjustments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        routineId INTEGER NOT NULL,
+                        segmentType TEXT NOT NULL,
+                        routeName TEXT,
+                        startName TEXT,
+                        endName TEXT,
+                        averageDelayMinutes INTEGER NOT NULL,
+                        sampleCount INTEGER NOT NULL,
+                        confidence REAL NOT NULL,
+                        updatedAtEpochMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_segment_time_adjustments_routineId ON segment_time_adjustments(routineId)")
+                db.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS index_segment_time_adjustments_routineId_segmentType_routeName_startName_endName
+                    ON segment_time_adjustments(routineId, segmentType, routeName, startName, endName)
                     """.trimIndent(),
                 )
             }

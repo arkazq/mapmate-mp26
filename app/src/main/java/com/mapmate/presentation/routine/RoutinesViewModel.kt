@@ -96,6 +96,7 @@ class RoutinesViewModel(
                 origin = origin,
                 destination = destination,
                 transportMode = transportMode,
+                routineId = id,
             )
             toRecommendationUiModel(
                 routeEstimate = routeEstimate,

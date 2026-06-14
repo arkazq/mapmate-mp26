@@ -26,6 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -35,10 +38,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
+import com.mapmate.domain.model.RouteSegment
+import com.mapmate.domain.model.RouteSegmentStatus
+import com.mapmate.domain.model.RouteSegmentType
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.CommuteRecordRepository
+import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.presentation.common.DetailTopBar
 import com.mapmate.presentation.common.IconBadge
@@ -58,6 +65,7 @@ import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 @Composable
 fun TrackingRoute(
@@ -65,6 +73,7 @@ fun TrackingRoute(
     routine: Routine,
     routeEstimateProvider: RouteEstimateProvider,
     commuteRecordRepository: CommuteRecordRepository,
+    routineRepository: RoutineRepository,
     settingsRepository: SettingsRepository,
     onBackClick: () -> Unit,
     onCompleted: (CommuteRecord) -> Unit,
@@ -75,6 +84,7 @@ fun TrackingRoute(
             routine = routine,
             routeEstimateProvider = routeEstimateProvider,
             commuteRecordRepository = commuteRecordRepository,
+            routineRepository = routineRepository,
             settingsRepository = settingsRepository,
         ),
     )
@@ -90,6 +100,8 @@ fun TrackingRoute(
         uiState = uiState,
         onBackClick = onBackClick,
         onPrimaryActionClick = viewModel::onPrimaryActionClick,
+        onSegmentStart = viewModel::onSegmentStart,
+        onSegmentComplete = viewModel::onSegmentComplete,
         modifier = Modifier.padding(contentPadding),
     )
 }
@@ -99,6 +111,8 @@ fun TrackingScreen(
     uiState: TrackingUiState,
     onBackClick: () -> Unit,
     onPrimaryActionClick: () -> Unit,
+    onSegmentStart: (Long) -> Unit,
+    onSegmentComplete: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val recommendation = uiState.recommendation
@@ -148,7 +162,18 @@ fun TrackingScreen(
                     CurrentMovementCard(recommendation = recommendation)
                 }
 
-                if (!uiState.isCompleted) {
+                if (uiState.hasRouteSegments) {
+                    item {
+                        CurrentRouteSegmentCard(
+                            uiState = uiState,
+                            isSavingRecord = uiState.isSavingRecord,
+                            onSegmentStart = onSegmentStart,
+                            onSegmentComplete = onSegmentComplete,
+                        )
+                    }
+                }
+
+                if (!uiState.isCompleted && !uiState.hasRouteSegments) {
                     item {
                         Button(
                             onClick = onPrimaryActionClick,
@@ -169,6 +194,35 @@ fun TrackingScreen(
                                     "기록 저장 중"
                                 } else {
                                     uiState.stage.primaryActionLabel(recommendation.routine.transportMode)
+                                },
+                                modifier = Modifier.padding(start = 10.dp),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                    }
+                }
+
+                if (!uiState.isCompleted && uiState.hasRouteSegments && uiState.isAllSegmentsFinished) {
+                    item {
+                        Button(
+                            onClick = onPrimaryActionClick,
+                            enabled = !uiState.isSavingRecord,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = MaterialTheme.shapes.medium,
+                        ) {
+                            MapMateIcon(
+                                icon = MapMateIconType.Flag,
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Text(
+                                text = if (uiState.isSavingRecord) {
+                                    "기록 저장 중"
+                                } else {
+                                    "도착 완료"
                                 },
                                 modifier = Modifier.padding(start = 10.dp),
                                 style = MaterialTheme.typography.titleMedium,
@@ -405,10 +459,221 @@ private fun CurrentMovementCard(
 }
 
 @Composable
+private fun CurrentRouteSegmentCard(
+    uiState: TrackingUiState,
+    isSavingRecord: Boolean,
+    onSegmentStart: (Long) -> Unit,
+    onSegmentComplete: (Long) -> Unit,
+) {
+    val currentSegment = uiState.currentSegment
+    val totalSegmentCount = uiState.totalSegmentCount
+
+    if (currentSegment == null) {
+        SectionCard(
+            title = "모든 구간 측정 완료",
+            subtitle = "도착 완료를 누르면 오늘 이동 기록을 저장합니다.",
+            leadingIcon = MapMateIconType.Check,
+        ) {
+            MetricRow(
+                icon = MapMateIconType.Route,
+                label = "완료된 구간",
+                value = "${uiState.completedSegmentCount} / $totalSegmentCount",
+            )
+            MetricRow(
+                icon = MapMateIconType.Check,
+                label = "처리된 구간",
+                value = "${uiState.finishedSegmentCount} / $totalSegmentCount",
+            )
+        }
+        return
+    }
+
+    var nowEpochMillis by remember(
+        currentSegment.trackingSegmentId(),
+        currentSegment.actualStartedAtEpochMillis,
+        currentSegment.status,
+    ) {
+        mutableStateOf(System.currentTimeMillis())
+    }
+    LaunchedEffect(
+        currentSegment.trackingSegmentId(),
+        currentSegment.actualStartedAtEpochMillis,
+        currentSegment.status,
+    ) {
+        while (currentSegment.status == RouteSegmentStatus.IN_PROGRESS) {
+            nowEpochMillis = System.currentTimeMillis()
+            delay(1_000L)
+        }
+    }
+
+    SectionCard(
+        title = "현재 구간 ${uiState.currentSegmentIndex} / $totalSegmentCount",
+        subtitle = "완료하면 다음 구간으로 자동 전환됩니다.",
+        leadingIcon = currentSegment.segmentIcon(),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    IconBadge(
+                        icon = currentSegment.segmentIcon(),
+                        modifier = Modifier.size(38.dp),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = currentSegment.displayTitle(),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = listOfNotNull(
+                                currentSegment.startName?.takeIf(String::isNotBlank),
+                                currentSegment.endName?.takeIf(String::isNotBlank),
+                            ).joinToString(" -> ").ifBlank { "구간 정보 없음" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(currentSegment.status.name) },
+                    )
+                }
+
+                MetricRow(label = "노선", value = currentSegment.routeName ?: "-")
+                MetricRow(label = "예상 소요시간", value = "${currentSegment.plannedDurationMinutes}분")
+                MetricRow(
+                    label = "실제 소요시간",
+                    value = currentSegment.actualDurationMinutes?.let { "${it}분" } ?: "-",
+                )
+                if (currentSegment.status == RouteSegmentStatus.IN_PROGRESS) {
+                    MetricRow(
+                        icon = MapMateIconType.Time,
+                        label = "측정 중",
+                        value = currentSegment.actualStartedAtEpochMillis
+                            ?.elapsedTimeText(nowEpochMillis)
+                            ?: "00:00",
+                        valueColor = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        when (currentSegment.status) {
+                            RouteSegmentStatus.NOT_STARTED -> {
+                                onSegmentStart(currentSegment.trackingSegmentId())
+                            }
+                            RouteSegmentStatus.IN_PROGRESS -> {
+                                onSegmentComplete(currentSegment.trackingSegmentId())
+                            }
+                            RouteSegmentStatus.COMPLETED,
+                            RouteSegmentStatus.SKIPPED,
+                            -> Unit
+                        }
+                    },
+                    enabled = !isSavingRecord &&
+                        (
+                            currentSegment.status == RouteSegmentStatus.NOT_STARTED ||
+                                currentSegment.status == RouteSegmentStatus.IN_PROGRESS
+                            ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Text(
+                        text = when (currentSegment.status) {
+                            RouteSegmentStatus.NOT_STARTED -> currentSegment.startButtonLabel()
+                            RouteSegmentStatus.IN_PROGRESS -> currentSegment.completeButtonLabel()
+                            RouteSegmentStatus.COMPLETED,
+                            RouteSegmentStatus.SKIPPED,
+                            -> "완료"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+        }
+
+        MetricRow(
+            icon = MapMateIconType.Check,
+            label = "완료된 구간",
+            value = "${uiState.completedSegmentCount} / $totalSegmentCount",
+        )
+    }
+}
+
+private fun RouteSegment.displayTitle(): String {
+    return when (segmentType) {
+        RouteSegmentType.WALK_TO_TRANSIT -> "정류장/역까지 도보"
+        RouteSegmentType.BUS_RIDE -> listOfNotNull(
+            routeName?.takeIf(String::isNotBlank),
+            "버스 탑승",
+        ).joinToString(" ")
+        RouteSegmentType.SUBWAY_RIDE -> listOfNotNull(
+            routeName?.takeIf(String::isNotBlank),
+            "지하철 탑승",
+        ).joinToString(" ")
+        RouteSegmentType.TRANSFER_WALK -> "환승 이동"
+        RouteSegmentType.WALK_TO_DESTINATION -> "목적지까지 도보"
+        RouteSegmentType.UNKNOWN -> "이동 구간"
+    }
+}
+
+private fun RouteSegment.segmentIcon(): MapMateIconType {
+    return when (segmentType) {
+        RouteSegmentType.WALK_TO_TRANSIT,
+        RouteSegmentType.TRANSFER_WALK,
+        RouteSegmentType.WALK_TO_DESTINATION,
+        -> MapMateIconType.Walk
+        RouteSegmentType.BUS_RIDE,
+        RouteSegmentType.SUBWAY_RIDE,
+        -> MapMateIconType.Bus
+        RouteSegmentType.UNKNOWN -> MapMateIconType.Route
+    }
+}
+
+private fun RouteSegment.startButtonLabel(): String {
+    return when (segmentType) {
+        RouteSegmentType.BUS_RIDE,
+        RouteSegmentType.SUBWAY_RIDE,
+        -> "탑승"
+        else -> "시작"
+    }
+}
+
+private fun RouteSegment.completeButtonLabel(): String {
+    return when (segmentType) {
+        RouteSegmentType.BUS_RIDE,
+        RouteSegmentType.SUBWAY_RIDE,
+        -> "하차"
+        else -> "완료"
+    }
+}
+
+@Composable
 fun TrackingCompletionScreen(
     contentPadding: PaddingValues,
     record: CommuteRecord,
     onBackClick: () -> Unit,
+    onEditSegmentsClick: () -> Unit,
     onRecordsClick: () -> Unit,
     onHomeClick: () -> Unit,
 ) {
@@ -507,6 +772,20 @@ fun TrackingCompletionScreen(
                         emphasized = true,
                         modifier = Modifier.weight(1f),
                     )
+                }
+            }
+        }
+
+        if (record.routeSegments.isNotEmpty()) {
+            item {
+                OutlinedButton(
+                    onClick = onEditSegmentsClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Text("구간별 시간 수정")
                 }
             }
         }
@@ -612,6 +891,13 @@ private fun Long.toLocalTimeText(): String {
         .format(DateTimeFormatter.ofPattern("HH:mm"))
 }
 
+private fun Long.elapsedTimeText(nowEpochMillis: Long): String {
+    val totalSeconds = ((nowEpochMillis - this) / 1_000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+}
+
 private fun Int.toDeltaText(): String {
     return when {
         this > 0 -> "+${this}분"
@@ -640,6 +926,8 @@ private fun TrackingScreenPreview() {
             ),
             onBackClick = {},
             onPrimaryActionClick = {},
+            onSegmentStart = {},
+            onSegmentComplete = {},
         )
     }
 }
@@ -652,6 +940,7 @@ private fun TrackingCompletionScreenPreview() {
             contentPadding = PaddingValues(),
             record = sampleRecord,
             onBackClick = {},
+            onEditSegmentsClick = {},
             onRecordsClick = {},
             onHomeClick = {},
         )

@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.mapmate.domain.calculator.PersonalBufferOptimizer
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.repository.SettingsRepository
@@ -23,6 +24,7 @@ private val Context.mapMateSettingsDataStore: DataStore<Preferences> by preferen
 
 class DataStoreSettingsRepository(
     context: Context,
+    private val personalBufferOptimizer: PersonalBufferOptimizer = PersonalBufferOptimizer(),
 ) : SettingsRepository {
     private val dataStore = context.applicationContext.mapMateSettingsDataStore
 
@@ -59,16 +61,16 @@ class DataStoreSettingsRepository(
         }
     }
 
-    override suspend fun updatePersonalBufferForArrivalDelta(arrivalDeltaMinutes: Int): Int {
+    override suspend fun updatePersonalBufferForRecentArrivalDeltas(recentArrivalDeltaMinutes: List<Int>): Int {
         var updatedPersonalBufferMinutes = AppSettings.DEFAULT_PERSONAL_BUFFER_MINUTES
         dataStore.edit { preferences ->
             val currentMinutes = AppSettings.bufferMinutesOrDefault(
                 minutes = preferences[PERSONAL_BUFFER_MINUTES],
                 defaultMinutes = AppSettings.DEFAULT_PERSONAL_BUFFER_MINUTES,
             )
-            updatedPersonalBufferMinutes = AppSettings.adjustedPersonalBufferMinutes(
-                currentMinutes = currentMinutes,
-                arrivalDeltaMinutes = arrivalDeltaMinutes,
+            updatedPersonalBufferMinutes = personalBufferOptimizer.optimize(
+                currentPersonalBufferMinutes = currentMinutes,
+                recentArrivalDeltaMinutes = recentArrivalDeltaMinutes,
             )
             preferences[PERSONAL_BUFFER_MINUTES] = updatedPersonalBufferMinutes
         }

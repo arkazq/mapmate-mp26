@@ -38,20 +38,6 @@ class AppSettingsTest {
     }
 
     @Test
-    fun adjustedPersonalBufferMinutes_appliesBoundedArrivalDelta() {
-        assertEquals(9, AppSettings.adjustedPersonalBufferMinutes(6, 3))
-        assertEquals(1, AppSettings.adjustedPersonalBufferMinutes(6, -5))
-        assertEquals(11, AppSettings.adjustedPersonalBufferMinutes(6, 20))
-        assertEquals(1, AppSettings.adjustedPersonalBufferMinutes(6, -20))
-    }
-
-    @Test
-    fun adjustedPersonalBufferMinutes_keepsValueWithinValidRange() {
-        assertEquals(60, AppSettings.adjustedPersonalBufferMinutes(58, 5))
-        assertEquals(0, AppSettings.adjustedPersonalBufferMinutes(2, -5))
-    }
-
-    @Test
     fun transportModeOrDefault_fallsBackForUnknownNames() {
         assertEquals(TransportMode.WALK, AppSettings.transportModeOrDefault("WALK"))
         assertEquals(TransportMode.TRANSIT, AppSettings.transportModeOrDefault("BUS"))

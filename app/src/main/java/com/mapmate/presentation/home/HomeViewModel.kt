@@ -96,6 +96,7 @@ class HomeViewModel(
                 origin = origin,
                 destination = destination,
                 transportMode = transportMode,
+                routineId = id,
             )
             toRecommendationUiModel(
                 routeEstimate = routeEstimate,

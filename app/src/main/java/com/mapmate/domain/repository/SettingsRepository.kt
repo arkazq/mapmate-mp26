@@ -9,7 +9,7 @@ interface SettingsRepository {
 
     suspend fun updatePersonalBufferMinutes(minutes: Int)
 
-    suspend fun updatePersonalBufferForArrivalDelta(arrivalDeltaMinutes: Int): Int
+    suspend fun updatePersonalBufferForRecentArrivalDeltas(recentArrivalDeltaMinutes: List<Int>): Int
 
     suspend fun updateSafetyMarginMinutes(minutes: Int)
 

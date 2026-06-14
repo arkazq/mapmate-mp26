@@ -24,6 +24,7 @@ import com.mapmate.presentation.home.HomeRoute
 import com.mapmate.presentation.prediction.PredictionDetailRoute
 import com.mapmate.presentation.routine.RoutineRegistrationRoute
 import com.mapmate.presentation.routine.RoutinesRoute
+import com.mapmate.presentation.segmentedit.RouteSegmentEditRoute
 import com.mapmate.presentation.settings.SettingsRoute
 import com.mapmate.presentation.tracking.TrackingCompletionScreen
 import com.mapmate.presentation.tracking.TrackingRoute
@@ -146,6 +147,13 @@ fun MapMateApp(
                         returnDestination = MapMateBottomDestination.Records,
                     )
                 },
+                onEditSegmentsClick = { record ->
+                    screen = MapMateScreen.SegmentEdit(
+                        record = record,
+                        returnDestination = MapMateBottomDestination.Records,
+                        returnToCompletion = false,
+                    )
+                },
             )
 
             MapMateScreen.Settings -> SettingsRoute(
@@ -189,6 +197,7 @@ fun MapMateApp(
                 routine = currentScreen.routine,
                 routeEstimateProvider = routeEstimateProvider,
                 commuteRecordRepository = commuteRecordRepository,
+                routineRepository = routineRepository,
                 settingsRepository = settingsRepository,
                 onBackClick = {
                     screen = MapMateScreen.PredictionDetail(
@@ -208,8 +217,41 @@ fun MapMateApp(
                 contentPadding = innerPadding,
                 record = currentScreen.record,
                 onBackClick = { openMain(currentScreen.returnDestination) },
+                onEditSegmentsClick = {
+                    screen = MapMateScreen.SegmentEdit(
+                        record = currentScreen.record,
+                        returnDestination = currentScreen.returnDestination,
+                        returnToCompletion = true,
+                    )
+                },
                 onRecordsClick = { openMain(MapMateBottomDestination.Records) },
                 onHomeClick = { openMain(MapMateBottomDestination.Home) },
+            )
+
+            is MapMateScreen.SegmentEdit -> RouteSegmentEditRoute(
+                contentPadding = innerPadding,
+                record = currentScreen.record,
+                commuteRecordRepository = commuteRecordRepository,
+                onBackClick = {
+                    if (currentScreen.returnToCompletion) {
+                        screen = MapMateScreen.TrackingComplete(
+                            record = currentScreen.record,
+                            returnDestination = currentScreen.returnDestination,
+                        )
+                    } else {
+                        openMain(currentScreen.returnDestination)
+                    }
+                },
+                onSaveCompleted = { updatedRecord ->
+                    if (currentScreen.returnToCompletion) {
+                        screen = MapMateScreen.TrackingComplete(
+                            record = updatedRecord,
+                            returnDestination = currentScreen.returnDestination,
+                        )
+                    } else {
+                        openMain(currentScreen.returnDestination)
+                    }
+                },
             )
         }
     }
@@ -258,6 +300,14 @@ private sealed interface MapMateScreen {
     data class TrackingComplete(
         val record: com.mapmate.domain.model.CommuteRecord,
         val returnDestination: MapMateBottomDestination,
+    ) : MapMateScreen {
+        override val mainDestination: MapMateBottomDestination? = null
+    }
+
+    data class SegmentEdit(
+        val record: com.mapmate.domain.model.CommuteRecord,
+        val returnDestination: MapMateBottomDestination,
+        val returnToCompletion: Boolean,
     ) : MapMateScreen {
         override val mainDestination: MapMateBottomDestination? = null
     }
