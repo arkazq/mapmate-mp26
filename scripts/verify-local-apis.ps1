@@ -55,6 +55,16 @@ function Invoke-ApiCheck {
     }
 }
 
+function Format-ServiceKeyForQuery {
+    param([string]$ServiceKey)
+
+    if ($ServiceKey -match "%[0-9A-Fa-f]{2}") {
+        return $ServiceKey
+    }
+
+    return [uri]::EscapeDataString($ServiceKey)
+}
+
 function Invoke-KakaoKeywordSearch {
     param([string]$ApiKey)
 
@@ -191,7 +201,7 @@ function Invoke-SeoulBusRouteArrival {
         return
     }
 
-    $encodedKey = [uri]::EscapeDataString($ApiKey)
+    $encodedKey = Format-ServiceKeyForQuery -ServiceKey $ApiKey
     $uri = "http://ws.bus.go.kr/api/rest/arrive/getArrInfoByRouteAll?serviceKey=$encodedKey&busRouteId=$BusRouteId"
     $response = Invoke-RestMethod -Method Get -Uri $uri
     $count = @($response.ServiceResult.msgBody.itemList).Count
@@ -209,7 +219,7 @@ function Invoke-SeoulBusRoutePosition {
         return
     }
 
-    $encodedKey = [uri]::EscapeDataString($ApiKey)
+    $encodedKey = Format-ServiceKeyForQuery -ServiceKey $ApiKey
     $uri = "http://ws.bus.go.kr/api/rest/buspos/getBusPosByRtid?serviceKey=$encodedKey&busRouteId=$BusRouteId"
     $response = Invoke-RestMethod -Method Get -Uri $uri
     $count = @($response.ServiceResult.msgBody.itemList).Count
@@ -219,7 +229,7 @@ function Invoke-SeoulBusRoutePosition {
 function Invoke-TagoNearbyStations {
     param([string]$ApiKey)
 
-    $encodedKey = [uri]::EscapeDataString($ApiKey)
+    $encodedKey = Format-ServiceKeyForQuery -ServiceKey $ApiKey
     $uri = "http://apis.data.go.kr/1613000/BusSttnInfoInqireService/getCrdntPrxmtSttnList?serviceKey=$encodedKey&pageNo=1&numOfRows=3&_type=json&gpsLati=36.3&gpsLong=127.3"
     $response = Invoke-RestMethod -Method Get -Uri $uri
     $items = @($response.response.body.items.item)
@@ -244,7 +254,7 @@ function Invoke-TagoStationArrivals {
         return
     }
 
-    $encodedKey = [uri]::EscapeDataString($ApiKey)
+    $encodedKey = Format-ServiceKeyForQuery -ServiceKey $ApiKey
     $uri = "http://apis.data.go.kr/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList?serviceKey=$encodedKey&pageNo=1&numOfRows=5&_type=json&cityCode=$CityCode&nodeId=$NodeId"
     $response = Invoke-RestMethod -Method Get -Uri $uri
     $items = @($response.response.body.items.item)
