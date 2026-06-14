@@ -2,11 +2,11 @@
 
 SoongSil University mobile programming team project
 
-## Segment time optimization update
+## 구간별 소요시간 개인 맞춤 최적화 업데이트
 
-MapMate now includes segment-based commute time measurement and personalization. ODsay public transit routes can be split into `RouteSegment` entries, measured during commute tracking, manually edited after completion, and learned as `SegmentTimeAdjustment` values for later recommendations.
+MapMate는 ODsay 대중교통 경로를 `RouteSegment` 단위로 나누고, 이동 기록 중 실제 구간별 소요시간을 측정할 수 있습니다. 이동 완료 후에는 저장된 구간 시간을 수동 수정할 수 있으며, 최근 기록은 `SegmentTimeAdjustment`로 학습되어 다음 추천 시간 계산에 반영됩니다.
 
-See [`docs/SEGMENT_TIME_OPTIMIZATION.md`](docs/SEGMENT_TIME_OPTIMIZATION.md) for the current model, UI flow, fallback behavior, and known limitations.
+현재 모델, UI 흐름, 대체 처리 정책, 한계는 [`docs/SEGMENT_TIME_OPTIMIZATION.md`](docs/SEGMENT_TIME_OPTIMIZATION.md)에 정리되어 있습니다.
 
 MapMate는 반복되는 출퇴근/등교 루틴을 기준으로 사용자가 언제 출발해야 하는지 계산해 주는 Android 앱입니다.
 
@@ -86,68 +86,12 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - 루틴 저장 성공 상태 표시
 - Material 3 기반 공통 카드, 하단 내비게이션, 아이콘 컴포넌트
 
-## 김홍균/Codex 누적 작업 요약
-
-이 섹션은 오늘 작업만이 아니라, 이 프로젝트에서 김홍균이 Codex로 진행해 `develop` 또는 현재 기능 브랜치에 반영한 주요 작업을 정리합니다.
-
-- [PR #8](https://github.com/arkazq/mapmate-mp26/pull/8) `feature/routine-room-storage`
-  - 루틴 저장을 mock/화면 상태가 아니라 Room DB 기반으로 전환
-  - `RoutineRepository`, Room entity/DAO/mapper, 저장/조회 흐름 추가
-  - 루틴 저장 관련 단위 테스트와 문서 정리
-- [PR #9](https://github.com/arkazq/mapmate-mp26/pull/9) `feature/datastore-settings`
-  - Preferences DataStore 기반 설정 저장 추가
-  - 개인 보정 시간, 안전 여유 시간, 알림 사용 여부, 기본 이동수단 저장/복원
-  - 설정 화면과 앱 상위 탭/내비게이션 흐름 정리
-- [PR #11](https://github.com/arkazq/mapmate-mp26/pull/11) `feature/home`
-  - 홈 탭을 앱 진입 화면으로 추가
-  - Room `Flow`로 저장된 루틴을 홈/루틴 화면에 표시
-  - 루틴 카드의 수정/삭제 동작 연결
-  - 루틴 표시용 공통 UI/라벨 정리와 Kotlin 단위 테스트 정리
-- [PR #16](https://github.com/arkazq/mapmate-mp26/pull/16) `feature/commute-history-storage`
-  - `CommuteRecord` 도메인 모델과 Room `commute_records` 테이블 추가
-  - 이동 기록 완료 시 루틴명, 출발지/목적지, 추천 출발 시각, 실제 도착 시각, 도착 오차 저장
-  - 도착 오차를 기준으로 DataStore 개인 보정값을 자동 조정
-  - 기록 완료 화면을 저장된 기록 기반으로 표시
-  - 기록 탭에서 저장된 이동 기록 목록과 empty state 표시
-  - 알림 설정이 켜져 있으면 저장된 루틴과 경로 예상 시간을 기준으로 다음 출발 알림을 AlarmManager에 예약
-  - 출발 30분 전 WorkManager 작업을 예약해 경로 예상 시간을 다시 조회하고 알림을 재예약
-  - ODsay 경로의 첫 탑승 구간에서 서울 버스/지하철 실시간 도착정보를 조회해 기본 예상 시간보다 대기가 길 때 지연분을 반영
-  - `README.md`, `docs/FEATURE_STATUS.md`, `docs/ARCHITECTURE.md`, `docs/API_STRATEGY.md`에 구현 상태 반영
-- [PR #18](https://github.com/arkazq/mapmate-mp26/pull/18) `codex/current-location-reverse-geocode`
-  - Kakao Local API 좌표→주소 변환 endpoint를 `KakaoLocalApi`에 추가
-  - `ReverseGeocodingProvider`와 `KakaoReverseGeocodingProvider`를 추가해 현재 위치 좌표를 읽기 쉬운 주소로 변환
-  - 키 누락/호출 실패 시 기존 현재 위치 fallback 주소를 유지
-  - `scripts/verify-local-apis.ps1`로 로컬 `local.properties` 기반 실제 Kakao/ODsay 호출 검증 가능
-- `codex/api-status-messages`
-  - `RouteEstimate`와 추천 UI 모델에 fallback 여부와 사용자용 상태 메시지 필드 추가
-  - ODsay/Google Routes 실패 시 `API key 없음`, `좌표 없음`, `이동수단 미지원`, `경로 없음`, `요청 실패` 수준으로 사유를 요약
-  - 루틴 등록 결과, 홈, 루틴 목록, 상세 예측, 이동 기록 화면에서 fallback 상태 메시지 표시
-  - ODsay API 호출 없이 단위 테스트와 임시 clean copy 기준 `./gradlew.bat build`로 검증
-- `codex/realtime-snapshot-fallback`
-  - ODsay 첫 탑승 실시간 보정 성공 결과를 `RouteRealtimeSnapshot`으로 Room DB에 저장
-  - 실시간 도착정보가 실패/매칭 실패하면 20분 이내의 마지막 성공 보정값만 재사용
-  - 만료된 스냅샷은 조회 전 정리하고, 만료 후에는 ODsay 기본 예상 시간으로 fallback
-  - 실제 API 호출 없이 fake provider 기반 단위 테스트로 저장/재사용/만료 흐름 검증
-- `codex/departure-now-clamp`
-  - 권장 출발 시각이 현재 시각보다 이미 지났고 도착 목표가 아직 남아 있으면 `지금 출발`로 표시
-  - 루틴 등록, 홈, 루틴 목록, 상세 예측, 이동 기록 화면의 추천 출발 표시를 즉시 출발 상태에 맞게 정리
-  - AlarmManager 예약도 오늘 도착 목표가 아직 남은 경우 다음 주로 넘기지 않고 즉시 알림으로 처리
-  - 실제 API 호출 없이 계산기/알림 플래너/추천 UI 모델 단위 테스트로 검증
-- `develop` 직접 정리
-  - 기록 탭 상단에 추천 정확도 통계 요약 추가
-  - Google Routes 자동차 모드에 `TRAFFIC_AWARE` routing preference 적용
-  - 실제 ODsay/Google 경로 provider 성공값을 6시간 Room cache로 저장하고 실패 시 mock 전 cache fallback 적용
-  - TAGO 버스정류소정보/버스도착정보 provider 추가
-  - 서울 버스 위치정보, 서울 지하철 열차 위치정보 provider를 운행 상태 보조 설명으로 연결
-  - PR #19의 중복 역지오코딩 구현 중 남은 출발지 선택 UX만 `develop`에 반영
-
-검증은 OneDrive 작업 폴더의 Gradle build 디렉터리 잠금 이슈를 피하기 위해 필요 시 OneDrive 밖 clean/temp copy에서 반복했습니다. API key와 `local.properties`는 Git에 포함하지 않는 것을 기준으로 확인했습니다.
-
 ## 아직 구현되지 않은 기능
 
 - Google Routes 도착 시각 기준 경로 조회
 - 통계 기반 개인 보정 정책 고도화
 - TAGO 정류소/노선 매칭의 실기기 API 검증 및 지역별 예외 보강
+- 모바일 보안 점검: 민감 정보 Git 포함 여부, 위치/이동 기록 로그 노출, cleartext 통신 범위, release 빌드 보안 설정 확인
 
 ## 기술 스택
 
@@ -219,6 +163,7 @@ API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fall
 - `docs/API_STRATEGY.md`
 - `docs/REALTIME_DEPARTURE_STRATEGY.md`
 - `docs/SEGMENT_TIME_OPTIMIZATION.md`
+- `docs/MOBILE_SECURITY_CHECKLIST.md`
 - `docs/FEATURE_STATUS.md`
 
 ## 팀원

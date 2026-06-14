@@ -1,4 +1,4 @@
-# Segment Time Optimization
+# 구간별 소요시간 개인 맞춤 최적화
 
 이 문서는 MapMate의 구간별 이동 시간 측정 및 개인화 보정 구조를 정리합니다.
 
@@ -164,7 +164,7 @@ delay = actualDurationMinutes - plannedDurationMinutes
 
 `personalBufferMinutes`는 계속 유지됩니다. 이 값은 출발 준비 지연 또는 사용자 습관성 출발 지연에 가깝고, segment 보정은 실제 이동 구간의 소요시간 오차를 보정합니다.
 
-## Fallback
+## 대체 처리 정책
 
 - `RouteEstimate.segments`가 없으면 기존 단일 이동 기록 UI와 단일 이동 시간 계산을 사용합니다.
 - segment 기록이 없으면 segment 보정은 적용하지 않습니다.

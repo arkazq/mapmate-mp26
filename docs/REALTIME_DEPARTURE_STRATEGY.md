@@ -1,24 +1,24 @@
-# MapMate Realtime Departure Strategy
+# MapMate 실시간 출발 전략
 
-## Relationship with segment time personalization
+## 구간별 소요시간 개인화와의 관계
 
-Realtime departure correction and segment time personalization solve different problems.
+실시간 출발 보정과 구간별 소요시간 개인화는 서로 다른 문제를 해결합니다.
 
-- Realtime correction handles current transit conditions, such as the first bus or subway arrival delay.
-- Segment personalization handles repeated user-specific travel-time error, such as a user consistently taking longer to walk to the first stop.
-- `personalBufferMinutes` handles departure/preparation behavior and remains separate from segment travel-time delay.
+- 실시간 보정은 첫 버스나 지하철 도착 지연처럼 현재 교통 상황을 처리합니다.
+- 구간 개인화는 첫 정류장까지 항상 더 오래 걷는 경우처럼 반복되는 사용자별 이동 소요시간 오차를 처리합니다.
+- `personalBufferMinutes`는 출발/준비 습관을 처리하며 구간 이동시간 지연과 분리해서 유지합니다.
 
-The current route estimate flow can apply these layers together:
+현재 경로 예측 흐름은 아래 보정 계층을 함께 적용할 수 있습니다.
 
 ```text
-base route duration
-+ realtime first-transit delay when available
-+ learned segment delay when enough personal history exists
+기본 경로 소요시간
++ 사용 가능한 경우 첫 대중교통 실시간 지연
++ 개인 기록이 충분한 경우 학습된 구간 지연
 + personalBufferMinutes
 + safetyMarginMinutes
 ```
 
-The learned segment delay is stored in `segment_time_adjustments` and is not written back to `Routine`. This keeps routine settings stable while allowing recent commute history to refine future estimates.
+학습된 구간 지연값은 `segment_time_adjustments`에 저장하며 `Routine`에 직접 쓰지 않습니다. 루틴 설정은 안정적으로 유지하고, 최근 이동 기록으로 이후 예측만 정교하게 보정하기 위한 구조입니다.
 
 이 문서는 MapMate의 실시간 출발 시각 보정 개발 기준을 정리합니다. 구현 코드가 아니라, 앞으로 PR에서 따라야 할 설계 기준입니다.
 
