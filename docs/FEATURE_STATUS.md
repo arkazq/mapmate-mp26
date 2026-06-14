@@ -1,16 +1,17 @@
-# MapMate Feature Status
+# MapMate 기능 상태
 
-## Segment time optimization status
+## 구간별 소요시간 최적화 상태
 
-| Feature | Status | Description | Main files |
+| 기능 | 상태 | 설명 | 관련 파일 |
 | -- | -- | -- | -- |
-| ODsay subPath segment parsing | Done | Converts ODsay public transit `subPath` entries into ordered `RouteSegment` values. Walk sections are classified as walk-to-transit, transfer walk, or walk-to-destination. | `data/remote/provider/OdsayRouteSegmentMapper.kt`, `domain/model/RouteSegment.kt` |
-| Segment persistence | Done | Stores segment records and segment adjustment values in Room. Database version is now 6 with `route_segments` and `segment_time_adjustments`. | `data/local/RouteSegmentEntity.kt`, `data/local/SegmentTimeAdjustmentEntity.kt`, `data/local/MapMateDatabase.kt` |
-| Segment-based tracking UI | Done | Tracking now focuses on one active segment at a time, shows current segment progress, and saves measured segment durations with the commute record. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt`, `presentation/tracking/TrackingUiState.kt` |
-| Manual segment time editing | Done | Saved segment start/end times can be edited after commute completion or from the history screen. Edited values are marked with `isUserEdited = true`. | `presentation/segmentedit/RouteSegmentEditScreen.kt`, `presentation/segmentedit/RouteSegmentEditViewModel.kt` |
-| Segment time personalization | Done | Recent completed segment records are grouped by routine, segment type, route name, start, and end. Average delay and confidence are calculated and applied to later route estimates. | `domain/calculator/SegmentTimeAdjustmentCalculator.kt`, `data/remote/provider/SegmentAdjustedRouteEstimateProvider.kt` |
-| Time-of-day and weekday segment learning | Not started | Segment adjustments are not yet split by time band or weekday. | Future work |
-| Automatic boarding/alighting detection | Not started | The app does not infer segment start/end from device location. | Future work |
+| ODsay subPath 구간 파싱 | 완료 | ODsay 대중교통 `subPath` 항목을 순서가 있는 `RouteSegment` 값으로 변환합니다. 도보 구간은 정류장/역까지 도보, 환승 도보, 목적지까지 도보로 분류합니다. | `data/remote/provider/OdsayRouteSegmentMapper.kt`, `domain/model/RouteSegment.kt` |
+| 구간 저장 | 완료 | 구간 기록과 구간별 보정값을 Room에 저장합니다. DB 버전은 6이며 `route_segments`, `segment_time_adjustments` 테이블을 사용합니다. | `data/local/RouteSegmentEntity.kt`, `data/local/SegmentTimeAdjustmentEntity.kt`, `data/local/MapMateDatabase.kt` |
+| 구간 기반 측정 UI | 완료 | 이동 기록 화면은 현재 활성 구간 하나에 집중하고, 구간 진행 상태와 실제 측정 시간을 이동 기록과 함께 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt`, `presentation/tracking/TrackingUiState.kt` |
+| 구간 시간 수동 수정 | 완료 | 이동 완료 후 또는 기록 화면에서 저장된 구간의 시작/종료 시각을 수정할 수 있습니다. 수정된 값은 `isUserEdited = true`로 표시됩니다. | `presentation/segmentedit/RouteSegmentEditScreen.kt`, `presentation/segmentedit/RouteSegmentEditViewModel.kt` |
+| 구간 소요시간 개인화 | 완료 | 최근 완료된 구간 기록을 `routineId`, `segmentType`, `routeName`, `startName`, `endName` 기준으로 묶고 평균 지연과 신뢰도를 계산해 이후 경로 예측에 반영합니다. | `domain/calculator/SegmentTimeAdjustmentCalculator.kt`, `data/remote/provider/SegmentAdjustedRouteEstimateProvider.kt` |
+| 시간대/요일별 구간 학습 | 미구현 | 구간 보정값은 아직 시간대나 요일별로 분리하지 않습니다. | 향후 작업 |
+| 자동 탑승/하차 감지 | 미구현 | 앱이 기기 위치를 기반으로 구간 시작/종료를 자동 추론하지는 않습니다. | 향후 작업 |
+| 모바일 보안 점검 | 미구현 | API key/keystore Git 포함 여부, 위치/이동 기록 로그 노출, cleartext 통신 범위, release 빌드 보안 설정을 별도 체크리스트로 점검해야 합니다. | `docs/MOBILE_SECURITY_CHECKLIST.md` |
 
 현재 구현 상태를 기준으로 기능별 진행 상황을 정리합니다.
 

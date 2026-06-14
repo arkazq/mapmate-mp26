@@ -1,39 +1,39 @@
-# MapMate Architecture
+# MapMate 아키텍처
 
-## Segment time optimization architecture
+## 구간별 소요시간 최적화 아키텍처
 
-The segment time optimization flow extends the existing route estimate and commute history pipeline without replacing the original fallback behavior.
+구간별 소요시간 최적화 흐름은 기존 경로 예측과 이동 기록 파이프라인을 확장하며, 기존 fallback 동작을 대체하지 않습니다.
 
 ```text
-ODsay route result
+ODsay 경로 결과
 -> OdsayRouteSegmentMapper
 -> RouteEstimate.segments
--> TrackingViewModel segment measurement
+-> TrackingViewModel 구간 측정
 -> CommuteRecord.routeSegments
--> route_segments table
+-> route_segments 테이블
 -> SegmentTimeAdjustmentCalculator
--> segment_time_adjustments table
+-> segment_time_adjustments 테이블
 -> SegmentAdjustedRouteEstimateProvider
--> adjusted RouteEstimate.estimatedMinutes
+-> 보정된 RouteEstimate.estimatedMinutes
 ```
 
-Key responsibilities:
+주요 책임:
 
-- `RouteSegment`: domain model for one walk, bus, subway, transfer walk, destination walk, or unknown segment.
-- `SegmentTimeAdjustment`: learned average delay for a stable segment key.
-- `OdsayRouteSegmentMapper`: converts ODsay `subPath` data into ordered `RouteSegment` values.
-- `RoomCommuteRecordRepository`: saves commute records and their route segments, then refreshes segment adjustment values.
-- `SegmentTimeAdjustmentCalculator`: groups recent completed segments and calculates weighted average delay plus confidence.
-- `SegmentAdjustedRouteEstimateProvider`: wraps the existing route estimate provider and applies learned segment delays when confidence is high enough.
-- `TrackingScreen` and `TrackingViewModel`: collect segment start/end events during an active commute.
-- `RouteSegmentEditScreen` and `RouteSegmentEditViewModel`: edit saved segment timing after completion.
+- `RouteSegment`: 도보, 버스, 지하철, 환승 도보, 목적지 도보, 알 수 없는 이동 구간 하나를 표현하는 도메인 모델입니다.
+- `SegmentTimeAdjustment`: 안정적인 구간 key에 대해 학습된 평균 지연값입니다.
+- `OdsayRouteSegmentMapper`: ODsay `subPath` 데이터를 순서가 있는 `RouteSegment` 값으로 변환합니다.
+- `RoomCommuteRecordRepository`: 이동 기록과 구간 기록을 저장한 뒤 구간 보정값을 갱신합니다.
+- `SegmentTimeAdjustmentCalculator`: 최근 완료된 구간을 묶어 가중 평균 지연과 신뢰도를 계산합니다.
+- `SegmentAdjustedRouteEstimateProvider`: 기존 경로 예측 provider를 감싸고, 신뢰도가 충분한 구간 지연값을 적용합니다.
+- `TrackingScreen`, `TrackingViewModel`: 이동 중 구간 시작/종료 이벤트를 수집합니다.
+- `RouteSegmentEditScreen`, `RouteSegmentEditViewModel`: 이동 완료 후 저장된 구간 시간을 수정합니다.
 
-Fallback rules:
+대체 처리 규칙:
 
-- If `RouteEstimate.segments` is empty, the legacy single-duration tracking UI remains active.
-- If no segment adjustment exists, the original route estimate is used.
-- If confidence is too low, the segment adjustment is ignored.
-- `personalBufferMinutes` remains separate from segment delay. It represents departure/preparation behavior, while segment delay represents actual travel-time error.
+- `RouteEstimate.segments`가 비어 있으면 기존 단일 소요시간 기반 측정 UI를 유지합니다.
+- 구간 보정값이 없으면 원래 경로 예측값을 사용합니다.
+- 신뢰도가 너무 낮으면 구간 보정값을 적용하지 않습니다.
+- `personalBufferMinutes`는 구간 지연과 분리합니다. 이 값은 출발/준비 습관을 나타내고, 구간 지연은 실제 이동 소요시간 오차를 나타냅니다.
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
@@ -451,3 +451,4 @@ Google Routes 자동차 모드는 `GoogleRoutesEstimateProvider`에서 `routingP
 
 - 통계/분석 화면
 - 필요 시 Navigation Compose 도입
+- 모바일 보안 점검: 민감 정보 저장/로그 노출, 위치/이동 기록 개인정보 취급, cleartext 통신 범위, release 빌드 보안 설정 확인
