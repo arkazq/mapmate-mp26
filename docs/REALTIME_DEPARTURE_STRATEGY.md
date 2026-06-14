@@ -1,5 +1,25 @@
 # MapMate Realtime Departure Strategy
 
+## Relationship with segment time personalization
+
+Realtime departure correction and segment time personalization solve different problems.
+
+- Realtime correction handles current transit conditions, such as the first bus or subway arrival delay.
+- Segment personalization handles repeated user-specific travel-time error, such as a user consistently taking longer to walk to the first stop.
+- `personalBufferMinutes` handles departure/preparation behavior and remains separate from segment travel-time delay.
+
+The current route estimate flow can apply these layers together:
+
+```text
+base route duration
++ realtime first-transit delay when available
++ learned segment delay when enough personal history exists
++ personalBufferMinutes
++ safetyMarginMinutes
+```
+
+The learned segment delay is stored in `segment_time_adjustments` and is not written back to `Routine`. This keeps routine settings stable while allowing recent commute history to refine future estimates.
+
 이 문서는 MapMate의 실시간 출발 시각 보정 개발 기준을 정리합니다. 구현 코드가 아니라, 앞으로 PR에서 따라야 할 설계 기준입니다.
 
 ## 핵심 방향

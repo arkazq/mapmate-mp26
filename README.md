@@ -2,6 +2,12 @@
 
 SoongSil University mobile programming team project
 
+## Segment time optimization update
+
+MapMate now includes segment-based commute time measurement and personalization. ODsay public transit routes can be split into `RouteSegment` entries, measured during commute tracking, manually edited after completion, and learned as `SegmentTimeAdjustment` values for later recommendations.
+
+See [`docs/SEGMENT_TIME_OPTIMIZATION.md`](docs/SEGMENT_TIME_OPTIMIZATION.md) for the current model, UI flow, fallback behavior, and known limitations.
+
 MapMate는 반복되는 출퇴근/등교 루틴을 기준으로 사용자가 언제 출발해야 하는지 계산해 주는 Android 앱입니다.
 
 현재 프로젝트는 **Kakao Local API 기반 장소 검색/좌표 역지오코딩**, ODsay/Google Routes 기반 경로 시간 provider, 서울 버스/지하철 실시간 도착정보 provider, mock fallback, Room 기반 루틴/이동 기록 저장, DataStore 기반 설정 저장, WorkManager 기반 출발 전 재조회, AlarmManager 기반 출발 알림, Material 3 기반 출발 준비 대시보드와 루틴 관리 UI까지 구현한 상태입니다.
@@ -212,6 +218,7 @@ API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fall
 - `docs/ARCHITECTURE.md`
 - `docs/API_STRATEGY.md`
 - `docs/REALTIME_DEPARTURE_STRATEGY.md`
+- `docs/SEGMENT_TIME_OPTIMIZATION.md`
 - `docs/FEATURE_STATUS.md`
 
 ## 팀원
