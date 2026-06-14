@@ -1,5 +1,17 @@
 # MapMate Feature Status
 
+## Segment time optimization status
+
+| Feature | Status | Description | Main files |
+| -- | -- | -- | -- |
+| ODsay subPath segment parsing | Done | Converts ODsay public transit `subPath` entries into ordered `RouteSegment` values. Walk sections are classified as walk-to-transit, transfer walk, or walk-to-destination. | `data/remote/provider/OdsayRouteSegmentMapper.kt`, `domain/model/RouteSegment.kt` |
+| Segment persistence | Done | Stores segment records and segment adjustment values in Room. Database version is now 6 with `route_segments` and `segment_time_adjustments`. | `data/local/RouteSegmentEntity.kt`, `data/local/SegmentTimeAdjustmentEntity.kt`, `data/local/MapMateDatabase.kt` |
+| Segment-based tracking UI | Done | Tracking now focuses on one active segment at a time, shows current segment progress, and saves measured segment durations with the commute record. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt`, `presentation/tracking/TrackingUiState.kt` |
+| Manual segment time editing | Done | Saved segment start/end times can be edited after commute completion or from the history screen. Edited values are marked with `isUserEdited = true`. | `presentation/segmentedit/RouteSegmentEditScreen.kt`, `presentation/segmentedit/RouteSegmentEditViewModel.kt` |
+| Segment time personalization | Done | Recent completed segment records are grouped by routine, segment type, route name, start, and end. Average delay and confidence are calculated and applied to later route estimates. | `domain/calculator/SegmentTimeAdjustmentCalculator.kt`, `data/remote/provider/SegmentAdjustedRouteEstimateProvider.kt` |
+| Time-of-day and weekday segment learning | Not started | Segment adjustments are not yet split by time band or weekday. | Future work |
+| Automatic boarding/alighting detection | Not started | The app does not infer segment start/end from device location. | Future work |
+
 현재 구현 상태를 기준으로 기능별 진행 상황을 정리합니다.
 
 | 기능 | 상태 | 설명 | 관련 위치 |

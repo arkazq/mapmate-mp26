@@ -1,5 +1,40 @@
 # MapMate Architecture
 
+## Segment time optimization architecture
+
+The segment time optimization flow extends the existing route estimate and commute history pipeline without replacing the original fallback behavior.
+
+```text
+ODsay route result
+-> OdsayRouteSegmentMapper
+-> RouteEstimate.segments
+-> TrackingViewModel segment measurement
+-> CommuteRecord.routeSegments
+-> route_segments table
+-> SegmentTimeAdjustmentCalculator
+-> segment_time_adjustments table
+-> SegmentAdjustedRouteEstimateProvider
+-> adjusted RouteEstimate.estimatedMinutes
+```
+
+Key responsibilities:
+
+- `RouteSegment`: domain model for one walk, bus, subway, transfer walk, destination walk, or unknown segment.
+- `SegmentTimeAdjustment`: learned average delay for a stable segment key.
+- `OdsayRouteSegmentMapper`: converts ODsay `subPath` data into ordered `RouteSegment` values.
+- `RoomCommuteRecordRepository`: saves commute records and their route segments, then refreshes segment adjustment values.
+- `SegmentTimeAdjustmentCalculator`: groups recent completed segments and calculates weighted average delay plus confidence.
+- `SegmentAdjustedRouteEstimateProvider`: wraps the existing route estimate provider and applies learned segment delays when confidence is high enough.
+- `TrackingScreen` and `TrackingViewModel`: collect segment start/end events during an active commute.
+- `RouteSegmentEditScreen` and `RouteSegmentEditViewModel`: edit saved segment timing after completion.
+
+Fallback rules:
+
+- If `RouteEstimate.segments` is empty, the legacy single-duration tracking UI remains active.
+- If no segment adjustment exists, the original route estimate is used.
+- If confidence is too low, the segment adjustment is ignored.
+- `personalBufferMinutes` remains separate from segment delay. It represents departure/preparation behavior, while segment delay represents actual travel-time error.
+
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
 현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록/통계 요약, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, WorkManager 기반 출발 전 재조회, 버스/지하철 실시간 도착정보 기반 대기 지연 보정, TAGO 버스 도착정보 fallback, 버스/지하철 위치정보 기반 운행 상태 보조 설명, 전체 경로 예상값 cache까지 구현되어 있습니다. Room 기반 루틴/이동 기록/경로 cache 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
