@@ -73,6 +73,7 @@ class DepartureAlarmCoordinator(
                 origin = routine.origin,
                 destination = routine.destination,
                 transportMode = routine.transportMode,
+                routineId = routine.id,
             ).estimatedMinutes
         }.getOrElse {
             routine.transportMode.fallbackRouteDurationMinutes()

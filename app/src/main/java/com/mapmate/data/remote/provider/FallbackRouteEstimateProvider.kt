@@ -13,6 +13,7 @@ class FallbackRouteEstimateProvider(
         origin: Destination,
         destination: Destination,
         transportMode: TransportMode,
+        routineId: Long?,
     ): RouteEstimate {
         val failures = mutableListOf<RouteProviderFailure>()
 
@@ -22,6 +23,7 @@ class FallbackRouteEstimateProvider(
                     origin = origin,
                     destination = destination,
                     transportMode = transportMode,
+                    routineId = routineId,
                 )
             }.onFailure { error ->
                 failures += RouteProviderFailure(
@@ -37,6 +39,7 @@ class FallbackRouteEstimateProvider(
             origin = origin,
             destination = destination,
             transportMode = transportMode,
+            routineId = routineId,
         )
 
         return fallbackEstimate.copy(

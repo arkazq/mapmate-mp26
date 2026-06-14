@@ -246,6 +246,7 @@ class RoutineRegistrationViewModel(
                 origin = validatedInput.origin,
                 destination = validatedInput.destination,
                 transportMode = validatedInput.transportMode,
+                routineId = _uiState.value.editingRoutineId,
             )
             val departureRecommendation = departureTimeCalculator.calculateWithNowClamp(
                 targetArrivalTime = validatedInput.targetArrivalTime,

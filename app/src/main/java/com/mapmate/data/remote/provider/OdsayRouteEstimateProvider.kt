@@ -33,6 +33,7 @@ class OdsayRouteEstimateProvider(
         origin: Destination,
         destination: Destination,
         transportMode: TransportMode,
+        routineId: Long?,
     ): RouteEstimate {
         check(transportMode == TransportMode.TRANSIT) {
             "ODsay route estimate supports only public transit."
@@ -66,6 +67,9 @@ class OdsayRouteEstimateProvider(
         check(totalTime != null && totalTime > 0) {
             response.error?.msg ?: "ODsay route estimate was empty."
         }
+        val routeSegments = runCatching {
+            path.toRouteSegments(routineId = routineId)
+        }.getOrDefault(emptyList())
 
         val transitArrivalQuery = path.firstTransitArrivalQuery()
         val snapshotCacheKey = transitArrivalQuery?.toSnapshotCacheKey(
@@ -111,6 +115,7 @@ class OdsayRouteEstimateProvider(
                     realtimeDelayMinutes = realtimeDelayMinutes,
                     operationStatus = operationStatus,
                 ),
+                segments = routeSegments,
             )
         }
 
@@ -146,6 +151,7 @@ class OdsayRouteEstimateProvider(
             statusMessage = cachedSnapshot?.let {
                 "실시간 도착정보를 새로 확인하지 못해 최근 성공 보정값을 사용했습니다."
             },
+            segments = routeSegments,
         )
     }
 

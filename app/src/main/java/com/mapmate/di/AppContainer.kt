@@ -32,6 +32,7 @@ import com.mapmate.data.remote.provider.SeoulBusOperationStatusProvider
 import com.mapmate.data.remote.provider.SeoulBusRealtimeArrivalProvider
 import com.mapmate.data.remote.provider.SeoulSubwayOperationStatusProvider
 import com.mapmate.data.remote.provider.SeoulSubwayRealtimeArrivalProvider
+import com.mapmate.data.remote.provider.SegmentAdjustedRouteEstimateProvider
 import com.mapmate.data.remote.provider.TagoBusArrivalProvider
 import com.mapmate.data.mock.MockPlaceSearchProvider
 import com.mapmate.data.mock.MockRouteEstimateProvider
@@ -39,6 +40,7 @@ import com.mapmate.data.repository.RoomCommuteRecordRepository
 import com.mapmate.data.repository.RoomRouteEstimateCacheRepository
 import com.mapmate.data.repository.RoomRouteRealtimeSnapshotRepository
 import com.mapmate.data.repository.RoomRoutineRepository
+import com.mapmate.data.repository.RoomSegmentTimeAdjustmentRepository
 import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
@@ -62,7 +64,11 @@ class AppContainer(
     }
 
     val commuteRecordRepository: CommuteRecordRepository by lazy {
-        RoomCommuteRecordRepository(database.commuteRecordDao())
+        RoomCommuteRecordRepository(
+            commuteRecordDao = database.commuteRecordDao(),
+            routeSegmentDao = database.routeSegmentDao(),
+            segmentTimeAdjustmentDao = database.segmentTimeAdjustmentDao(),
+        )
     }
 
     private val routeRealtimeSnapshotRepository: RouteRealtimeSnapshotRepository by lazy {
@@ -71,6 +77,10 @@ class AppContainer(
 
     private val routeEstimateCacheRepository: RouteEstimateCacheRepository by lazy {
         RoomRouteEstimateCacheRepository(database.routeEstimateCacheDao())
+    }
+
+    private val segmentTimeAdjustmentRepository by lazy {
+        RoomSegmentTimeAdjustmentRepository(database.segmentTimeAdjustmentDao())
     }
 
     val settingsRepository: SettingsRepository by lazy {
@@ -98,35 +108,38 @@ class AppContainer(
     }
 
     val routeEstimateProvider: RouteEstimateProvider by lazy {
-        FallbackRouteEstimateProvider(
-            primaryProviders = listOf(
-                CachingRouteEstimateProvider(
-                    cacheNamespace = "ODsay",
-                    primary = OdsayRouteEstimateProvider(
-                        api = MapMateRetrofitFactory.create(
-                            baseUrl = ODSAY_BASE_URL,
-                            serviceClass = OdsayApi::class.java,
+        SegmentAdjustedRouteEstimateProvider(
+            delegate = FallbackRouteEstimateProvider(
+                primaryProviders = listOf(
+                    CachingRouteEstimateProvider(
+                        cacheNamespace = "ODsay",
+                        primary = OdsayRouteEstimateProvider(
+                            api = MapMateRetrofitFactory.create(
+                                baseUrl = ODSAY_BASE_URL,
+                                serviceClass = OdsayApi::class.java,
+                            ),
+                            config = remoteApiConfig,
+                            transitArrivalProvider = transitArrivalProvider,
+                            transitOperationStatusProvider = transitOperationStatusProvider,
+                            routeRealtimeSnapshotRepository = routeRealtimeSnapshotRepository,
                         ),
-                        config = remoteApiConfig,
-                        transitArrivalProvider = transitArrivalProvider,
-                        transitOperationStatusProvider = transitOperationStatusProvider,
-                        routeRealtimeSnapshotRepository = routeRealtimeSnapshotRepository,
+                        cacheRepository = routeEstimateCacheRepository,
                     ),
-                    cacheRepository = routeEstimateCacheRepository,
-                ),
-                CachingRouteEstimateProvider(
-                    cacheNamespace = "Google Routes",
-                    primary = GoogleRoutesEstimateProvider(
-                        api = MapMateRetrofitFactory.create(
-                            baseUrl = GOOGLE_ROUTES_BASE_URL,
-                            serviceClass = GoogleRoutesApi::class.java,
+                    CachingRouteEstimateProvider(
+                        cacheNamespace = "Google Routes",
+                        primary = GoogleRoutesEstimateProvider(
+                            api = MapMateRetrofitFactory.create(
+                                baseUrl = GOOGLE_ROUTES_BASE_URL,
+                                serviceClass = GoogleRoutesApi::class.java,
+                            ),
+                            config = remoteApiConfig,
                         ),
-                        config = remoteApiConfig,
+                        cacheRepository = routeEstimateCacheRepository,
                     ),
-                    cacheRepository = routeEstimateCacheRepository,
                 ),
+                fallback = MockRouteEstimateProvider(),
             ),
-            fallback = MockRouteEstimateProvider(),
+            segmentTimeAdjustmentRepository = segmentTimeAdjustmentRepository,
         )
     }
 

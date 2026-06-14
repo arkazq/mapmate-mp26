@@ -33,6 +33,7 @@ class PredictionDetailViewModel(
                     origin = routine.origin,
                     destination = routine.destination,
                     transportMode = routine.transportMode,
+                    routineId = routine.id,
                 )
                 routine.toRecommendationUiModel(
                     routeEstimate = routeEstimate,

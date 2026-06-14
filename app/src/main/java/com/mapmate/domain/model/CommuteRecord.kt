@@ -16,4 +16,5 @@ data class CommuteRecord(
     val startedAtEpochMillis: Long,
     val arrivedAtEpochMillis: Long,
     val arrivalDeltaMinutes: Int,
+    val routeSegments: List<RouteSegment> = emptyList(),
 )

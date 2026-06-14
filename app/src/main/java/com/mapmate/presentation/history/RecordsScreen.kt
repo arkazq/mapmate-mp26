@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -47,6 +48,7 @@ fun RecordsRoute(
     contentPadding: PaddingValues,
     commuteRecordRepository: CommuteRecordRepository,
     onRegisterRoutineClick: () -> Unit,
+    onEditSegmentsClick: (CommuteRecord) -> Unit,
 ) {
     val viewModel: RecordsViewModel = viewModel(
         factory = RecordsViewModel.factory(commuteRecordRepository),
@@ -57,6 +59,7 @@ fun RecordsRoute(
         uiState = uiState,
         contentPadding = contentPadding,
         onRegisterRoutineClick = onRegisterRoutineClick,
+        onEditSegmentsClick = onEditSegmentsClick,
     )
 }
 
@@ -65,6 +68,7 @@ fun RecordsScreen(
     uiState: RecordsUiState,
     contentPadding: PaddingValues,
     onRegisterRoutineClick: () -> Unit,
+    onEditSegmentsClick: (CommuteRecord) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -118,7 +122,10 @@ fun RecordsScreen(
                     items = uiState.records,
                     key = { it.id ?: it.arrivedAtEpochMillis },
                 ) { record ->
-                    CommuteRecordCard(record = record)
+                    CommuteRecordCard(
+                        record = record,
+                        onEditSegmentsClick = onEditSegmentsClick,
+                    )
                 }
             }
         }
@@ -181,6 +188,7 @@ private fun RecordsStatsCard(
 @Composable
 private fun CommuteRecordCard(
     record: CommuteRecord,
+    onEditSegmentsClick: (CommuteRecord) -> Unit,
 ) {
     SectionCard(
         title = record.routineName,
@@ -232,6 +240,17 @@ private fun CommuteRecordCard(
                 MaterialTheme.colorScheme.primary
             },
         )
+        if (record.routeSegments.isNotEmpty()) {
+            OutlinedButton(
+                onClick = { onEditSegmentsClick(record) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text("구간별 시간 수정")
+            }
+        }
     }
 }
 
@@ -280,6 +299,7 @@ private fun RecordsScreenPreview() {
             ),
             contentPadding = PaddingValues(),
             onRegisterRoutineClick = {},
+            onEditSegmentsClick = {},
         )
     }
 }

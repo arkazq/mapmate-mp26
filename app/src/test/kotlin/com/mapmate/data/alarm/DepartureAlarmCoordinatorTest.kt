@@ -149,7 +149,7 @@ class DepartureAlarmCoordinatorTest {
 
         override suspend fun updatePersonalBufferMinutes(minutes: Int) = Unit
 
-        override suspend fun updatePersonalBufferForArrivalDelta(arrivalDeltaMinutes: Int): Int {
+        override suspend fun updatePersonalBufferForRecentArrivalDeltas(recentArrivalDeltaMinutes: List<Int>): Int {
             return AppSettings.DEFAULT_PERSONAL_BUFFER_MINUTES
         }
 
@@ -167,6 +167,7 @@ class DepartureAlarmCoordinatorTest {
             origin: Destination,
             destination: Destination,
             transportMode: TransportMode,
+            routineId: Long?,
         ): RouteEstimate {
             return RouteEstimate(
                 estimatedMinutes = estimatedMinutes,
@@ -182,6 +183,7 @@ class DepartureAlarmCoordinatorTest {
             origin: Destination,
             destination: Destination,
             transportMode: TransportMode,
+            routineId: Long?,
         ): RouteEstimate {
             error("Route provider failed")
         }

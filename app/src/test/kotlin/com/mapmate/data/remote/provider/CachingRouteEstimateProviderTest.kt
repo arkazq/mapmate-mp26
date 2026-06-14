@@ -125,6 +125,7 @@ class CachingRouteEstimateProviderTest {
             origin: Destination,
             destination: Destination,
             transportMode: TransportMode,
+            routineId: Long?,
         ): RouteEstimate {
             error("Remote failed.")
         }
@@ -137,6 +138,7 @@ class CachingRouteEstimateProviderTest {
             origin: Destination,
             destination: Destination,
             transportMode: TransportMode,
+            routineId: Long?,
         ): RouteEstimate {
             return routeEstimate
         }

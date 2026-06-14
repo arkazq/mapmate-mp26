@@ -7,4 +7,5 @@ data class RouteEstimate(
     val reason: String,
     val isFallbackEstimate: Boolean = false,
     val statusMessage: String? = null,
+    val segments: List<RouteSegment> = emptyList(),
 )

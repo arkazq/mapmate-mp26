@@ -9,5 +9,6 @@ interface RouteEstimateProvider {
         origin: Destination,
         destination: Destination,
         transportMode: TransportMode,
+        routineId: Long? = null,
     ): RouteEstimate
 }
