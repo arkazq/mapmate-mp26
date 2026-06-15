@@ -35,6 +35,7 @@ import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.presentation.common.BoardingAdviceDetailCard
 import com.mapmate.presentation.common.DetailTopBar
 import com.mapmate.presentation.common.IconBadge
 import com.mapmate.presentation.common.MapMateIcon
@@ -126,6 +127,12 @@ fun PredictionDetailScreen(
 
                 item {
                     CompactCalculationBasisCard(recommendation = recommendation)
+                }
+
+                recommendation.boardingAdvice?.let { advice ->
+                    item {
+                        BoardingAdviceDetailCard(advice = advice)
+                    }
                 }
 
                 item {

@@ -9,6 +9,7 @@ import com.mapmate.data.remote.dto.OdsayRouteResponse
 import com.mapmate.data.remote.dto.OdsayRouteResult
 import com.mapmate.data.remote.dto.OdsaySubPath
 import com.mapmate.domain.model.Destination
+import com.mapmate.domain.model.RouteBoardingStatus
 import com.mapmate.domain.model.RouteRealtimeSnapshot
 import com.mapmate.domain.model.TransitArrivalEstimate
 import com.mapmate.domain.model.TransitArrivalQuery
@@ -77,6 +78,7 @@ class OdsayRouteEstimateProviderTest {
         assertEquals(42, result.estimatedMinutes)
         assertEquals("ODsay", result.providerName)
         assertEquals(false, result.hasRealtimeAdjustment)
+        assertNull(result.boardingAdvice)
         assertNull(transitArrivalProvider.lastQuery)
         assertTrue(result.reason.contains("applyRealtime=false"))
     }
@@ -309,6 +311,15 @@ class OdsayRouteEstimateProviderTest {
         assertEquals(41, result.estimatedMinutes)
         assertTrue(result.reason.contains("Selected ODsay candidate 5/5"))
         assertTrue(result.reason.contains("705 slack=5 min"))
+        assertEquals(5, result.boardingAdvice?.selectedCandidateIndex)
+        assertEquals(5, result.boardingAdvice?.candidateCount)
+        assertEquals("705", result.boardingAdvice?.routeName)
+        assertEquals("Start stop", result.boardingAdvice?.stationName)
+        assertEquals(5, result.boardingAdvice?.accessMinutes)
+        assertEquals(10, result.boardingAdvice?.realtimeWaitMinutes)
+        assertEquals(5, result.boardingAdvice?.slackMinutes)
+        assertEquals(RouteBoardingStatus.BOARDABLE, result.boardingAdvice?.status)
+        assertEquals(2, result.boardingAdvice?.alternatives?.size)
     }
 
     private class FakeOdsayApi(

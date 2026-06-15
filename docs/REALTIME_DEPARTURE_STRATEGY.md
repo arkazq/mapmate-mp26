@@ -305,6 +305,16 @@ UI 문구 예:
 
 현재 구현에서는 지하철 구간은 ODsay 기본 예상시간을 유지합니다. 이후 서울권 지하철 도착 provider를 후보 랭킹에 연결하고, 부산/대구/대전/광주 등은 지역별 API를 검토합니다.
 
+## 사용자 화면 표시
+
+실시간 후보 랭킹 결과는 내부 API 응답 문자열을 그대로 노출하지 않고 사용자용 구조화 정보로 표시합니다.
+
+- `RouteEstimate.boardingAdvice`는 선택된 첫 버스 후보, 정류장 접근 시간, 실시간 도착 대기 시간, 탑승 여유 시간, 탑승 상태, 대안 후보를 담습니다.
+- 홈 화면은 추천 버스와 탑승 여유를 짧은 요약 카드로 표시합니다.
+- 상세 예측 화면은 `탑승 판단` 섹션에서 추천 후보와 대안 후보 1~2개를 보여줍니다.
+- 루틴 등록 계산 결과는 provider의 `reason` 원문 대신 이동 시간, 개인 보정, 안전 여유, 실시간 반영 여부를 사용자용 문장으로 표시합니다.
+- 알림 화면에서 대안 후보를 상세히 설명하는 UI는 아직 구현하지 않았습니다.
+
 ## 개인보정 시간
 
 개인보정 시간은 실제 이동 기록 기반으로 계산합니다. Gemini 같은 LLM 추론으로 계산하지 않습니다.
@@ -353,10 +363,6 @@ data class CommuteHistory(
 ## 최종 기준
 
 초기 경로 계산은 ODsay가 담당하고, 출발 30분 이내 첫 버스 실시간 보정은 서울 버스 도착정보와 TAGO 도착정보가 순차적으로 담당합니다. ODsay 후보는 최대 5개까지 비교하며, `RouteCandidateEvaluator`가 첫 버스 접근 시간과 실시간 도착 대기시간을 비교해 실제 탑승 가능성이 낮은 후보를 낮게 평가합니다. 선택 후보의 시간과 segment가 함께 `RouteEstimate`에 반영됩니다. 보정 결과는 `Routine`이 아니라 `RouteRealtimeSnapshot`에 저장하며, 마지막 성공 보정값은 유효기간과 30분 정책 안에서만 사용합니다. 실시간 보정이 없는 전체 경로 API 성공값은 별도 `RouteEstimateCache`에 6시간 저장해 실제 provider 실패 시 mock fallback 전에 재사용합니다. 실시간 정류장/노선 매칭 신뢰도가 낮거나 재조회가 지연된 경우에는 ODsay 기본 예상시간 또는 fresh cache/mock fallback으로 복구합니다. 현재 MapMate에서 중요한 것은 실시간 데이터를 무조건 믿는 것이 아니라, 매칭 신뢰도, 스냅샷/cache 유효기간, fallback을 갖춘 안정적인 보정 구조입니다.
-# Current realtime note
+# 현재 실시간 출발 참고
 
-See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest implemented
-realtime departure behavior. Current logic rechecks ODsay candidates before
-departure and ranks ODsay-provided first-bus options by boarding feasibility.
-Nearby-bus search outside ODsay paths and a dedicated alternatives UI remain
-separate follow-up work.
+최신 실시간 출발 동작은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 로직은 출발 전 ODsay 후보 경로를 다시 조회하고, ODsay가 제공한 첫 버스 후보를 탑승 가능성 기준으로 랭킹합니다. ODsay 경로 밖의 주변 버스 직접 탐색과 알림 화면의 상세 대안 UI는 별도 후속 작업입니다.

@@ -481,7 +481,7 @@ private fun ResultArea(uiState: RoutineRegistrationUiState) {
                         valueColor = MaterialTheme.colorScheme.onPrimary,
                     )
                     Text(
-                        text = it.reason,
+                        text = uiState.calculationSummaryText.orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
                     )

@@ -1,4 +1,4 @@
-# MapMate API Strategy
+# MapMate API 전략
 
 이 문서는 MapMate의 외부 API 연동 전략과 현재 구현 상태를 정리합니다.
 
@@ -19,6 +19,7 @@
 - `CachingRouteEstimateProvider` 구현: 실시간 보정이 없는 실제 경로 provider 성공값을 6시간 Room cache로 저장하고 실패 시 mock 전에 재사용
 - `FallbackPlaceSearchProvider` 구현: Kakao 실패 또는 빈 결과 시 mock 장소 후보 사용
 - `FallbackRouteEstimateProvider` 구현: ODsay/Google 실패 시 mock 이동 시간 사용, fallback 사유를 사용자용 상태 메시지로 요약
+- `RouteBoardingAdvice` 구현: 실시간 후보 랭킹 결과를 홈/상세 예측 UI에서 사용할 수 있는 구조화 데이터로 전달
 - 루틴 등록 화면에서 출발지를 Kakao 장소 검색으로 선택 가능
 - 루틴 등록 화면에서 Android 현재 위치 권한을 받아 휴대폰 위치를 출발지로 설정하고, Kakao 키가 있으면 좌표를 주소로 변환 가능
 - Retrofit2와 Kotlinx Serialization 사용
@@ -93,6 +94,8 @@ ODsay 대중교통 길찾기 API의 `totalTime`은 대중교통 경로의 기본
 17. 이동 기록 저장 시 목표 대비 도착 오차를 개인 보정값에 반영합니다. 현재는 한 번의 기록이 보정값을 과도하게 흔들지 않도록 최대 ±5분 범위에서 조정합니다.
 18. 자동차 모드는 Google Routes `TRAFFIC_AWARE` 옵션을 provider 정책으로 적용합니다.
 19. 실시간 보정이 없는 실제 ODsay/Google provider 성공값은 전체 경로 예상값으로 6시간 Room cache에 저장하고, 이후 API 실패 시 mock fallback 전에 재사용합니다.
+20. 홈과 상세 예측 화면은 `RouteBoardingAdvice`를 사용해 추천 버스, 정류장 접근 시간, 실시간 도착 대기 시간, 탑승 여유, 대안 후보를 사용자용 문장으로 표시합니다.
+21. 루틴 등록 화면은 provider의 내부 `reason` 문자열을 그대로 노출하지 않고, 이동 시간과 보정값을 요약한 사용자용 문장을 표시합니다.
 
 MVP에서는 실시간 API가 실패해도 기존 `ODsay/Google Routes → Mock fallback` 흐름을 유지해야 합니다. 실시간 API 결과는 권장 출발 시각을 보정하는 추가 입력값으로만 사용하고, 추천 공식 자체는 변경하지 않습니다. 실제 경로 API가 mock fallback으로 내려가면 화면에는 기본 예상 시간을 사용했다는 상태와 요약 사유만 표시합니다.
 
@@ -169,9 +172,6 @@ origin + destination + transportMode
 3. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
 4. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
 5. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.
-# Current API note
+# 현재 API 참고
 
-See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest API behavior.
-ODsay remains the baseline transit path provider; realtime correction and
-boarding feasibility ranking are currently limited to first-bus candidates
-inside ODsay paths rather than a full nearby-bus alternative search.
+최신 API 동작은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 ODsay는 대중교통 기본 경로 provider이며, 실시간 보정과 탑승 가능성 랭킹은 ODsay 후보 경로 안의 첫 버스 후보에 우선 적용합니다. 주변 정류장의 모든 버스 대안을 직접 탐색하는 기능은 아직 구현하지 않았습니다.

@@ -2,6 +2,8 @@ package com.mapmate.presentation.common
 
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
+import com.mapmate.domain.model.RouteBoardingAdvice
+import com.mapmate.domain.model.RouteBoardingStatus
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
@@ -64,6 +66,27 @@ class RoutineRecommendationUiModelTest {
 
         assertEquals(23, recommendation.minutesUntilDeparture(37 * 60 * 1000L))
         assertEquals(0.616f, recommendation.departureProgress(37 * 60 * 1000L), 0.001f)
+    }
+
+    @Test
+    fun toRecommendationUiModel_keepsBoardingAdviceForUi() {
+        val boardingAdvice = RouteBoardingAdvice(
+            selectedCandidateIndex = 2,
+            candidateCount = 5,
+            routeName = "740",
+            stationName = "Start stop",
+            accessMinutes = 5,
+            realtimeWaitMinutes = 9,
+            slackMinutes = 4,
+            status = RouteBoardingStatus.BOARDABLE,
+            estimatedTotalMinutes = 42,
+        )
+        val recommendation = sampleRoutine.toRecommendationUiModel(
+            routeEstimate = routeEstimate.copy(boardingAdvice = boardingAdvice),
+            now = LocalTime.of(7, 30),
+        )
+
+        assertEquals(boardingAdvice, recommendation.boardingAdvice)
     }
 
     private companion object {

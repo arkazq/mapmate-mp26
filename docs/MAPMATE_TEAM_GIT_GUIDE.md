@@ -459,14 +459,14 @@ MAPMATE_CODEX_DEVELOPMENT_STANDARDS.md
 Codex에게 작업을 요청할 때는 아래처럼 명확히 지시합니다.
 
 ```text
-Read and follow MAPMATE_CODEX_DEVELOPMENT_STANDARDS.md.
+MAPMATE_CODEX_DEVELOPMENT_STANDARDS.md를 읽고 그대로 따라줘.
 
-We are working on the MapMate Android project.
-Use Kotlin, Jetpack Compose, ViewModel, and StateFlow.
-Implement only the routine registration screen.
-Do not modify unrelated files.
-Do not access Room directly from Composable.
-Place UI files under presentation/routine.
+현재 작업 대상은 MapMate Android 프로젝트야.
+Kotlin, Jetpack Compose, ViewModel, StateFlow를 사용해줘.
+이번 작업은 루틴 등록 화면만 구현해줘.
+관련 없는 파일은 수정하지 마.
+Composable에서 Room에 직접 접근하지 마.
+UI 파일은 presentation/routine 아래에 배치해줘.
 ```
 
 Codex 사용 시 주의사항:

@@ -183,7 +183,7 @@ com.mapmate
 
 홈 화면의 UI와 상태 관리를 담당합니다.
 
-- `HomeScreen`: 오늘 권장 출발 시각, 출발까지 남은 시간, 추천 근거, 지표 카드, 오늘의 루틴 요약 표시
+- `HomeScreen`: 오늘 권장 출발 시각, 출발까지 남은 시간, 추천 근거, 첫 버스 탑승 판단 요약, 지표 카드, 오늘의 루틴 요약 표시
 - `HomeViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 홈 대시보드 추천 UI 모델을 생성
 - `HomeUiState`: 홈 화면에 필요한 저장 루틴 목록, 대시보드 추천, 상태값
 
@@ -207,8 +207,8 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 
 상세 예측 화면의 UI와 상태 관리를 담당합니다.
 
-- `PredictionDetailScreen`: 권장 출발 시각, 계산 근거, 경로 요약, 이동 기록 시작/루틴 수정 액션 표시
-- `PredictionDetailViewModel`: 선택된 루틴 기준으로 `RouteEstimateProvider`를 호출하고 권장 출발 시각 UI 모델을 생성
+- `PredictionDetailScreen`: 권장 출발 시각, 계산 근거, 탑승 판단, 경로 요약, 이동 기록 시작/루틴 수정 액션 표시
+- `PredictionDetailViewModel`: 선택된 루틴 기준으로 `RouteEstimateProvider`를 호출하고, 출발 30분 이내이면 `scheduledDepartureEpochMillis`를 전달해 권장 출발 시각 UI 모델을 생성
 - `PredictionDetailUiState`: 상세 예측 화면 상태
 
 ## `presentation/tracking`
@@ -249,7 +249,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 - `Destination`: 장소 이름, 주소, 위도, 경도
 - `TransportMode`: `TRANSIT`, `WALK`, `CAR`
 - `RepeatDay`: `MONDAY`부터 `SUNDAY`
-- `RouteEstimate`: 예상 이동 시간, 요약, provider 이름, 계산 사유, fallback 여부, 사용자용 상태 메시지, 선택 경로 segment 목록, 실시간 보정 적용 여부
+- `RouteEstimate`: 예상 이동 시간, 요약, provider 이름, 계산 사유, fallback 여부, 사용자용 상태 메시지, 선택 경로 segment 목록, 실시간 보정 적용 여부, 첫 버스 탑승 판단 정보
 - `RouteRealtimeSnapshot`: 특정 경로/첫 탑승 구간의 실시간 보정 성공값과 만료 시각
 - `TransitArrivalQuery`: ODsay 첫 탑승 구간에서 추출한 버스/지하철 실시간 도착정보 조회 입력값
 - `TransitArrivalEstimate`: 실시간 도착정보 provider가 반환하는 첫 대기 시간, 요약, provider 이름, 계산 사유
@@ -408,22 +408,23 @@ User input
 5. 출발지/목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
 6. 현재 위치 출발지는 `CurrentLocationProvider`가 좌표를 가져오고, Kakao 키가 있으면 `ReverseGeocodingProvider`로 주소 변환을 시도합니다.
 7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로는 후보 `path`를 최대 5개 평가하고, 출발 예정 시각이 30분 이내이며 첫 탑승 구간이 버스이면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다. 이후 `RouteCandidateEvaluator`가 첫 버스 접근 시간과 도착 대기시간을 비교해 놓칠 위험이 높은 후보에 페널티를 줍니다. 후보 전환 이득이 3분 미만이면 기존 ODsay 1순위 후보를 유지합니다. 성공값은 `RouteRealtimeSnapshotRepository`에 저장하며, 실시간 조회/매칭이 실패하면 30분 정책 안에서만 20분 이내 fresh snapshot을 재사용합니다.
-8. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다. 계산 결과가 이미 지난 시간이면서 목표 도착 시각이 아직 남아 있으면 UI 모델은 `지금 출발`로 표시하고, 알림 플래너는 즉시 알림을 예약합니다.
-9. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
-10. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
-11. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.
-12. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`와 `RoutinesUiState.recommendations`에 반영됩니다.
-13. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
-14. 상세 예측 화면과 이동 기록 화면은 선택된 루틴을 기준으로 `RouteEstimateProvider`를 호출해 권장 출발 시각 UI 모델을 구성합니다.
-15. 이동 기록 화면에서 도착을 완료하면 `CommuteRecordRepository.saveRecord()`를 통해 Room DB에 기록을 저장합니다.
-16. 기록 저장이 성공하면 `SettingsRepository.updatePersonalBufferForArrivalDelta()`가 도착 오차를 개인 보정값에 반영합니다.
-17. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
-18. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
-19. 앱 실행 중 `DepartureAlarmCoordinator`는 알림 설정과 저장된 루틴 목록을 관찰해 다음 출발 알림을 예약하거나 취소합니다.
-20. 다음 출발 알림이 30분보다 더 남아 있으면 `AndroidDepartureRecheckScheduler`가 WorkManager one-time work를 예약합니다.
-21. `DepartureRecheckWorker`는 출발 전 경로 예상 시간을 다시 조회하고 다음 출발 알림과 재조회 작업을 갱신합니다.
-22. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
-23. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
+8. 선택된 후보의 탑승 판단 결과는 `RouteBoardingAdvice`로 변환되어 홈과 상세 예측 화면에서 사용자용 카드로 표시됩니다.
+9. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다. 계산 결과가 이미 지난 시간이면서 목표 도착 시각이 아직 남아 있으면 UI 모델은 `지금 출발`로 표시하고, 알림 플래너는 즉시 알림을 예약합니다.
+10. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
+11. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
+12. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.
+13. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`와 `RoutinesUiState.recommendations`에 반영됩니다.
+14. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
+15. 상세 예측 화면과 이동 기록 화면은 선택된 루틴을 기준으로 `RouteEstimateProvider`를 호출해 권장 출발 시각 UI 모델을 구성합니다.
+16. 이동 기록 화면에서 도착을 완료하면 `CommuteRecordRepository.saveRecord()`를 통해 Room DB에 기록을 저장합니다.
+17. 기록 저장이 성공하면 `SettingsRepository.updatePersonalBufferForArrivalDelta()`가 도착 오차를 개인 보정값에 반영합니다.
+18. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
+19. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
+20. 앱 실행 중 `DepartureAlarmCoordinator`는 알림 설정과 저장된 루틴 목록을 관찰해 다음 출발 알림을 예약하거나 취소합니다.
+21. 다음 출발 알림이 30분보다 더 남아 있으면 `AndroidDepartureRecheckScheduler`가 WorkManager one-time work를 예약합니다.
+22. `DepartureRecheckWorker`는 출발 전 경로 예상 시간을 다시 조회하고 다음 출발 알림과 재조회 작업을 갱신합니다.
+23. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
+24. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
 
 ## 최근 확장 구조
 
@@ -453,9 +454,6 @@ Google Routes 자동차 모드는 `GoogleRoutesEstimateProvider`에서 `routingP
 - 통계/분석 화면
 - 필요 시 Navigation Compose 도입
 - 모바일 보안 점검: 민감 정보 저장/로그 노출, 위치/이동 기록 개인정보 취급, cleartext 통신 범위, release 빌드 보안 설정 확인
-# Current architecture note
+# 현재 아키텍처 참고
 
-See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest branch-level
-architecture changes: recheck scheduling, home UI synchronization, alarm-loop
-prevention, records filtering, transit wait segments, and segment adjustment
-storage changes.
+최신 브랜치 단위 아키텍처 변경은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 주요 내용은 출발 전 재조회 예약, 홈 UI 동기화, 알림 반복 예약 방지, 기록 필터링, 대중교통 대기 구간, 구간 보정값 저장, 첫 버스 탑승 판단 UI입니다.
