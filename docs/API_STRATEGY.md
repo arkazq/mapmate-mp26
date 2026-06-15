@@ -165,3 +165,9 @@ origin + destination + transportMode
 3. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
 4. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
 5. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.
+# Current API note
+
+See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest API behavior.
+ODsay remains the baseline transit path provider; realtime correction is
+currently limited to candidate ranking with first-bus arrival adjustment rather
+than a full nearby-bus alternative search.

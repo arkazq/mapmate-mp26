@@ -17,8 +17,14 @@ class AndroidDepartureRecheckScheduler(
 ) : DepartureRecheckScheduler {
     private val workManager = WorkManager.getInstance(context.applicationContext)
 
-    override fun schedule(schedule: DepartureAlarmSchedule) {
-        cancel()
+    override fun schedule(
+        schedule: DepartureAlarmSchedule,
+        replaceExisting: Boolean,
+    ) {
+        // A running recheck worker also calls schedule(); broad tag cancellation would stop itself.
+        if (replaceExisting) {
+            cancel()
+        }
         val now = nowEpochMillis()
 
         recheckOffsetsFor(schedule.routeDurationMinutes).forEach { offsetMinutes ->

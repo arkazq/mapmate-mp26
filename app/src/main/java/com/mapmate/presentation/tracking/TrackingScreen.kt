@@ -622,18 +622,26 @@ private fun CurrentRouteSegmentCard(
 
 private fun RouteSegment.displayTitle(): String {
     return when (segmentType) {
-        RouteSegmentType.WALK_TO_TRANSIT -> "정류장/역까지 도보"
+        RouteSegmentType.WALK_TO_TRANSIT -> "\uC815\uB958\uC7A5/\uC5ED\uAE4C\uC9C0 \uB3C4\uBCF4"
+        RouteSegmentType.WAIT_FOR_BUS -> listOfNotNull(
+            routeName?.takeIf(String::isNotBlank),
+            "\uBC84\uC2A4 \uB300\uAE30",
+        ).joinToString(" ")
         RouteSegmentType.BUS_RIDE -> listOfNotNull(
             routeName?.takeIf(String::isNotBlank),
-            "버스 탑승",
+            "\uBC84\uC2A4 \uD0D1\uC2B9",
+        ).joinToString(" ")
+        RouteSegmentType.WAIT_FOR_SUBWAY -> listOfNotNull(
+            routeName?.takeIf(String::isNotBlank),
+            "\uC9C0\uD558\uCCA0 \uB300\uAE30",
         ).joinToString(" ")
         RouteSegmentType.SUBWAY_RIDE -> listOfNotNull(
             routeName?.takeIf(String::isNotBlank),
-            "지하철 탑승",
+            "\uC9C0\uD558\uCCA0 \uD0D1\uC2B9",
         ).joinToString(" ")
-        RouteSegmentType.TRANSFER_WALK -> "환승 이동"
-        RouteSegmentType.WALK_TO_DESTINATION -> "목적지까지 도보"
-        RouteSegmentType.UNKNOWN -> "이동 구간"
+        RouteSegmentType.TRANSFER_WALK -> "\uD658\uC2B9 \uC774\uB3D9"
+        RouteSegmentType.WALK_TO_DESTINATION -> "\uBAA9\uC801\uC9C0\uAE4C\uC9C0 \uB3C4\uBCF4"
+        RouteSegmentType.UNKNOWN -> "\uC774\uB3D9 \uAD6C\uAC04"
     }
 }
 
@@ -643,7 +651,9 @@ private fun RouteSegment.segmentIcon(): MapMateIconType {
         RouteSegmentType.TRANSFER_WALK,
         RouteSegmentType.WALK_TO_DESTINATION,
         -> MapMateIconType.Walk
+        RouteSegmentType.WAIT_FOR_BUS,
         RouteSegmentType.BUS_RIDE,
+        RouteSegmentType.WAIT_FOR_SUBWAY,
         RouteSegmentType.SUBWAY_RIDE,
         -> MapMateIconType.Bus
         RouteSegmentType.UNKNOWN -> MapMateIconType.Route
@@ -652,19 +662,25 @@ private fun RouteSegment.segmentIcon(): MapMateIconType {
 
 private fun RouteSegment.startButtonLabel(): String {
     return when (segmentType) {
+        RouteSegmentType.WAIT_FOR_BUS,
+        RouteSegmentType.WAIT_FOR_SUBWAY,
+        -> "\uB300\uAE30 \uC2DC\uC791"
         RouteSegmentType.BUS_RIDE,
         RouteSegmentType.SUBWAY_RIDE,
-        -> "탑승"
-        else -> "시작"
+        -> "\uD0D1\uC2B9"
+        else -> "\uC2DC\uC791"
     }
 }
 
 private fun RouteSegment.completeButtonLabel(): String {
     return when (segmentType) {
+        RouteSegmentType.WAIT_FOR_BUS,
+        RouteSegmentType.WAIT_FOR_SUBWAY,
+        -> "\uD0D1\uC2B9"
         RouteSegmentType.BUS_RIDE,
         RouteSegmentType.SUBWAY_RIDE,
-        -> "하차"
-        else -> "완료"
+        -> "\uD558\uCC28"
+        else -> "\uC644\uB8CC"
     }
 }
 

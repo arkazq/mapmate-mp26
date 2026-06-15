@@ -16,6 +16,7 @@ class DepartureAlarmPlanner(
     fun nextAlarm(
         routineRouteDurations: List<Pair<Routine, Int>>,
         now: ZonedDateTime = ZonedDateTime.now(zoneId),
+        excludedSchedule: DepartureAlarmSchedule? = null,
     ): DepartureAlarmSchedule? {
         return routineRouteDurations
             .mapNotNull { (routine, routeDurationMinutes) ->
@@ -23,6 +24,9 @@ class DepartureAlarmPlanner(
                     routine = routine,
                     routeDurationMinutes = routeDurationMinutes,
                     now = now,
+                    excludedArrivalAtEpochMillis = excludedSchedule
+                        ?.takeIf { it.routineId == routine.id }
+                        ?.targetArrivalAtEpochMillis,
                 )
             }
             .minByOrNull(DepartureAlarmSchedule::triggerAtEpochMillis)
@@ -32,6 +36,7 @@ class DepartureAlarmPlanner(
         routine: Routine,
         routeDurationMinutes: Int,
         now: ZonedDateTime = ZonedDateTime.now(zoneId),
+        excludedArrivalAtEpochMillis: Long? = null,
     ): DepartureAlarmSchedule? {
         val routineId = routine.id ?: return null
         val recommendedDepartureTime = departureTimeCalculator.calculate(
@@ -45,6 +50,7 @@ class DepartureAlarmPlanner(
             targetArrivalTime = routine.targetArrivalTime,
             recommendedDepartureTime = recommendedDepartureTime,
             now = now,
+            excludedArrivalAtEpochMillis = excludedArrivalAtEpochMillis,
         ) ?: return null
 
         return DepartureAlarmSchedule(
@@ -64,6 +70,7 @@ class DepartureAlarmPlanner(
         targetArrivalTime: LocalTime,
         recommendedDepartureTime: LocalTime,
         now: ZonedDateTime,
+        excludedArrivalAtEpochMillis: Long?,
     ): NextDepartureAlarmTrigger? {
         val repeatDayOfWeeks = repeatDays.mapTo(mutableSetOf()) { it.toDayOfWeek() }
         if (repeatDayOfWeeks.isEmpty()) return null
@@ -94,6 +101,10 @@ class DepartureAlarmPlanner(
                         arrivalAt = arrivalAt,
                     )
                 }
+            }
+            .filterNot { trigger ->
+                excludedArrivalAtEpochMillis != null &&
+                    trigger.arrivalAt.toInstant().toEpochMilli() == excludedArrivalAtEpochMillis
             }
             .firstOrNull { trigger -> !trigger.triggerAt.isBefore(now) }
     }

@@ -28,6 +28,9 @@ class SegmentTimeAdjustmentCalculatorTest {
         assertEquals("start stop", adjustment.startName)
         assertEquals("end stop", adjustment.endName)
         assertEquals(4, adjustment.averageDelayMinutes)
+        assertEquals(14, adjustment.averageActualDurationMinutes)
+        assertEquals(13, adjustment.minActualDurationMinutes)
+        assertEquals(15, adjustment.maxActualDurationMinutes)
         assertEquals(3, adjustment.sampleCount)
         assertEquals(1.0, adjustment.confidence, 0.001)
     }
@@ -64,18 +67,54 @@ class SegmentTimeAdjustmentCalculatorTest {
         assertEquals(1, adjustment.sampleCount)
     }
 
+    @Test
+    fun calculate_keepsAdjustmentsSeparatedByRoutineId() {
+        val adjustments = calculator.calculate(
+            routineId = 1L,
+            completedSegments = listOf(
+                segment(index = 0, actual = 13, endedAt = 3000L, routineId = 1L),
+                segment(index = 1, actual = 15, endedAt = 2000L, routineId = 1L),
+                segment(index = 2, actual = 40, endedAt = 1000L, routineId = 2L),
+            ),
+            updatedAtEpochMillis = 5000L,
+        )
+
+        val adjustment = adjustments.single()
+        assertEquals(1L, adjustment.routineId)
+        assertEquals(4, adjustment.averageDelayMinutes)
+        assertEquals(2, adjustment.sampleCount)
+    }
+
+    @Test
+    fun calculate_keepsAdjustmentsSeparatedByRouteNameWithinSameRoutine() {
+        val adjustments = calculator.calculate(
+            routineId = 1L,
+            completedSegments = listOf(
+                segment(index = 0, actual = 13, endedAt = 3000L, routeName = "753"),
+                segment(index = 1, actual = 20, endedAt = 2000L, routeName = "740"),
+            ),
+            updatedAtEpochMillis = 5000L,
+        )
+
+        assertEquals(2, adjustments.size)
+        assertEquals(3, adjustments.single { it.routeName == "753" }.averageDelayMinutes)
+        assertEquals(10, adjustments.single { it.routeName == "740" }.averageDelayMinutes)
+    }
+
     private fun segment(
         index: Int,
         actual: Int,
         endedAt: Long,
         isUserEdited: Boolean = false,
+        routineId: Long = 1L,
+        routeName: String = "753",
     ): RouteSegment {
         return RouteSegment(
-            routineId = 1L,
+            routineId = routineId,
             segmentIndex = index,
             segmentType = RouteSegmentType.BUS_RIDE,
             trafficType = 2,
-            routeName = "753",
+            routeName = routeName,
             startName = "Start Stop",
             endName = "End Stop",
             plannedDurationMinutes = 10,

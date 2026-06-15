@@ -6,8 +6,52 @@ import kotlin.math.roundToInt
 
 data class RecordsUiState(
     val records: List<CommuteRecord> = emptyList(),
+    val selectedRoutineId: Long? = null,
     val isLoading: Boolean = true,
     val stats: RecordsStats = RecordsStats(),
+) {
+    val filteredRecords: List<CommuteRecord>
+        get() = selectedRoutineId?.let { routineId ->
+            records.filter { it.routineId == routineId }
+        } ?: records
+
+    val filteredStats: RecordsStats
+        get() = RecordsStats.from(filteredRecords)
+
+    val selectedScopeLabel: String
+        get() = selectedRoutineId?.let { routineId ->
+            records.firstOrNull { it.routineId == routineId }?.routineName
+        } ?: "전체 루틴"
+
+    val routineFilters: List<RecordsRoutineFilter>
+        get() {
+            val routineFilters = records
+                .filter { it.routineId != null }
+                .groupBy { it.routineId }
+                .mapNotNull { (routineId, routineRecords) ->
+                    val id = routineId ?: return@mapNotNull null
+                    RecordsRoutineFilter(
+                        routineId = id,
+                        label = routineRecords.first().routineName,
+                        recordCount = routineRecords.size,
+                    )
+                }
+                .sortedBy { it.label }
+
+            return listOf(
+                RecordsRoutineFilter(
+                    routineId = null,
+                    label = "전체",
+                    recordCount = records.size,
+                ),
+            ) + routineFilters
+        }
+}
+
+data class RecordsRoutineFilter(
+    val routineId: Long?,
+    val label: String,
+    val recordCount: Int,
 )
 
 data class RecordsStats(

@@ -73,6 +73,11 @@ class AndroidDepartureAlarmScheduler(
                 schedule.targetArrivalTime.toString(),
             )
             .putExtra(DepartureAlarmReceiver.EXTRA_ROUTE_DURATION_MINUTES, schedule.routeDurationMinutes)
+            .apply {
+                schedule.targetArrivalAtEpochMillis?.let {
+                    putExtra(DepartureAlarmReceiver.EXTRA_TARGET_ARRIVAL_AT_EPOCH_MILLIS, it)
+                }
+            }
 
         return PendingIntent.getBroadcast(
             applicationContext,

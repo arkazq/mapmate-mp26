@@ -6,9 +6,9 @@ import com.mapmate.domain.model.RouteSegment
 import com.mapmate.domain.model.RouteSegmentType
 
 internal fun OdsayPath.toRouteSegments(routineId: Long?): List<RouteSegment> {
-    return subPath.mapIndexedNotNull { index, subPath ->
-        val plannedDurationMinutes = subPath.sectionTime?.takeIf { it >= 0 } ?: return@mapIndexedNotNull null
-        RouteSegment(
+    return subPath.flatMapIndexed { index, subPath ->
+        val plannedDurationMinutes = subPath.sectionTime?.takeIf { it >= 0 } ?: return@flatMapIndexed emptyList()
+        val segment = RouteSegment(
             routineId = routineId,
             segmentIndex = index,
             segmentType = subPath.toSegmentType(index),
@@ -18,7 +18,11 @@ internal fun OdsayPath.toRouteSegments(routineId: Long?): List<RouteSegment> {
             endName = subPath.endName,
             plannedDurationMinutes = plannedDurationMinutes,
         )
-    }.markLastWalkToDestination()
+        val waitSegment = subPath.toTransitWaitSegment(routineId = routineId, fallbackIndex = index)
+        listOfNotNull(waitSegment, segment)
+    }
+        .markLastWalkToDestination()
+        .mapIndexed { index, segment -> segment.copy(segmentIndex = index) }
 }
 
 private fun OdsaySubPath.toSegmentType(index: Int): RouteSegmentType {
@@ -42,6 +46,27 @@ private fun OdsaySubPath.routeName(): String? {
         ?: firstLane?.subwayCode?.toString()
 }
 
+private fun OdsaySubPath.toTransitWaitSegment(
+    routineId: Long?,
+    fallbackIndex: Int,
+): RouteSegment? {
+    val waitSegmentType = when (trafficType) {
+        TRAFFIC_TYPE_BUS -> RouteSegmentType.WAIT_FOR_BUS
+        TRAFFIC_TYPE_SUBWAY -> RouteSegmentType.WAIT_FOR_SUBWAY
+        else -> return null
+    }
+    return RouteSegment(
+        routineId = routineId,
+        segmentIndex = fallbackIndex,
+        segmentType = waitSegmentType,
+        trafficType = trafficType,
+        routeName = routeName(),
+        startName = startName,
+        endName = startName,
+        plannedDurationMinutes = PLANNED_TRANSIT_WAIT_MINUTES,
+    )
+}
+
 private fun List<RouteSegment>.markLastWalkToDestination(): List<RouteSegment> {
     val lastWalkIndex = indexOfLast {
         it.segmentType == RouteSegmentType.WALK_TO_TRANSIT ||
@@ -61,3 +86,4 @@ private fun List<RouteSegment>.markLastWalkToDestination(): List<RouteSegment> {
 private const val TRAFFIC_TYPE_SUBWAY = 1
 private const val TRAFFIC_TYPE_BUS = 2
 private const val TRAFFIC_TYPE_WALK = 3
+private const val PLANNED_TRANSIT_WAIT_MINUTES = 5

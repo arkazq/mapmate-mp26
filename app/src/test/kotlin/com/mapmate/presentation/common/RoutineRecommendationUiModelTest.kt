@@ -31,6 +31,7 @@ class RoutineRecommendationUiModelTest {
         val recommendation = sampleRoutine.toRecommendationUiModel(
             routeEstimate = routeEstimate,
             now = LocalTime.of(7, 30),
+            recommendedDepartureAtEpochMillis = 60 * 60 * 1000L,
         )
 
         assertEquals("08:07", recommendation.calculatedDepartureTimeText)
@@ -38,6 +39,20 @@ class RoutineRecommendationUiModelTest {
         assertEquals("08:07", recommendation.recommendedDepartureDisplayText)
         assertEquals(false, recommendation.isImmediateDepartureRecommended)
         assertNull(recommendation.departureStatusMessage)
+        assertEquals(23, recommendation.minutesUntilDeparture(37 * 60 * 1000L))
+        assertEquals("출발까지 23분 남았어요", recommendation.departureCountdownText(37 * 60 * 1000L))
+    }
+
+    @Test
+    fun departureProgress_usesSameRemainingMinutesAsCountdownText() {
+        val recommendation = sampleRoutine.toRecommendationUiModel(
+            routeEstimate = routeEstimate,
+            now = LocalTime.of(7, 30),
+            recommendedDepartureAtEpochMillis = 60 * 60 * 1000L,
+        )
+
+        assertEquals(23, recommendation.minutesUntilDeparture(37 * 60 * 1000L))
+        assertEquals(0.616f, recommendation.departureProgress(37 * 60 * 1000L), 0.001f)
     }
 
     private companion object {

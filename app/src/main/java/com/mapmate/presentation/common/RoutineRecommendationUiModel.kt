@@ -7,11 +7,15 @@ import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import kotlin.math.ceil
 
 data class RoutineRecommendationUiModel(
     val routine: Routine,
     val recommendedDepartureTimeText: String,
     val calculatedDepartureTimeText: String = recommendedDepartureTimeText,
+    val recommendedDepartureTime: LocalTime,
+    val calculatedDepartureTime: LocalTime = recommendedDepartureTime,
+    val recommendedDepartureAtEpochMillis: Long? = null,
     val targetArrivalTimeText: String,
     val routeDurationMinutes: Int,
     val personalBufferMinutes: Int,
@@ -32,12 +36,40 @@ data class RoutineRecommendationUiModel(
         } else {
             null
         }
+
+    fun minutesUntilDeparture(nowEpochMillis: Long): Int? {
+        val departureAt = recommendedDepartureAtEpochMillis ?: return null
+        val remainingMillis = departureAt - nowEpochMillis
+        if (remainingMillis <= 0L) return 0
+        return ceil(remainingMillis / MILLIS_PER_MINUTE.toDouble()).toInt()
+    }
+
+    fun departureCountdownText(nowEpochMillis: Long): String {
+        val remainingMinutes = minutesUntilDeparture(nowEpochMillis)
+        return when {
+            isImmediateDepartureRecommended || remainingMinutes == 0 -> "지금 출발하는 것이 좋아요"
+            remainingMinutes != null -> "출발까지 ${remainingMinutes}분 남았어요"
+            else -> "출발 준비 시간을 계산하고 있어요"
+        }
+    }
+
+    fun departureProgress(nowEpochMillis: Long): Float {
+        val remainingMinutes = minutesUntilDeparture(nowEpochMillis) ?: return 0f
+        return (1f - (remainingMinutes.toFloat() / COUNTDOWN_PROGRESS_WINDOW_MINUTES))
+            .coerceIn(0f, 1f)
+    }
+
+    private companion object {
+        const val MILLIS_PER_MINUTE = 60_000L
+        const val COUNTDOWN_PROGRESS_WINDOW_MINUTES = 60f
+    }
 }
 
 fun Routine.toRecommendationUiModel(
     routeEstimate: RouteEstimate,
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     now: LocalTime = LocalTime.now(),
+    recommendedDepartureAtEpochMillis: Long? = null,
 ): RoutineRecommendationUiModel {
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
     val departureRecommendation = departureTimeCalculator.calculateWithNowClamp(
@@ -52,6 +84,9 @@ fun Routine.toRecommendationUiModel(
         routine = this,
         recommendedDepartureTimeText = departureRecommendation.recommendedDepartureTime.format(formatter),
         calculatedDepartureTimeText = departureRecommendation.calculatedDepartureTime.format(formatter),
+        recommendedDepartureTime = departureRecommendation.recommendedDepartureTime,
+        calculatedDepartureTime = departureRecommendation.calculatedDepartureTime,
+        recommendedDepartureAtEpochMillis = recommendedDepartureAtEpochMillis,
         targetArrivalTimeText = targetArrivalTime.format(formatter),
         routeDurationMinutes = routeEstimate.estimatedMinutes,
         personalBufferMinutes = personalBufferMinutes,
@@ -70,6 +105,7 @@ fun Routine.toRecommendationUiModel(
 fun Routine.toFallbackRecommendationUiModel(
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     now: LocalTime = LocalTime.now(),
+    recommendedDepartureAtEpochMillis: Long? = null,
 ): RoutineRecommendationUiModel {
     val estimatedMinutes = when (transportMode) {
         TransportMode.TRANSIT -> 42
@@ -89,5 +125,6 @@ fun Routine.toFallbackRecommendationUiModel(
         routeEstimate = routeEstimate,
         departureTimeCalculator = departureTimeCalculator,
         now = now,
+        recommendedDepartureAtEpochMillis = recommendedDepartureAtEpochMillis,
     )
 }
