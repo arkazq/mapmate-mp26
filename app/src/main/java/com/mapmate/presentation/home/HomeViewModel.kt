@@ -161,7 +161,7 @@ class HomeViewModel(
 
     private fun com.mapmate.domain.alarm.DepartureAlarmSchedule.shouldApplyRealtime(now: ZonedDateTime): Boolean {
         val minutesUntilDeparture = (triggerAtEpochMillis - now.toInstant().toEpochMilli()) / MILLIS_PER_MINUTE
-        return minutesUntilDeparture <= REALTIME_LOOKAHEAD_MINUTES
+        return minutesUntilDeparture in 0..REALTIME_LOOKAHEAD_MINUTES
     }
 
     private fun Routine.fallbackRouteDurationMinutes(): Int {

@@ -106,6 +106,30 @@ class OdsayRouteEstimateProviderTest {
     }
 
     @Test
+    fun getRouteEstimate_skipsRealtimeArrivalWhenScheduledDepartureAlreadyPassed() = runTest {
+        val transitArrivalProvider = RecordingTransitArrivalProvider(result = realtimeArrivalEstimate)
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(busRouteResponse),
+            config = remoteApiConfig,
+            transitArrivalProvider = transitArrivalProvider,
+            nowEpochMillis = { 20 * 60 * 1000L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 19 * 60 * 1000L,
+        )
+
+        assertEquals(42, result.estimatedMinutes)
+        assertEquals("ODsay", result.providerName)
+        assertEquals(false, result.hasRealtimeAdjustment)
+        assertNull(transitArrivalProvider.lastQuery)
+        assertTrue(result.reason.contains("SKIPPED_DEPARTURE_PASSED"))
+    }
+
+    @Test
     fun getRouteEstimate_savesRealtimeSnapshotWhenRealtimeArrivalSucceeds() = runTest {
         val snapshotRepository = FakeRouteRealtimeSnapshotRepository()
         val provider = OdsayRouteEstimateProvider(
@@ -250,6 +274,43 @@ class OdsayRouteEstimateProviderTest {
         assertTrue(result.reason.contains("Selected ODsay candidate 1/2"))
     }
 
+    @Test
+    fun getRouteEstimate_evaluatesFiveOdsayCandidates() = runTest {
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(
+                busRouteResponse(
+                    busPath(totalTime = 35, busNo = "701", routeId = "101", startId = "201", startArsId = "301"),
+                    busPath(totalTime = 55, busNo = "702", routeId = "102", startId = "202", startArsId = "302"),
+                    busPath(totalTime = 56, busNo = "703", routeId = "103", startId = "203", startArsId = "303"),
+                    busPath(totalTime = 57, busNo = "704", routeId = "104", startId = "204", startArsId = "304"),
+                    busPath(totalTime = 36, busNo = "705", routeId = "105", startId = "205", startArsId = "305"),
+                ),
+            ),
+            config = remoteApiConfig,
+            transitArrivalProvider = RouteNameTransitArrivalProvider(
+                waitMinutesByRouteName = mapOf(
+                    "701" to 3,
+                    "702" to 30,
+                    "703" to 30,
+                    "704" to 30,
+                    "705" to 10,
+                ),
+            ),
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 0L,
+        )
+
+        assertEquals(41, result.estimatedMinutes)
+        assertTrue(result.reason.contains("Selected ODsay candidate 5/5"))
+        assertTrue(result.reason.contains("705 slack=5 min"))
+    }
+
     private class FakeOdsayApi(
         private val response: OdsayRouteResponse,
     ) : OdsayApi {
@@ -353,17 +414,13 @@ class OdsayRouteEstimateProviderTest {
             longitude = 127.0276,
         )
 
-        val busRouteResponse = OdsayRouteResponse(
-            result = OdsayRouteResult(
-                path = listOf(
-                    busPath(
-                        totalTime = 42,
-                        busNo = "740",
-                        routeId = "111",
-                        startId = "222",
-                        startArsId = "333",
-                    ),
-                ),
+        val busRouteResponse = busRouteResponse(
+            busPath(
+                totalTime = 42,
+                busNo = "740",
+                routeId = "111",
+                startId = "222",
+                startArsId = "333",
             ),
         )
 
@@ -425,6 +482,14 @@ class OdsayRouteEstimateProviderTest {
                             ),
                         ),
                     ),
+                ),
+            )
+        }
+
+        fun busRouteResponse(vararg paths: OdsayPath): OdsayRouteResponse {
+            return OdsayRouteResponse(
+                result = OdsayRouteResult(
+                    path = paths.toList(),
                 ),
             )
         }

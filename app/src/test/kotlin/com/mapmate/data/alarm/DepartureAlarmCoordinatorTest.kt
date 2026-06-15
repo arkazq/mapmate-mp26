@@ -54,6 +54,7 @@ class DepartureAlarmCoordinatorTest {
         val alarmScheduler = FakeAlarmScheduler()
         val recheckScheduler = FakeRecheckScheduler()
         val routeEstimateProvider = FixedRouteEstimateProvider(estimatedMinutes = 12)
+        val previousSchedule = previousScheduleFor(routine)
         val coordinator = coordinator(
             settings = AppSettings(notificationsEnabled = true),
             routines = listOf(routine),
@@ -62,11 +63,12 @@ class DepartureAlarmCoordinatorTest {
             recheckScheduler = recheckScheduler,
         )
 
-        coordinator.rescheduleNextAlarm(previousSchedule = previousScheduleFor(routine))
+        coordinator.rescheduleNextAlarm(previousSchedule = previousSchedule)
 
         assertNotNull(alarmScheduler.scheduled)
         assertEquals(alarmScheduler.scheduled, recheckScheduler.scheduled)
         assertEquals(false, recheckScheduler.replaceExisting)
+        assertEquals(listOf(previousSchedule.triggerAtEpochMillis), routeEstimateProvider.scheduledDepartureCalls)
         assertEquals(0, recheckScheduler.cancelCount)
     }
 
@@ -190,6 +192,8 @@ class DepartureAlarmCoordinatorTest {
     private class FixedRouteEstimateProvider(
         private val estimatedMinutes: Int,
     ) : RouteEstimateProvider {
+        val scheduledDepartureCalls = mutableListOf<Long?>()
+
         override suspend fun getRouteEstimate(
             origin: Destination,
             destination: Destination,
@@ -197,6 +201,7 @@ class DepartureAlarmCoordinatorTest {
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
         ): RouteEstimate {
+            scheduledDepartureCalls += scheduledDepartureEpochMillis
             return RouteEstimate(
                 estimatedMinutes = estimatedMinutes,
                 summary = "fixed",

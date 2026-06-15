@@ -13,7 +13,7 @@ This branch documents the current app behavior after the latest verification and
 - Segment adjustment storage now keeps average delay, average actual duration, min actual duration, max actual duration, sample count, confidence, and update time.
 - The tracking flow can measure wait time explicitly. Completing a bus/subway wait segment starts the following ride segment automatically.
 
-Current limitation: the app rechecks ODsay candidate paths and can apply first-bus realtime arrival adjustment, but it does not yet run a dedicated "which bus should I take" decision engine across all nearby alternatives. That work should be handled in a separate branch.
+Current limitation: the app ranks ODsay candidate paths with first-bus boarding feasibility, but it still does not search nearby bus alternatives outside ODsay paths or show a dedicated alternative-route UI. That UI work should be handled in a separate branch.
 
 SoongSil University mobile programming team project
 
@@ -87,8 +87,8 @@ MapMate의 핵심 목적은 범용 지도 앱을 대체하는 것이 아니라, 
 - WorkManager 기반 출발 30분 전 경로 재조회
 - AlarmManager 기반 다음 출발 알림 예약
 - 부팅/앱 업데이트 후 출발 알림 재예약
-- ODsay 대중교통 후보 경로 최대 3개 평가 및 안정성 기준 기반 경로 선택
-- 출발 예정 시각 30분 이내 ODsay 첫 버스 탑승 구간 기준 서울 버스/TAGO 실시간 도착정보 조회 및 지연 보정
+- ODsay 대중교통 후보 경로 최대 5개 평가 및 첫 버스 탑승 가능성 기반 경로 선택
+- 출발 예정 시각 30분 이내 ODsay 첫 버스 탑승 구간 기준 서울 버스/TAGO 실시간 도착정보 조회, 지연 보정, 탑승 여유 시간 기반 후보 랭킹
 - ODsay 첫 버스 탑승 좌표 기준 TAGO 정류소/도착정보 조회 및 전국 버스 대기 시간 보정 fallback
 - 서울 버스 위치정보와 서울 지하철 열차 위치정보 기반 운행 상태 보조 설명
 - ODsay / Google Routes / Mock 이동 시간 기반 권장 출발 시각 계산
@@ -160,7 +160,7 @@ TAGO_SERVICE_KEY=API_KEY_PLACEHOLDER
 
 API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fallback되어 루틴 등록과 권장 출발 시각 계산 흐름을 계속 사용할 수 있습니다.
 
-현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답의 `path` 후보는 최대 3개까지 평가하며, 출발 예정 시각이 30분 이내인 경우에만 첫 버스 탑승 구간의 서울 버스도착정보조회 서비스 또는 TAGO 버스도착정보를 조회해 첫 대기 시간이 기본 대기 기준보다 길 때 이동 시간을 보수적으로 늘립니다. 후보 경로를 바꿔도 이득이 3분 미만이면 기존 ODsay 1순위 경로를 유지해 불필요한 경로 흔들림을 줄입니다. 실시간 조회가 허용된 상황에서 호출/매칭에 실패하면 20분 이내의 `RouteRealtimeSnapshot`만 재사용하고, 출발 예정 시각이 없거나 30분을 초과하면 실시간 조회와 snapshot fallback을 모두 사용하지 않습니다. 실시간 보정이 적용된 `RouteEstimate`는 일반 6시간 경로 cache에 저장하지 않습니다. 버스/지하철 위치정보는 계산값을 직접 대체하지 않고 운행 상태 보조 설명으로 reason에 반영합니다. 보정 후 권장 출발 시각이 이미 지났고 목표 도착 시각이 아직 남아 있으면 앱은 `지금 출발` 상태로 표시합니다. TAGO 정류소/노선 매칭의 지역별 예외는 실제 API 키 기반 검증으로 계속 보강합니다.
+현재 ODsay 대중교통 길찾기 결과는 기본 예상 이동 시간으로 사용합니다. ODsay 응답의 `path` 후보는 최대 5개까지 평가하며, 출발 예정 시각이 30분 이내인 경우에만 첫 버스 탑승 구간의 서울 버스도착정보조회 서비스 또는 TAGO 버스도착정보를 조회합니다. `RouteCandidateEvaluator`는 정류장까지 접근 시간과 실시간 버스 도착 대기시간을 비교해 탑승 여유가 부족한 후보에 페널티를 주고, 총 소요시간/환승/도보/실시간 신뢰도를 함께 점수화합니다. 후보 경로를 바꿔도 이득이 3분 미만이면 기존 ODsay 1순위 경로를 유지해 불필요한 경로 흔들림을 줄입니다. 실시간 조회가 허용된 상황에서 호출/매칭에 실패하면 20분 이내의 `RouteRealtimeSnapshot`만 재사용하고, 출발 예정 시각이 없거나 출발까지 30분을 초과하거나 이미 지난 출발 이벤트이면 실시간 조회와 snapshot fallback을 모두 사용하지 않습니다. 실시간 보정이 적용된 `RouteEstimate`는 일반 6시간 경로 cache에 저장하지 않습니다. 버스/지하철 위치정보는 계산값을 직접 대체하지 않고 운행 상태 보조 설명으로 reason에 반영합니다. 보정 후 권장 출발 시각이 이미 지났고 목표 도착 시각이 아직 남아 있으면 앱은 `지금 출발` 상태로 표시합니다. 홈의 남은 출발 시간은 60분 이상일 때 `k시간 l분` 형식으로 표시합니다. TAGO 정류소/노선 매칭의 지역별 예외는 실제 API 키 기반 검증으로 계속 보강합니다.
 
 ## 브랜치 전략 요약
 

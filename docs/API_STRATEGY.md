@@ -8,7 +8,8 @@
 
 - `KakaoPlaceSearchProvider` 구현: Kakao Local API 키워드 장소 검색 사용
 - `KakaoReverseGeocodingProvider` 구현: Kakao Local API 좌표→주소 변환으로 현재 위치 출발지 주소 표시
-- `OdsayRouteEstimateProvider` 구현: ODsay 대중교통 경로 검색 사용, 후보 `path` 최대 3개 평가
+- `OdsayRouteEstimateProvider` 구현: ODsay 대중교통 경로 검색 사용, 후보 `path` 최대 5개 평가
+- `RouteCandidateEvaluator` 구현: 첫 버스 실시간 도착 대기시간과 정류장 접근 시간을 비교해 탑승 가능성이 낮은 ODsay 후보에 페널티 적용
 - `SeoulBusRealtimeArrivalProvider` 구현: 서울특별시 버스도착정보조회 서비스로 첫 버스 대기 시간 보정
 - `SeoulSubwayRealtimeArrivalProvider` 구현: 서울 지하철 실시간 도착정보 조회 provider 구현 완료, 현재 ODsay 후보 랭킹 보정은 첫 버스 구간에 우선 적용
 - `RouteRealtimeSnapshot` 구현: 출발 예정 30분 이내 실시간 보정 성공값을 Room에 저장하고, 같은 30분 정책 안에서만 20분 이내 fresh snapshot을 fallback으로 재사용
@@ -73,23 +74,25 @@ ODsay 대중교통 길찾기 API의 `totalTime`은 대중교통 경로의 기본
 
 실시간 버스 보정과 후보 경로 선택은 다음 구조를 기준으로 합니다.
 
-1. ODsay 길찾기 결과의 `path` 후보를 최대 3개까지 평가합니다.
+1. ODsay 길찾기 결과의 `path` 후보를 최대 5개까지 평가합니다.
 2. 각 후보에서 `totalTime`, 환승 수, 도보 시간, `subPath` 기반 `RouteSegment`, 첫 대중교통 구간을 추출합니다.
 3. `scheduledDepartureEpochMillis`가 없거나 출발까지 30분을 초과하면 실시간 도착정보와 snapshot fallback을 모두 사용하지 않고 ODsay 기본 후보 시간으로 랭킹합니다.
 4. 출발까지 30분 이내이고 첫 탑승 구간이 버스이면 서울 버스 실시간 도착정보를 먼저 조회해 대기 시간을 보정합니다.
 5. 서울 버스 매칭이 실패하고 ODsay 첫 탑승 정류장 좌표가 있으면 TAGO 버스정류소정보 API의 근접 정류소 후보를 조회합니다.
 6. TAGO 후보는 정류장 거리, 정류장명 유사도, 노선번호 정규화 기준으로 `cityCode`, `nodeId`와 `arrtime`을 매칭합니다.
 7. 실시간 정보 조회 실패/매칭 실패 시에도 출발까지 30분 이내일 때만 20분 이내 `RouteRealtimeSnapshot`을 재사용하고, 없거나 만료되면 ODsay 기본 예상시간으로 fallback합니다.
-8. 가장 짧은 보정 후보를 선택하되, ODsay 1순위 후보 대비 이득이 3분 미만이면 1순위 후보를 유지합니다.
-9. 선택된 후보의 `subPath`에서 생성한 `RouteSegment`만 `RouteEstimate.segments`에 넣습니다.
-10. 보정 결과를 영속화할 때는 `Routine`이 아니라 특정 시점의 `RouteRealtimeSnapshot`에 저장합니다.
-11. 실시간 보정 또는 snapshot fallback이 적용된 `RouteEstimate.hasRealtimeAdjustment`는 `true`이며, 일반 6시간 `RouteEstimateCache`에는 저장하지 않습니다.
-12. 출발 시각이 이미 지난 시간으로 재계산되면 `지금 출발 권장` 상태로 처리합니다.
-13. 현재 AlarmManager 출발 알림은 앱 실행/설정 변경/루틴 변경/부팅 후 다음 권장 출발 시각을 예약합니다.
-14. WorkManager는 출발 알림 30분 전에 경로 provider/fallback을 다시 호출해 예약된 알림을 보정합니다.
-15. 이동 기록 저장 시 목표 대비 도착 오차를 개인 보정값에 반영합니다. 현재는 한 번의 기록이 보정값을 과도하게 흔들지 않도록 최대 ±5분 범위에서 조정합니다.
-16. 자동차 모드는 Google Routes `TRAFFIC_AWARE` 옵션을 provider 정책으로 적용합니다.
-17. 실시간 보정이 없는 실제 ODsay/Google provider 성공값은 전체 경로 예상값으로 6시간 Room cache에 저장하고, 이후 API 실패 시 mock fallback 전에 재사용합니다.
+8. `RouteCandidateEvaluator`는 탑승 여유, 총 소요시간, 환승 수, 도보 시간, 실시간 신뢰도를 점수화합니다.
+9. 탑승 여유가 0분 미만이면 놓칠 위험 후보로 강하게 감점하고, 0~2분이면 빡빡한 후보로 중간 감점합니다.
+10. 후보 전환 이득이 3분 미만이면 1순위 후보를 유지해 추천 흔들림을 줄입니다.
+11. 선택된 후보의 `subPath`에서 생성한 `RouteSegment`만 `RouteEstimate.segments`에 넣습니다.
+12. 보정 결과를 영속화할 때는 `Routine`이 아니라 특정 시점의 `RouteRealtimeSnapshot`에 저장합니다.
+13. 실시간 보정 또는 snapshot fallback이 적용된 `RouteEstimate.hasRealtimeAdjustment`는 `true`이며, 일반 6시간 `RouteEstimateCache`에는 저장하지 않습니다.
+14. 출발 시각이 이미 지난 시간으로 재계산되면 `지금 출발 권장` 상태로 처리합니다.
+15. 현재 AlarmManager 출발 알림은 앱 실행/설정 변경/루틴 변경/부팅 후 다음 권장 출발 시각을 예약합니다.
+16. WorkManager는 출발 전 `T-60/T-30/T-15/T-5` 재조회 작업을 예약하고, 긴 이동은 `T-90/T-120`도 추가합니다. 재조회 시 기존 출발 예정 시각을 provider에 전달해 30분 정책 안에서 실시간 보정이 반영됩니다.
+17. 이동 기록 저장 시 목표 대비 도착 오차를 개인 보정값에 반영합니다. 현재는 한 번의 기록이 보정값을 과도하게 흔들지 않도록 최대 ±5분 범위에서 조정합니다.
+18. 자동차 모드는 Google Routes `TRAFFIC_AWARE` 옵션을 provider 정책으로 적용합니다.
+19. 실시간 보정이 없는 실제 ODsay/Google provider 성공값은 전체 경로 예상값으로 6시간 Room cache에 저장하고, 이후 API 실패 시 mock fallback 전에 재사용합니다.
 
 MVP에서는 실시간 API가 실패해도 기존 `ODsay/Google Routes → Mock fallback` 흐름을 유지해야 합니다. 실시간 API 결과는 권장 출발 시각을 보정하는 추가 입력값으로만 사용하고, 추천 공식 자체는 변경하지 않습니다. 실제 경로 API가 mock fallback으로 내려가면 화면에는 기본 예상 시간을 사용했다는 상태와 요약 사유만 표시합니다.
 
@@ -147,7 +150,8 @@ origin + destination + transportMode
 
 - Google Routes transit 요청은 현재 도착/출발 시각을 지정하지 않고 즉시 경로 기준으로 조회합니다.
 - ODsay 길찾기 결과만으로는 현재 버스/지하철 지연과 실제 정류장/역 도착 예정 시간을 완전히 보장하지 않습니다.
-- 실시간 버스 도착정보와 지하철 실시간 도착정보 provider는 구현되어 있지만, 현재 ODsay 후보 경로 랭킹의 실시간 시간 보정은 첫 버스 구간에 우선 적용합니다.
+- 실시간 버스 도착정보와 지하철 실시간 도착정보 provider는 구현되어 있지만, 현재 ODsay 후보 경로 랭킹의 실시간 시간 보정과 탑승 가능성 평가는 첫 버스 구간에 우선 적용합니다.
+- 주변 정류장의 버스를 직접 탐색해 ODsay 결과 밖의 대안을 추천하는 기능은 아직 구현하지 않았습니다.
 - `RouteRealtimeSnapshot` fallback은 같은 ODsay 기본 경로와 첫 버스 탑승 구간에서 20분 이내 성공값만 재사용하며, `scheduledDepartureEpochMillis`가 없거나 출발까지 30분을 초과하면 사용하지 않습니다.
 - TAGO provider는 ODsay 첫 탑승 정류장 좌표가 있어야 동작합니다. 좌표가 없거나 지역별 정류장/노선 표기가 맞지 않으면 기존 서울 provider 또는 mock fallback을 유지합니다.
 - 버스 위치정보와 지하철 열차 위치정보는 운행 상태 보조 설명으로만 사용하며, 권장 출발 시각 계산값을 직접 대체하지 않습니다.
@@ -168,6 +172,6 @@ origin + destination + transportMode
 # Current API note
 
 See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest API behavior.
-ODsay remains the baseline transit path provider; realtime correction is
-currently limited to candidate ranking with first-bus arrival adjustment rather
-than a full nearby-bus alternative search.
+ODsay remains the baseline transit path provider; realtime correction and
+boarding feasibility ranking are currently limited to first-bus candidates
+inside ODsay paths rather than a full nearby-bus alternative search.

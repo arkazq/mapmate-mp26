@@ -7,12 +7,12 @@ This document summarizes the current branch changes and the exact implementation
 Current branch:
 
 ```text
-fix/verify-realtime-route-behavior
+feature/boarding-aware-route-ranking
 ```
 
-The branch focuses on fixing departure recheck behavior, synchronizing home UI state, preventing repeated departure alarms, improving records analysis scope, and extending segment-based travel-time learning.
+The branch focuses on first-bus boarding-aware ODsay candidate ranking, realtime departure-window verification, and a home countdown formatting fix.
 
-The full nearby-bus selection engine is intentionally not part of this branch and should be implemented separately.
+Nearby-bus search outside ODsay candidate paths and dedicated alternative-route UI are intentionally not part of this branch and should be implemented separately.
 
 ## Departure Recheck And Alarm Fixes
 
@@ -46,6 +46,8 @@ Implemented:
 - `recommendedDepartureTime`, `recommendedDepartureAtEpochMillis`, `minutesUntilDeparture`, `departureCountdownText`, and `departureProgress` are derived values.
 - Home UI no longer displays a fixed stale countdown value.
 - When the current recommendation is close enough to departure, route re-estimation can use `scheduledDepartureEpochMillis` so realtime adjustment can be considered.
+- Realtime re-estimation from home is only allowed when the recommended departure is within `0..30` minutes, so stale/past departure events do not trigger realtime correction.
+- Countdown text now formats long durations as `k시간 l분` instead of showing large raw minute values such as `1328분`.
 
 Important files:
 
@@ -125,33 +127,43 @@ Important files:
 Implemented:
 
 - ODsay provides public-transit candidate paths.
-- The app evaluates up to 3 ODsay path candidates.
+- The app evaluates up to 5 ODsay path candidates.
 - Within the realtime lookahead window, first-leg realtime arrival can affect candidate duration.
-- Current correction is focused on first bus arrival.
+- Current correction and boarding feasibility ranking are focused on first bus arrival.
+- `RouteCandidateEvaluator` scores candidates with adjusted total minutes, first-bus boarding slack, miss-risk penalty, tight-boarding penalty, transfer count, walking time, and realtime confidence.
+- Boarding slack compares `recommendedDepartureTime + accessMinutes` against the realtime bus wait. If the recommended departure is already past, the evaluator uses `now + accessMinutes`.
+- A candidate with negative slack is treated as likely missed, slack `0..2` is treated as tight, and slack `>= 3` is treated as boardable.
 - A fresh `RouteRealtimeSnapshot` can be reused inside the realtime window if realtime lookup or matching fails.
 - Candidate switching is guarded by a minimum-gain threshold so tiny improvements do not cause route churn.
+- Realtime lookup and snapshot fallback are skipped when `scheduledDepartureEpochMillis` is missing, more than 30 minutes away, or already in the past.
+- The selected candidate's `subPath` is the source of `RouteEstimate.segments`, so the displayed/recorded route segments stay aligned with the selected route.
+
+Important files:
+
+- `app/src/main/java/com/mapmate/data/remote/provider/OdsayRouteEstimateProvider.kt`
+- `app/src/main/java/com/mapmate/data/remote/provider/RouteCandidateEvaluator.kt`
+- `app/src/test/kotlin/com/mapmate/data/remote/provider/OdsayRouteEstimateProviderTest.kt`
+- `app/src/test/kotlin/com/mapmate/data/remote/provider/RouteCandidateEvaluatorTest.kt`
 
 Not implemented in this branch:
 
-- Explicit "which bus should I take" decision engine.
 - Nearby bus route search outside ODsay candidates.
-- Comparing all catchable bus alternatives by access time, arrival time, and miss risk.
+- Comparing all catchable bus alternatives around the user, independent of ODsay candidate paths.
 - Applying realtime arrival estimates to every transfer leg.
 - UI explaining alternatives such as "Bus A is too tight, Bus B is recommended."
 
 Recommended next branch:
 
 ```text
-feature/boarding-candidate-evaluator
+feature/realtime-route-candidate-ranking-ui
 ```
 
 Suggested future components:
 
-- `RouteCandidateEvaluator`
-- `TransitBoardingCandidate`
-- `BoardingFeasibility`
-- score model using total time, access time, realtime arrival, miss risk, transfer count, walking time, and confidence
 - home/alarm explanation UI for recommended bus and alternatives
+- first-subway realtime boarding evaluation
+- transfer-leg realtime evaluation
+- optional nearby-bus search outside ODsay candidates
 
 ## Verification
 

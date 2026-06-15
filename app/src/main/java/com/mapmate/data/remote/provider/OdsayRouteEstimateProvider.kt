@@ -30,6 +30,8 @@ class OdsayRouteEstimateProvider(
     private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
     private val snapshotTtlMillis: Long = DEFAULT_SNAPSHOT_TTL_MILLIS,
 ) : RouteEstimateProvider {
+    private val routeCandidateEvaluator = RouteCandidateEvaluator()
+
     override suspend fun getRouteEstimate(
         origin: Destination,
         destination: Destination,
@@ -73,6 +75,10 @@ class OdsayRouteEstimateProvider(
             nowEpochMillis = now,
             scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
         )
+        val skippedRealtimeStatus = skippedRealtimeStatus(
+            nowEpochMillis = now,
+            scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+        )
         val candidates = paths
             .take(MAX_CANDIDATE_PATH_COUNT)
             .mapIndexedNotNull { index, path ->
@@ -83,10 +89,21 @@ class OdsayRouteEstimateProvider(
                     destination = destination,
                     routineId = routineId,
                     applyRealtimeArrival = applyRealtimeArrival,
+                    skippedRealtimeStatus = skippedRealtimeStatus,
                     nowEpochMillis = now,
                 )
             }
-        val selected = selectBestCandidateWithStability(candidates)
+        val selection = routeCandidateEvaluator.select(
+            candidates.map { candidate ->
+                candidate.toEvaluationInput(
+                    scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+                    nowEpochMillis = now,
+                )
+            },
+        )
+        val selected = selection?.selected?.input?.pathIndex?.let { selectedPathIndex ->
+            candidates.firstOrNull { it.pathIndex == selectedPathIndex }
+        }
             ?: error(response.error?.msg ?: "ODsay route estimate was empty.")
         val operationStatus = selected.firstTransitQuery?.let { query ->
             runCatching {
@@ -102,14 +119,14 @@ class OdsayRouteEstimateProvider(
                 buildCachedSnapshotReason(
                     pathInfo = selected.pathInfo,
                     snapshot = selected.cachedSnapshot,
-                ).withCandidateReason(selected, candidates.size, applyRealtimeArrival)
+                ).withCandidateReason(selected, candidates.size, applyRealtimeArrival, selection)
             } else {
                 buildOdsayReason(
                     pathInfo = selected.pathInfo,
                     realtimeArrival = selected.realtimeArrival,
                     realtimeDelayMinutes = selected.realtimeAdjustmentMinutes,
                     operationStatus = operationStatus,
-                ).withCandidateReason(selected, candidates.size, applyRealtimeArrival)
+                ).withCandidateReason(selected, candidates.size, applyRealtimeArrival, selection)
             },
             statusMessage = selected.cachedSnapshot?.let {
                 "실시간 도착정보를 새로 확인하지 못해 최근 성공 보정값을 사용했습니다."
@@ -126,6 +143,7 @@ class OdsayRouteEstimateProvider(
         destination: Destination,
         routineId: Long?,
         applyRealtimeArrival: Boolean,
+        skippedRealtimeStatus: RealtimeStatus,
         nowEpochMillis: Long,
     ): RouteCandidateEstimate? {
         val pathInfo = path.info ?: return null
@@ -133,7 +151,8 @@ class OdsayRouteEstimateProvider(
         val routeSegments = runCatching {
             path.toRouteSegments(routineId = routineId)
         }.getOrDefault(emptyList())
-        val firstTransitQuery = path.firstTransitArrivalQuery()
+        val firstTransitInfo = path.firstTransitArrivalInfo()
+        val firstTransitQuery = firstTransitInfo?.query
         val baseCandidate = RouteCandidateEstimate(
             pathIndex = pathIndex,
             pathInfo = pathInfo,
@@ -148,9 +167,12 @@ class OdsayRouteEstimateProvider(
             realtimeStatus = if (applyRealtimeArrival) {
                 RealtimeStatus.NOT_BUS_FIRST_LEG
             } else {
-                RealtimeStatus.SKIPPED_TOO_EARLY
+                skippedRealtimeStatus
             },
             routeSegments = routeSegments,
+            firstBusAccessMinutes = firstTransitInfo?.takeIf {
+                it.query is TransitArrivalQuery.Bus
+            }?.accessMinutes,
         )
         if (!applyRealtimeArrival) return baseCandidate
 
@@ -205,36 +227,26 @@ class OdsayRouteEstimateProvider(
         )
     }
 
-    private fun selectBestCandidateWithStability(
-        candidates: List<RouteCandidateEstimate>,
-    ): RouteCandidateEstimate? {
-        val firstCandidate = candidates.minByOrNull { it.pathIndex } ?: return null
-        val bestCandidate = candidates.minWithOrNull(
-            compareBy<RouteCandidateEstimate> { it.adjustedTotalMinutes }
-                .thenBy { it.realtimeStatus.rank }
-                .thenBy { it.transferCount }
-                .thenBy { it.walkingMinutes }
-                .thenBy { it.pathIndex },
-        ) ?: return firstCandidate
-        val gainMinutes = firstCandidate.adjustedTotalMinutes - bestCandidate.adjustedTotalMinutes
-
-        return if (
-            bestCandidate.pathIndex != firstCandidate.pathIndex &&
-            gainMinutes < MIN_ROUTE_SWITCH_GAIN_MINUTES
-        ) {
-            firstCandidate
-        } else {
-            bestCandidate
-        }
-    }
-
     private fun shouldApplyRealtimeArrival(
         nowEpochMillis: Long,
         scheduledDepartureEpochMillis: Long?,
     ): Boolean {
         val departureAt = scheduledDepartureEpochMillis ?: return false
         val minutesUntilDeparture = (departureAt - nowEpochMillis) / MILLIS_PER_MINUTE
-        return minutesUntilDeparture <= REALTIME_ARRIVAL_LOOKAHEAD_MINUTES
+        return minutesUntilDeparture in 0..REALTIME_ARRIVAL_LOOKAHEAD_MINUTES
+    }
+
+    private fun skippedRealtimeStatus(
+        nowEpochMillis: Long,
+        scheduledDepartureEpochMillis: Long?,
+    ): RealtimeStatus {
+        val departureAt = scheduledDepartureEpochMillis
+            ?: return RealtimeStatus.SKIPPED_NO_SCHEDULED_DEPARTURE
+        return if (departureAt < nowEpochMillis) {
+            RealtimeStatus.SKIPPED_DEPARTURE_PASSED
+        } else {
+            RealtimeStatus.SKIPPED_TOO_EARLY
+        }
     }
 
     private fun OdsayPathInfo.transferCount(): Int {
@@ -259,12 +271,13 @@ class OdsayRouteEstimateProvider(
         selected: RouteCandidateEstimate,
         candidateCount: Int,
         applyRealtimeArrival: Boolean,
+        selection: RouteCandidateSelection?,
     ): String {
         val candidateReason = "Selected ODsay candidate ${selected.pathIndex + 1}/${candidateCount}; " +
             "adjusted=${selected.adjustedTotalMinutes} min; " +
             "realtime=${selected.realtimeStatus}; " +
             "applyRealtime=$applyRealtimeArrival."
-        return listOf(this, candidateReason).joinToString(" ")
+        return listOfNotNull(this, candidateReason, selection?.reason).joinToString(" ")
     }
 
     private fun buildOdsayReason(
@@ -354,13 +367,20 @@ class OdsayRouteEstimateProvider(
         }
     }
 
-    private fun OdsayPath?.firstTransitArrivalQuery(): TransitArrivalQuery? {
-        val transitSubPath = this?.subPath?.firstOrNull {
+    private fun OdsayPath?.firstTransitArrivalInfo(): FirstTransitArrivalInfo? {
+        val path = this ?: return null
+        val transitSubPathIndex = path.subPath.indexOfFirst {
             it.trafficType == TRAFFIC_TYPE_SUBWAY || it.trafficType == TRAFFIC_TYPE_BUS
-        } ?: return null
+        }
+        if (transitSubPathIndex < 0) return null
+        val transitSubPath = path.subPath[transitSubPathIndex]
+        val accessMinutes = path.subPath
+            .take(transitSubPathIndex)
+            .filter { it.trafficType == TRAFFIC_TYPE_WALK }
+            .sumOf { it.sectionTime ?: 0 }
 
         val firstLane = transitSubPath.lane.firstOrNull()
-        return when (transitSubPath.trafficType) {
+        val query = when (transitSubPath.trafficType) {
             TRAFFIC_TYPE_BUS -> TransitArrivalQuery.Bus(
                 stationName = transitSubPath.startName,
                 stationId = transitSubPath.startId.asString(),
@@ -379,7 +399,12 @@ class OdsayRouteEstimateProvider(
                 direction = transitSubPath.endName,
             )
             else -> null
-        }
+        } ?: return null
+
+        return FirstTransitArrivalInfo(
+            query = query,
+            accessMinutes = accessMinutes,
+        )
     }
 
     private fun TransitArrivalQuery.toSnapshotCacheKey(
@@ -439,6 +464,34 @@ class OdsayRouteEstimateProvider(
         return (waitMinutes - PLANNED_WAIT_BASELINE_MINUTES).coerceAtLeast(0)
     }
 
+    private fun RouteCandidateEstimate.toEvaluationInput(
+        scheduledDepartureEpochMillis: Long?,
+        nowEpochMillis: Long,
+    ): RouteCandidateEvaluationInput {
+        val busQuery = firstTransitQuery as? TransitArrivalQuery.Bus
+        val firstBusBoarding = if (busQuery != null) {
+            RouteCandidateBoardingInput(
+                routeName = busQuery.routeName,
+                stationName = busQuery.stationName,
+                accessMinutes = firstBusAccessMinutes ?: 0,
+                realtimeWaitMinutes = realtimeArrival?.waitMinutes,
+                scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+                nowEpochMillis = nowEpochMillis,
+            )
+        } else {
+            null
+        }
+
+        return RouteCandidateEvaluationInput(
+            pathIndex = pathIndex,
+            adjustedTotalMinutes = adjustedTotalMinutes,
+            transferCount = transferCount,
+            walkingMinutes = walkingMinutes,
+            realtimeStatusRank = realtimeStatus.rank,
+            firstBusBoarding = firstBusBoarding,
+        )
+    }
+
     private fun JsonElement?.asString(): String? {
         val primitive = this as? JsonPrimitive ?: return null
         return primitive.contentOrNull
@@ -459,6 +512,12 @@ class OdsayRouteEstimateProvider(
         val cachedSnapshot: RouteRealtimeSnapshot?,
         val realtimeStatus: RealtimeStatus,
         val routeSegments: List<RouteSegment>,
+        val firstBusAccessMinutes: Int?,
+    )
+
+    private data class FirstTransitArrivalInfo(
+        val query: TransitArrivalQuery,
+        val accessMinutes: Int,
     )
 
     private enum class RealtimeStatus(
@@ -468,8 +527,10 @@ class OdsayRouteEstimateProvider(
         CACHED_SNAPSHOT(rank = 1),
         NOT_BUS_FIRST_LEG(rank = 2),
         SKIPPED_TOO_EARLY(rank = 3),
-        UNAVAILABLE(rank = 4),
-        FAILED(rank = 5),
+        SKIPPED_DEPARTURE_PASSED(rank = 4),
+        SKIPPED_NO_SCHEDULED_DEPARTURE(rank = 5),
+        UNAVAILABLE(rank = 6),
+        FAILED(rank = 7),
     }
 
     private companion object {
@@ -478,8 +539,7 @@ class OdsayRouteEstimateProvider(
         const val TRAFFIC_TYPE_WALK = 3
         const val PLANNED_WAIT_BASELINE_MINUTES = 5
         const val DEFAULT_SNAPSHOT_TTL_MILLIS = 20 * 60 * 1000L
-        const val MAX_CANDIDATE_PATH_COUNT = 3
-        const val MIN_ROUTE_SWITCH_GAIN_MINUTES = 3
+        const val MAX_CANDIDATE_PATH_COUNT = 5
         const val REALTIME_ARRIVAL_LOOKAHEAD_MINUTES = 30
         const val MILLIS_PER_MINUTE = 60_000L
     }
