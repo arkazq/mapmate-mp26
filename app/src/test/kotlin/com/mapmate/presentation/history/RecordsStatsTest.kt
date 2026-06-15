@@ -41,14 +41,45 @@ class RecordsStatsTest {
         assertEquals(1, stats.recentAverageDeltaMinutes)
     }
 
+    @Test
+    fun uiState_filtersRecordsAndStatsBySelectedRoutine() {
+        val schoolRecord = record(
+            routineId = 1L,
+            routineName = "등교",
+            delta = 5,
+            mode = TransportMode.TRANSIT,
+            arrivedAt = 2000L,
+        )
+        val workRecord = record(
+            routineId = 2L,
+            routineName = "출근",
+            delta = -3,
+            mode = TransportMode.WALK,
+            arrivedAt = 1000L,
+        )
+        val state = RecordsUiState(
+            records = listOf(schoolRecord, workRecord),
+            selectedRoutineId = 2L,
+            isLoading = false,
+        )
+
+        assertEquals(listOf(workRecord), state.filteredRecords)
+        assertEquals(1, state.filteredStats.totalRecords)
+        assertEquals(-3, state.filteredStats.averageArrivalDeltaMinutes)
+        assertEquals("출근", state.selectedScopeLabel)
+        assertEquals(listOf(null, 1L, 2L), state.routineFilters.map { it.routineId })
+    }
+
     private fun record(
+        routineId: Long = 1L,
+        routineName: String = "등교",
         delta: Int,
         mode: TransportMode,
         arrivedAt: Long,
     ): CommuteRecord {
         return CommuteRecord(
-            routineId = 1L,
-            routineName = "등교",
+            routineId = routineId,
+            routineName = routineName,
             originName = "집",
             destinationName = "학교",
             transportMode = mode,

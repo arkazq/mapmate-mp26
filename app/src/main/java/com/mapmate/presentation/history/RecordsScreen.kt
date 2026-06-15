@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -60,6 +62,7 @@ fun RecordsRoute(
         contentPadding = contentPadding,
         onRegisterRoutineClick = onRegisterRoutineClick,
         onEditSegmentsClick = onEditSegmentsClick,
+        onRoutineFilterSelected = viewModel::selectRoutineFilter,
     )
 }
 
@@ -69,6 +72,7 @@ fun RecordsScreen(
     contentPadding: PaddingValues,
     onRegisterRoutineClick: () -> Unit,
     onEditSegmentsClick: (CommuteRecord) -> Unit,
+    onRoutineFilterSelected: (Long?) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -115,11 +119,22 @@ fun RecordsScreen(
 
             else -> {
                 item {
-                    RecordsStatsCard(stats = uiState.stats)
+                    RecordsRoutineFilterRow(
+                        filters = uiState.routineFilters,
+                        selectedRoutineId = uiState.selectedRoutineId,
+                        onRoutineFilterSelected = onRoutineFilterSelected,
+                    )
+                }
+
+                item {
+                    RecordsStatsCard(
+                        stats = uiState.filteredStats,
+                        scopeLabel = uiState.selectedScopeLabel,
+                    )
                 }
 
                 items(
-                    items = uiState.records,
+                    items = uiState.filteredRecords,
                     key = { it.id ?: it.arrivedAtEpochMillis },
                 ) { record ->
                     CommuteRecordCard(
@@ -137,12 +152,38 @@ fun RecordsScreen(
 }
 
 @Composable
+private fun RecordsRoutineFilterRow(
+    filters: List<RecordsRoutineFilter>,
+    selectedRoutineId: Long?,
+    onRoutineFilterSelected: (Long?) -> Unit,
+) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(
+            items = filters,
+            key = { it.routineId?.toString() ?: "all" },
+        ) { filter ->
+            FilterChip(
+                selected = filter.routineId == selectedRoutineId,
+                onClick = { onRoutineFilterSelected(filter.routineId) },
+                label = {
+                    Text("${filter.label} ${filter.recordCount}회")
+                },
+            )
+        }
+    }
+}
+
+@Composable
 private fun RecordsStatsCard(
     stats: RecordsStats,
+    scopeLabel: String,
 ) {
     SectionCard(
         title = "기록 분석",
-        subtitle = "최근 저장 기록을 기준으로 추천 정확도를 요약합니다.",
+        subtitle = "${scopeLabel} 기록을 기준으로 추천 정확도를 요약합니다.",
         leadingIcon = MapMateIconType.Records,
     ) {
         MetricRow(
@@ -300,6 +341,7 @@ private fun RecordsScreenPreview() {
             contentPadding = PaddingValues(),
             onRegisterRoutineClick = {},
             onEditSegmentsClick = {},
+            onRoutineFilterSelected = {},
         )
     }
 }

@@ -36,16 +36,19 @@ class OdsayRouteSegmentMapperTest {
 
         val segments = path.toRouteSegments(routineId = 10L)
 
-        assertEquals(3, segments.size)
+        assertEquals(4, segments.size)
         assertEquals(RouteSegmentType.WALK_TO_TRANSIT, segments[0].segmentType)
-        assertEquals(RouteSegmentType.BUS_RIDE, segments[1].segmentType)
+        assertEquals(RouteSegmentType.WAIT_FOR_BUS, segments[1].segmentType)
         assertEquals("753", segments[1].routeName)
-        assertEquals(RouteSegmentType.WALK_TO_DESTINATION, segments[2].segmentType)
-        assertEquals(listOf(0, 1, 2), segments.map { it.segmentIndex })
+        assertEquals(5, segments[1].plannedDurationMinutes)
+        assertEquals(RouteSegmentType.BUS_RIDE, segments[2].segmentType)
+        assertEquals("753", segments[2].routeName)
+        assertEquals(RouteSegmentType.WALK_TO_DESTINATION, segments[3].segmentType)
+        assertEquals(listOf(0, 1, 2, 3), segments.map { it.segmentIndex })
     }
 
     @Test
-    fun toRouteSegments_mapsTransferRouteWithoutPlannedWaitSegment() {
+    fun toRouteSegments_mapsTransferRouteWithPlannedWaitSegments() {
         val path = OdsayPath(
             subPath = listOf(
                 OdsaySubPath(trafficType = 3, sectionTime = 3, startName = "Home", endName = "Bus stop"),
@@ -81,10 +84,13 @@ class OdsayRouteSegmentMapperTest {
         assertEquals(
             listOf(
                 RouteSegmentType.WALK_TO_TRANSIT,
+                RouteSegmentType.WAIT_FOR_BUS,
                 RouteSegmentType.BUS_RIDE,
                 RouteSegmentType.TRANSFER_WALK,
+                RouteSegmentType.WAIT_FOR_SUBWAY,
                 RouteSegmentType.SUBWAY_RIDE,
                 RouteSegmentType.TRANSFER_WALK,
+                RouteSegmentType.WAIT_FOR_SUBWAY,
                 RouteSegmentType.SUBWAY_RIDE,
                 RouteSegmentType.WALK_TO_DESTINATION,
             ),

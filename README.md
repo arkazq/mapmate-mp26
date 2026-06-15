@@ -1,5 +1,20 @@
 # MapMate
 
+## Recent implementation update (2026-06-16)
+
+This branch documents the current app behavior after the latest verification and fixes.
+
+- Departure recheck work is scheduled before the planned departure time and no longer cancels the running recheck worker when it reschedules the next alarm.
+- The home dashboard now derives the recommended departure time, countdown text, and progress from refreshed recommendation state instead of a fixed display value.
+- After a departure alarm fires, the planner excludes the fired schedule so the same alarm is not immediately scheduled again.
+- Records analysis can be filtered by routine, so aggregate statistics are no longer only global across all routines.
+- ODsay transit paths are expanded into route segments for tracking. Bus and subway rides now include planned wait segments before the ride segment.
+- Segment history optimization remains keyed by `routineId + segmentType + routeName + startName + endName`, so the same routine with a different bus route is learned separately.
+- Segment adjustment storage now keeps average delay, average actual duration, min actual duration, max actual duration, sample count, confidence, and update time.
+- The tracking flow can measure wait time explicitly. Completing a bus/subway wait segment starts the following ride segment automatically.
+
+Current limitation: the app rechecks ODsay candidate paths and can apply first-bus realtime arrival adjustment, but it does not yet run a dedicated "which bus should I take" decision engine across all nearby alternatives. That work should be handled in a separate branch.
+
 SoongSil University mobile programming team project
 
 ## 구간별 소요시간 개인 맞춤 최적화 업데이트
@@ -164,6 +179,7 @@ API 키가 없거나 호출이 실패해도 앱은 기존 Mock 데이터로 fall
 - `docs/API_STRATEGY.md`
 - `docs/REALTIME_DEPARTURE_STRATEGY.md`
 - `docs/SEGMENT_TIME_OPTIMIZATION.md`
+- `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`
 - `docs/MOBILE_SECURITY_CHECKLIST.md`
 - `docs/FEATURE_STATUS.md`
 

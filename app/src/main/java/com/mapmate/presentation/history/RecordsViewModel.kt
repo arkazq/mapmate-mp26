@@ -20,14 +20,33 @@ class RecordsViewModel(
         observeRecords()
     }
 
+    fun selectRoutineFilter(routineId: Long?) {
+        _uiState.update {
+            it.copy(
+                selectedRoutineId = routineId,
+                stats = RecordsStats.from(
+                    routineId?.let { selectedId ->
+                        it.records.filter { record -> record.routineId == selectedId }
+                    } ?: it.records,
+                ),
+            )
+        }
+    }
+
     private fun observeRecords() {
         viewModelScope.launch {
             commuteRecordRepository.observeRecords().collect { records ->
                 _uiState.update {
+                    val selectedRoutineId = it.selectedRoutineId
+                        ?.takeIf { routineId -> records.any { record -> record.routineId == routineId } }
+                    val filteredRecords = selectedRoutineId?.let { routineId ->
+                        records.filter { record -> record.routineId == routineId }
+                    } ?: records
                     it.copy(
                         records = records,
+                        selectedRoutineId = selectedRoutineId,
                         isLoading = false,
-                        stats = RecordsStats.from(records),
+                        stats = RecordsStats.from(filteredRecords),
                     )
                 }
             }

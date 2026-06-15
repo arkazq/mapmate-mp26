@@ -44,10 +44,19 @@ class DepartureAlarmCoordinator(
         )
     }
 
+    suspend fun rescheduleAfterAlarmFired(firedSchedule: DepartureAlarmSchedule?) {
+        sync(
+            settings = settingsRepository.settings.first(),
+            routines = routineRepository.observeRoutines().first(),
+            firedSchedule = firedSchedule,
+        )
+    }
+
     private suspend fun sync(
         settings: AppSettings,
         routines: List<Routine>,
         previousSchedule: DepartureAlarmSchedule? = null,
+        firedSchedule: DepartureAlarmSchedule? = null,
     ) {
         if (!settings.notificationsEnabled || !alarmScheduler.canPostDepartureNotifications()) {
             cancelScheduledWork()
@@ -63,7 +72,10 @@ class DepartureAlarmCoordinator(
                     ?.triggerAtEpochMillis,
             )
         }
-        val proposedNextAlarm = planner.nextAlarm(routineRouteDurations)
+        val proposedNextAlarm = planner.nextAlarm(
+            routineRouteDurations = routineRouteDurations,
+            excludedSchedule = firedSchedule,
+        )
 
         if (proposedNextAlarm == null) {
             cancelScheduledWork()
@@ -73,7 +85,10 @@ class DepartureAlarmCoordinator(
                 proposedSchedule = proposedNextAlarm,
             )
             alarmScheduler.schedule(nextAlarm)
-            recheckScheduler.schedule(nextAlarm)
+            recheckScheduler.schedule(
+                schedule = nextAlarm,
+                replaceExisting = previousSchedule == null,
+            )
         }
     }
 

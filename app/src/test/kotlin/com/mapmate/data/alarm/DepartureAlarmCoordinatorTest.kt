@@ -44,7 +44,29 @@ class DepartureAlarmCoordinatorTest {
         assertNotNull(recheckScheduler.scheduled)
         assertEquals(12, alarmScheduler.scheduled!!.routeDurationMinutes)
         assertEquals(alarmScheduler.scheduled, recheckScheduler.scheduled)
+        assertEquals(true, recheckScheduler.replaceExisting)
         assertEquals(0, alarmScheduler.cancelCount)
+        assertEquals(0, recheckScheduler.cancelCount)
+    }
+
+    @Test
+    fun rescheduleNextAlarm_keepsRunningRecheckWorkWhenPreviousScheduleExists() = runTest {
+        val alarmScheduler = FakeAlarmScheduler()
+        val recheckScheduler = FakeRecheckScheduler()
+        val routeEstimateProvider = FixedRouteEstimateProvider(estimatedMinutes = 12)
+        val coordinator = coordinator(
+            settings = AppSettings(notificationsEnabled = true),
+            routines = listOf(routine),
+            routeEstimateProvider = routeEstimateProvider,
+            alarmScheduler = alarmScheduler,
+            recheckScheduler = recheckScheduler,
+        )
+
+        coordinator.rescheduleNextAlarm(previousSchedule = previousScheduleFor(routine))
+
+        assertNotNull(alarmScheduler.scheduled)
+        assertEquals(alarmScheduler.scheduled, recheckScheduler.scheduled)
+        assertEquals(false, recheckScheduler.replaceExisting)
         assertEquals(0, recheckScheduler.cancelCount)
     }
 
@@ -121,10 +143,15 @@ class DepartureAlarmCoordinatorTest {
 
     private class FakeRecheckScheduler : DepartureRecheckScheduler {
         var scheduled: DepartureAlarmSchedule? = null
+        var replaceExisting: Boolean? = null
         var cancelCount = 0
 
-        override fun schedule(schedule: DepartureAlarmSchedule) {
+        override fun schedule(
+            schedule: DepartureAlarmSchedule,
+            replaceExisting: Boolean,
+        ) {
             scheduled = schedule
+            this.replaceExisting = replaceExisting
         }
 
         override fun cancel() {
@@ -213,6 +240,18 @@ class DepartureAlarmCoordinatorTest {
                 transportMode = TransportMode.TRANSIT,
                 personalBufferMinutes = 0,
                 safetyMarginMinutes = 0,
+            )
+        }
+
+        fun previousScheduleFor(routine: Routine): DepartureAlarmSchedule {
+            return DepartureAlarmSchedule(
+                routineId = routine.id ?: 0L,
+                routineName = routine.name,
+                destinationName = routine.destination.name,
+                targetArrivalTime = routine.targetArrivalTime,
+                recommendedDepartureTime = LocalTime.of(23, 17),
+                routeDurationMinutes = 42,
+                triggerAtEpochMillis = Long.MAX_VALUE,
             )
         }
     }

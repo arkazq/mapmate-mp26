@@ -452,3 +452,9 @@ Google Routes 자동차 모드는 `GoogleRoutesEstimateProvider`에서 `routingP
 - 통계/분석 화면
 - 필요 시 Navigation Compose 도입
 - 모바일 보안 점검: 민감 정보 저장/로그 노출, 위치/이동 기록 개인정보 취급, cleartext 통신 범위, release 빌드 보안 설정 확인
+# Current architecture note
+
+See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest branch-level
+architecture changes: recheck scheduling, home UI synchronization, alarm-loop
+prevention, records filtering, transit wait segments, and segment adjustment
+storage changes.

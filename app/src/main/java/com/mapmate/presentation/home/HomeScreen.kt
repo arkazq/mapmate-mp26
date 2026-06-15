@@ -119,7 +119,10 @@ fun HomeScreen(
 
         uiState.dashboardRecommendation?.let { recommendation ->
             item {
-                CountdownProgressCard(recommendation = recommendation)
+                CountdownProgressCard(
+                    recommendation = recommendation,
+                    nowEpochMillis = uiState.nowEpochMillis,
+                )
             }
             item {
                 RecommendationReasonCard()
@@ -266,6 +269,7 @@ private fun CompactHomeHeroCard(
 @Composable
 private fun CountdownProgressCard(
     recommendation: RoutineRecommendationUiModel,
+    nowEpochMillis: Long,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -278,13 +282,13 @@ private fun CountdownProgressCard(
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Text(
-                text = recommendation.departureStatusMessage ?: "출발까지 23분 남았어요",
+                text = recommendation.departureCountdownText(nowEpochMillis),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
             )
             LinearProgressIndicator(
-                progress = { 0.64f },
+                progress = { recommendation.departureProgress(nowEpochMillis) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp),

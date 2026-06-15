@@ -191,3 +191,9 @@ delay = actualDurationMinutes - plannedDurationMinutes
 - `PersonalBufferOptimizerTest`
 - `.\gradlew.bat testDebugUnitTest`
 - `.\gradlew.bat build`
+# Current segment-optimization note
+
+See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest segment tracking
+and optimization update. Bus/subway wait segments are now tracked explicitly,
+segment adjustments store average/min/max actual durations, and the optimization
+key remains routine and route specific.

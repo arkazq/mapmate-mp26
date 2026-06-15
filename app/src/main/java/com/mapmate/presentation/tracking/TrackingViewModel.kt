@@ -8,6 +8,7 @@ import com.mapmate.domain.calculator.PersonalBufferOptimizer
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.RouteSegment
 import com.mapmate.domain.model.RouteSegmentStatus
+import com.mapmate.domain.model.RouteSegmentType
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.CommuteRecordRepository
@@ -128,21 +129,7 @@ class TrackingViewModel(
             if (state.stage == TrackingStage.Arrived) return@update state
 
             state.copy(
-                routeSegments = state.routeSegments.map { segment ->
-                    if (segment.trackingSegmentId() == segmentId &&
-                        segment.status == RouteSegmentStatus.IN_PROGRESS
-                    ) {
-                        val startedAt = segment.actualStartedAtEpochMillis ?: now
-                        segment.copy(
-                            actualStartedAtEpochMillis = startedAt,
-                            actualEndedAtEpochMillis = now,
-                            actualDurationMinutes = elapsedMinutes(startedAt, now),
-                            status = RouteSegmentStatus.COMPLETED,
-                        )
-                    } else {
-                        segment
-                    }
-                },
+                routeSegments = state.routeSegments.completeSegmentAndMaybeStartNext(segmentId, now),
                 errorMessage = null,
             )
         }
@@ -256,6 +243,60 @@ private fun List<RouteSegment>.nextActionableSegmentId(): Long? {
         it.status == RouteSegmentStatus.NOT_STARTED ||
             it.status == RouteSegmentStatus.IN_PROGRESS
     }?.trackingSegmentId()
+}
+
+private fun List<RouteSegment>.completeSegmentAndMaybeStartNext(
+    segmentId: Long,
+    nowEpochMillis: Long,
+): List<RouteSegment> {
+    val completedIndex = indexOfFirst {
+        it.trackingSegmentId() == segmentId &&
+            it.status == RouteSegmentStatus.IN_PROGRESS
+    }
+    if (completedIndex < 0) return this
+
+    val completedSegment = this[completedIndex]
+    val shouldAutoStartNextRide = completedSegment.segmentType == RouteSegmentType.WAIT_FOR_BUS ||
+        completedSegment.segmentType == RouteSegmentType.WAIT_FOR_SUBWAY
+    return mapIndexed { index, segment ->
+        when {
+            index == completedIndex -> {
+                val startedAt = segment.actualStartedAtEpochMillis ?: nowEpochMillis
+                segment.copy(
+                    actualStartedAtEpochMillis = startedAt,
+                    actualEndedAtEpochMillis = nowEpochMillis,
+                    actualDurationMinutes = elapsedMinutes(startedAt, nowEpochMillis),
+                    status = RouteSegmentStatus.COMPLETED,
+                )
+            }
+            shouldAutoStartNextRide &&
+                index == completedIndex + 1 &&
+                segment.status == RouteSegmentStatus.NOT_STARTED &&
+                completedSegment.canAutoStart(segment) -> {
+                segment.copy(
+                    actualStartedAtEpochMillis = nowEpochMillis,
+                    actualEndedAtEpochMillis = null,
+                    actualDurationMinutes = null,
+                    status = RouteSegmentStatus.IN_PROGRESS,
+                )
+            }
+            else -> segment
+        }
+    }
+}
+
+private fun RouteSegment.canAutoStart(nextSegment: RouteSegment): Boolean {
+    return when (segmentType) {
+        RouteSegmentType.WAIT_FOR_BUS -> nextSegment.segmentType == RouteSegmentType.BUS_RIDE
+        RouteSegmentType.WAIT_FOR_SUBWAY -> nextSegment.segmentType == RouteSegmentType.SUBWAY_RIDE
+        else -> false
+    } &&
+        routeName.normalizedAutoStartKey() == nextSegment.routeName.normalizedAutoStartKey() &&
+        startName.normalizedAutoStartKey() == nextSegment.startName.normalizedAutoStartKey()
+}
+
+private fun String?.normalizedAutoStartKey(): String? {
+    return this?.trim()?.lowercase()?.takeIf(String::isNotBlank)
 }
 
 private fun List<RouteSegment>.finalizeSkippedSegments(arrivedAtEpochMillis: Long): List<RouteSegment> {

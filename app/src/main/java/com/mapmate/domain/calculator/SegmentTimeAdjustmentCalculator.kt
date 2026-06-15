@@ -39,6 +39,7 @@ class SegmentTimeAdjustmentCalculator(
                 if (recentSamples.isEmpty()) return@mapNotNull null
 
                 val weightedDelay = recentSamples.weightedAverageDelay()
+                val actualDurations = recentSamples.map { checkNotNull(it.segment.actualDurationMinutes) }
                 SegmentTimeAdjustment(
                     routineId = routineId,
                     segmentType = key.segmentType,
@@ -46,6 +47,9 @@ class SegmentTimeAdjustmentCalculator(
                     startName = key.startName,
                     endName = key.endName,
                     averageDelayMinutes = weightedDelay.roundToInt(),
+                    averageActualDurationMinutes = actualDurations.average().roundToInt(),
+                    minActualDurationMinutes = actualDurations.minOrNull() ?: 0,
+                    maxActualDurationMinutes = actualDurations.maxOrNull() ?: 0,
                     sampleCount = recentSamples.size,
                     confidence = recentSamples.confidence(),
                     updatedAtEpochMillis = updatedAtEpochMillis,

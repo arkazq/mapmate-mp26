@@ -55,6 +55,27 @@ class DepartureAlarmPlannerTest {
     }
 
     @Test
+    fun nextAlarmForRoutine_skipsFiredArrivalEventWhenReschedulingAfterNotification() {
+        val routine = sampleRoutine(repeatDays = setOf(RepeatDay.MONDAY))
+        val now = ZonedDateTime.of(2026, 6, 8, 8, 8, 0, 0, zoneId)
+        val firedArrivalAt = ZonedDateTime.of(2026, 6, 8, 9, 0, 0, 0, zoneId).toEpochMillis()
+
+        val result = planner.nextAlarmForRoutine(
+            routine = routine,
+            routeDurationMinutes = 42,
+            now = now,
+            excludedArrivalAtEpochMillis = firedArrivalAt,
+        )
+
+        assertNotNull(result)
+        assertEquals(LocalTime.of(8, 7), result!!.recommendedDepartureTime)
+        assertEquals(
+            ZonedDateTime.of(2026, 6, 15, 8, 7, 0, 0, zoneId).toEpochMillis(),
+            result.triggerAtEpochMillis,
+        )
+    }
+
+    @Test
     fun nextAlarmForRoutine_returnsNextWeekWhenTodayArrivalTimeAlreadyPassed() {
         val routine = sampleRoutine(repeatDays = setOf(RepeatDay.MONDAY))
         val now = ZonedDateTime.of(2026, 6, 8, 9, 1, 0, 0, zoneId)

@@ -6,6 +6,7 @@ import com.mapmate.presentation.common.RoutineRecommendationUiModel
 data class HomeUiState(
     val savedRoutines: List<Routine> = emptyList(),
     val dashboardRecommendation: RoutineRecommendationUiModel? = null,
+    val nowEpochMillis: Long = System.currentTimeMillis(),
     val isLoading: Boolean = true,
     val deletingRoutineId: Long? = null,
     val errorMessage: String? = null,

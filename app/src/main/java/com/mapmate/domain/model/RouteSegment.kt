@@ -38,7 +38,9 @@ data class SegmentAdjustmentKey(
 
 enum class RouteSegmentType {
     WALK_TO_TRANSIT,
+    WAIT_FOR_BUS,
     BUS_RIDE,
+    WAIT_FOR_SUBWAY,
     SUBWAY_RIDE,
     TRANSFER_WALK,
     WALK_TO_DESTINATION,

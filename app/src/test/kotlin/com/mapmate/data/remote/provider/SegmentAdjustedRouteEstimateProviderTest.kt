@@ -34,6 +34,9 @@ class SegmentAdjustedRouteEstimateProviderTest {
                         startName = "start",
                         endName = "end",
                         averageDelayMinutes = 4,
+                        averageActualDurationMinutes = 14,
+                        minActualDurationMinutes = 13,
+                        maxActualDurationMinutes = 15,
                         sampleCount = 3,
                         confidence = 1.0,
                         updatedAtEpochMillis = 1000L,
@@ -73,8 +76,53 @@ class SegmentAdjustedRouteEstimateProviderTest {
                         startName = "start",
                         endName = "end",
                         averageDelayMinutes = 4,
+                        averageActualDurationMinutes = 14,
+                        minActualDurationMinutes = 13,
+                        maxActualDurationMinutes = 15,
                         sampleCount = 1,
                         confidence = 0.2,
+                        updatedAtEpochMillis = 1000L,
+                    ),
+                ),
+            ),
+        )
+
+        val estimate = provider.getRouteEstimate(
+            origin = destination,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            routineId = 1L,
+        )
+
+        assertEquals(30, estimate.estimatedMinutes)
+    }
+
+    @Test
+    fun getRouteEstimate_doesNotApplyAdjustmentFromDifferentRoutine() = runTest {
+        val provider = SegmentAdjustedRouteEstimateProvider(
+            delegate = FixedRouteEstimateProvider(
+                RouteEstimate(
+                    estimatedMinutes = 30,
+                    summary = "route",
+                    providerName = "test",
+                    reason = "base",
+                    segments = listOf(busSegment(routineId = 1L)),
+                ),
+            ),
+            segmentTimeAdjustmentRepository = UnfilteredSegmentTimeAdjustmentRepository(
+                listOf(
+                    SegmentTimeAdjustment(
+                        routineId = 2L,
+                        segmentType = RouteSegmentType.BUS_RIDE,
+                        routeName = "753",
+                        startName = "start",
+                        endName = "end",
+                        averageDelayMinutes = 20,
+                        averageActualDurationMinutes = 30,
+                        minActualDurationMinutes = 30,
+                        maxActualDurationMinutes = 30,
+                        sampleCount = 3,
+                        confidence = 1.0,
                         updatedAtEpochMillis = 1000L,
                     ),
                 ),
@@ -116,9 +164,24 @@ class SegmentAdjustedRouteEstimateProviderTest {
         }
     }
 
-    private fun busSegment(): RouteSegment {
+    private class UnfilteredSegmentTimeAdjustmentRepository(
+        private val adjustments: List<SegmentTimeAdjustment>,
+    ) : SegmentTimeAdjustmentRepository {
+        override suspend fun replaceAdjustmentsForRoutine(
+            routineId: Long,
+            adjustments: List<SegmentTimeAdjustment>,
+        ) = Unit
+
+        override suspend fun getAdjustmentsForRoutine(routineId: Long): List<SegmentTimeAdjustment> {
+            return adjustments
+        }
+    }
+
+    private fun busSegment(
+        routineId: Long = 1L,
+    ): RouteSegment {
         return RouteSegment(
-            routineId = 1L,
+            routineId = routineId,
             segmentIndex = 0,
             segmentType = RouteSegmentType.BUS_RIDE,
             trafficType = 2,
