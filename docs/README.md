@@ -13,8 +13,8 @@ Use this file first when reviewing the current branch. It summarizes:
 - routine-scoped records analysis
 - transit wait segment tracking
 - segment adjustment min/max storage
-- current realtime route-ranking boundaries
-- future bus-choice engine scope
+- first-bus boarding-aware route ranking
+- future realtime route-ranking UI and nearby-bus search scope
 
 ## Main References
 

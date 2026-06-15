@@ -24,7 +24,7 @@
 
 ## 핵심 방향
 
-MapMate는 루틴 등록 또는 조회 시점에는 ODsay 대중교통 길찾기 결과로 기본 이동 시간을 계산합니다. 출발 예정 시각이 30분 이내로 가까워졌을 때만 첫 버스 실시간 도착정보를 조회하고, ODsay 후보 경로 최대 3개를 보정 시간 기준으로 다시 비교합니다. 보정 결과로 출발 시각이 바뀌면 최종 출발 알림을 다시 예약합니다.
+MapMate는 루틴 등록 또는 조회 시점에는 ODsay 대중교통 길찾기 결과로 기본 이동 시간을 계산합니다. 출발 예정 시각이 30분 이내로 가까워졌을 때만 첫 버스 실시간 도착정보를 조회하고, ODsay 후보 경로 최대 5개를 첫 버스 탑승 가능성과 보정 시간 기준으로 다시 비교합니다. 보정 결과로 출발 시각이 바뀌면 최종 출발 알림을 다시 예약합니다.
 
 ```text
 ODsay = 기본 대중교통 후보 경로와 예상 이동 시간
@@ -53,10 +53,11 @@ Kakao Local API로 출발지/목적지 좌표 확보
 ```text
 WorkManager 실행
 → ODsay 경로 재조회
-→ 후보 path 최대 3개 평가
+→ 후보 path 최대 5개 평가
 → 출발까지 30분 이내이면 각 후보의 첫 버스 구간 추출
 → 서울 버스 도착정보 또는 TAGO 버스정류소/도착정보 조회
-→ 실시간 대기시간 기반 이동 시간 보정
+→ 실시간 대기시간과 정류장 접근 시간을 비교해 탑승 여유 계산
+→ 총 소요시간, 놓칠 위험, 환승 수, 도보 시간, 실시간 신뢰도 기반 후보 점수화
 → 3분 이상 이득이 있는 경우 후보 경로 전환
 → RouteRealtimeSnapshot 저장
 → 최종 출발 시각 재계산
@@ -146,7 +147,7 @@ enum class RealtimeStatus {
 보정 흐름:
 
 ```text
-ODsay 후보 path 최대 3개 평가
+ODsay 후보 path 최대 5개 평가
 → 출발 예정 시각이 30분 이내인지 확인
 → 후보별 첫 버스 탑승 구간 추출
 → 정류장명, 정류장 좌표, 노선번호 확보
@@ -157,7 +158,8 @@ ODsay 후보 path 최대 3개 평가
 → ODsay 노선정보와 TAGO 도착정보 매칭
 → 도착 예정 시간을 실시간 첫 탑승 대기시간으로 사용
 → 후보별 기본 이동 시간 보정
-→ 3분 이상 이득이 있으면 보정 후보 선택
+→ 정류장 접근 시간 대비 탑승 여유가 부족한 후보에 페널티 적용
+→ 3분 이상 점수 이득이 있으면 보정 후보 선택
 ```
 
 정밀 보정식:
@@ -350,10 +352,11 @@ data class CommuteHistory(
 
 ## 최종 기준
 
-초기 경로 계산은 ODsay가 담당하고, 출발 30분 이내 첫 버스 실시간 보정은 서울 버스 도착정보와 TAGO 도착정보가 순차적으로 담당합니다. ODsay 후보는 최대 3개까지 비교하며, 선택 후보의 시간과 segment가 함께 `RouteEstimate`에 반영됩니다. 보정 결과는 `Routine`이 아니라 `RouteRealtimeSnapshot`에 저장하며, 마지막 성공 보정값은 유효기간과 30분 정책 안에서만 사용합니다. 실시간 보정이 없는 전체 경로 API 성공값은 별도 `RouteEstimateCache`에 6시간 저장해 실제 provider 실패 시 mock fallback 전에 재사용합니다. 실시간 정류장/노선 매칭 신뢰도가 낮거나 재조회가 지연된 경우에는 ODsay 기본 예상시간 또는 fresh cache/mock fallback으로 복구합니다. 현재 MapMate에서 중요한 것은 실시간 데이터를 무조건 믿는 것이 아니라, 매칭 신뢰도, 스냅샷/cache 유효기간, fallback을 갖춘 안정적인 보정 구조입니다.
+초기 경로 계산은 ODsay가 담당하고, 출발 30분 이내 첫 버스 실시간 보정은 서울 버스 도착정보와 TAGO 도착정보가 순차적으로 담당합니다. ODsay 후보는 최대 5개까지 비교하며, `RouteCandidateEvaluator`가 첫 버스 접근 시간과 실시간 도착 대기시간을 비교해 실제 탑승 가능성이 낮은 후보를 낮게 평가합니다. 선택 후보의 시간과 segment가 함께 `RouteEstimate`에 반영됩니다. 보정 결과는 `Routine`이 아니라 `RouteRealtimeSnapshot`에 저장하며, 마지막 성공 보정값은 유효기간과 30분 정책 안에서만 사용합니다. 실시간 보정이 없는 전체 경로 API 성공값은 별도 `RouteEstimateCache`에 6시간 저장해 실제 provider 실패 시 mock fallback 전에 재사용합니다. 실시간 정류장/노선 매칭 신뢰도가 낮거나 재조회가 지연된 경우에는 ODsay 기본 예상시간 또는 fresh cache/mock fallback으로 복구합니다. 현재 MapMate에서 중요한 것은 실시간 데이터를 무조건 믿는 것이 아니라, 매칭 신뢰도, 스냅샷/cache 유효기간, fallback을 갖춘 안정적인 보정 구조입니다.
 # Current realtime note
 
 See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest implemented
 realtime departure behavior. Current logic rechecks ODsay candidates before
-departure and can apply first-bus realtime correction, but a full "which bus
-should I take" engine is intentionally left for a separate branch.
+departure and ranks ODsay-provided first-bus options by boarding feasibility.
+Nearby-bus search outside ODsay paths and a dedicated alternatives UI remain
+separate follow-up work.

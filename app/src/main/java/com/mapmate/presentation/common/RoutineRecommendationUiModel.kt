@@ -48,7 +48,7 @@ data class RoutineRecommendationUiModel(
         val remainingMinutes = minutesUntilDeparture(nowEpochMillis)
         return when {
             isImmediateDepartureRecommended || remainingMinutes == 0 -> "지금 출발하는 것이 좋아요"
-            remainingMinutes != null -> "출발까지 ${remainingMinutes}분 남았어요"
+            remainingMinutes != null -> "출발까지 ${remainingMinutes.toHoursAndMinutesText()} 남았어요"
             else -> "출발 준비 시간을 계산하고 있어요"
         }
     }
@@ -62,6 +62,16 @@ data class RoutineRecommendationUiModel(
     private companion object {
         const val MILLIS_PER_MINUTE = 60_000L
         const val COUNTDOWN_PROGRESS_WINDOW_MINUTES = 60f
+
+        fun Int.toHoursAndMinutesText(): String {
+            val hours = this / 60
+            val minutes = this % 60
+            return if (hours > 0) {
+                "${hours}시간 ${minutes}분"
+            } else {
+                "${minutes}분"
+            }
+        }
     }
 }
 

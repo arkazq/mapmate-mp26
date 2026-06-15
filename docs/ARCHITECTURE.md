@@ -343,7 +343,7 @@ Android `AlarmManager`, `BroadcastReceiver`, `NotificationManager` 기반 출발
 
 - `DepartureAlarmCoordinator`: 알림 설정과 저장된 루틴을 읽어 다음 출발 알림을 예약/취소
 - `AndroidDepartureAlarmScheduler`: `AlarmManager`로 가장 가까운 출발 알림 하나를 예약하고 기존 예약을 취소
-- `AndroidDepartureRecheckScheduler`: 출발 30분 전 unique WorkManager one-time work를 예약하고 기존 재조회 작업을 취소
+- `AndroidDepartureRecheckScheduler`: 출발 전 `T-60/T-30/T-15/T-5` 기준 unique WorkManager one-time work를 예약하고, 긴 이동에는 `T-90/T-120` 재조회도 추가합니다.
 - `DepartureAlarmReceiver`: 예약된 알림을 수신해 notification을 표시하고 다음 반복 알림을 재예약
 - `DepartureAlarmBootReceiver`: 기기 부팅 또는 앱 업데이트 후 알림을 재예약
 - `DepartureAlarmNotificationPublisher`: notification channel 생성과 출발 알림 표시
@@ -355,7 +355,8 @@ Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 
 - `KakaoPlaceSearchProvider`: Kakao Local API 키워드 장소 검색 결과를 `Destination` 후보로 변환
 - `KakaoReverseGeocodingProvider`: 현재 위치 좌표를 Kakao Local API 좌표→주소 응답으로 변환
-- `OdsayRouteEstimateProvider`: ODsay 대중교통 `path` 후보를 최대 3개 평가하고, 출발 30분 이내 첫 버스 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정합니다. 선택된 후보의 `RouteSegment`만 `RouteEstimate.segments`에 넣고, 성공값은 `RouteRealtimeSnapshotRepository`에 저장합니다.
+- `OdsayRouteEstimateProvider`: ODsay 대중교통 `path` 후보를 최대 5개 평가하고, 출발 30분 이내 첫 버스 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정합니다. 선택된 후보의 `RouteSegment`만 `RouteEstimate.segments`에 넣고, 성공값은 `RouteRealtimeSnapshotRepository`에 저장합니다.
+- `RouteCandidateEvaluator`: ODsay 후보별 총 소요시간, 첫 버스 탑승 여유, 놓칠 위험, 환승 수, 도보 시간, 실시간 신뢰도를 점수화해 실제로 타기 어려운 첫 버스 후보를 낮게 평가합니다.
 - `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환합니다. 현재 ODsay 후보 랭킹의 시간 보정 호출은 첫 버스 구간에 우선 적용합니다.
 - `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산
 - `SeoulSubwayRealtimeArrivalProvider`: 서울 지하철 실시간 도착정보 JSON 응답에서 가장 빠른 첫 지하철 대기 시간을 계산
@@ -406,7 +407,7 @@ User input
 4. 개인 보정 시간과 안전 여유 시간, 기본 이동수단, 알림 설정값이 변경되면 `SettingsRepository`를 통해 DataStore에 저장합니다.
 5. 출발지/목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
 6. 현재 위치 출발지는 `CurrentLocationProvider`가 좌표를 가져오고, Kakao 키가 있으면 `ReverseGeocodingProvider`로 주소 변환을 시도합니다.
-7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로는 후보 `path`를 최대 3개 평가하고, 출발 예정 시각이 30분 이내이며 첫 탑승 구간이 버스이면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다. 후보 전환 이득이 3분 미만이면 기존 ODsay 1순위 후보를 유지합니다. 성공값은 `RouteRealtimeSnapshotRepository`에 저장하며, 실시간 조회/매칭이 실패하면 30분 정책 안에서만 20분 이내 fresh snapshot을 재사용합니다.
+7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로는 후보 `path`를 최대 5개 평가하고, 출발 예정 시각이 30분 이내이며 첫 탑승 구간이 버스이면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다. 이후 `RouteCandidateEvaluator`가 첫 버스 접근 시간과 도착 대기시간을 비교해 놓칠 위험이 높은 후보에 페널티를 줍니다. 후보 전환 이득이 3분 미만이면 기존 ODsay 1순위 후보를 유지합니다. 성공값은 `RouteRealtimeSnapshotRepository`에 저장하며, 실시간 조회/매칭이 실패하면 30분 정책 안에서만 20분 이내 fresh snapshot을 재사용합니다.
 8. 권장 출발 시각은 `DepartureTimeCalculator`로 계산합니다. 계산 결과가 이미 지난 시간이면서 목표 도착 시각이 아직 남아 있으면 UI 모델은 `지금 출발`로 표시하고, 알림 플래너는 즉시 알림을 예약합니다.
 9. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
 10. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.

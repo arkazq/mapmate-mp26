@@ -44,6 +44,17 @@ class RoutineRecommendationUiModelTest {
     }
 
     @Test
+    fun departureCountdownText_formatsLongRemainingTimeAsHoursAndMinutes() {
+        val recommendation = sampleRoutine.toRecommendationUiModel(
+            routeEstimate = routeEstimate,
+            now = LocalTime.of(7, 30),
+            recommendedDepartureAtEpochMillis = 1328 * 60 * 1000L,
+        )
+
+        assertEquals("출발까지 22시간 8분 남았어요", recommendation.departureCountdownText(0L))
+    }
+
+    @Test
     fun departureProgress_usesSameRemainingMinutesAsCountdownText() {
         val recommendation = sampleRoutine.toRecommendationUiModel(
             routeEstimate = routeEstimate,
