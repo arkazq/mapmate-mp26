@@ -168,6 +168,7 @@ class DepartureAlarmCoordinatorTest {
             destination: Destination,
             transportMode: TransportMode,
             routineId: Long?,
+            scheduledDepartureEpochMillis: Long?,
         ): RouteEstimate {
             return RouteEstimate(
                 estimatedMinutes = estimatedMinutes,
@@ -184,6 +185,7 @@ class DepartureAlarmCoordinatorTest {
             destination: Destination,
             transportMode: TransportMode,
             routineId: Long?,
+            scheduledDepartureEpochMillis: Long?,
         ): RouteEstimate {
             error("Route provider failed")
         }

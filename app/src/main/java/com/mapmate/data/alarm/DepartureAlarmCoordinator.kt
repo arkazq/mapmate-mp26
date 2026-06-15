@@ -55,7 +55,13 @@ class DepartureAlarmCoordinator(
         }
 
         val routineRouteDurations = routines.map { routine ->
-            routine to routeDurationMinutes(routine)
+            routine to routeDurationMinutes(
+                routine = routine,
+                scheduledDepartureEpochMillis = previousSchedule
+                    ?.takeIf { it.routineId == routine.id }
+                    ?.takeIf { it.triggerAtEpochMillis >= System.currentTimeMillis() }
+                    ?.triggerAtEpochMillis,
+            )
         }
         val proposedNextAlarm = planner.nextAlarm(routineRouteDurations)
 
@@ -76,13 +82,17 @@ class DepartureAlarmCoordinator(
         recheckScheduler.cancel()
     }
 
-    private suspend fun routeDurationMinutes(routine: Routine): Int {
+    private suspend fun routeDurationMinutes(
+        routine: Routine,
+        scheduledDepartureEpochMillis: Long?,
+    ): Int {
         return runCatching {
             routeEstimateProvider.getRouteEstimate(
                 origin = routine.origin,
                 destination = routine.destination,
                 transportMode = routine.transportMode,
                 routineId = routine.id,
+                scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
             ).estimatedMinutes
         }.getOrElse {
             routine.transportMode.fallbackRouteDurationMinutes()

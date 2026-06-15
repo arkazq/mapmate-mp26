@@ -8,4 +8,5 @@ data class RouteEstimate(
     val isFallbackEstimate: Boolean = false,
     val statusMessage: String? = null,
     val segments: List<RouteSegment> = emptyList(),
+    val hasRealtimeAdjustment: Boolean = false,
 )

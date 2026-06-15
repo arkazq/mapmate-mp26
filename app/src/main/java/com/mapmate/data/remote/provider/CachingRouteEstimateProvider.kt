@@ -17,6 +17,7 @@ class CachingRouteEstimateProvider(
         destination: Destination,
         transportMode: TransportMode,
         routineId: Long?,
+        scheduledDepartureEpochMillis: Long?,
     ): RouteEstimate {
         val now = nowProvider()
         cacheRepository.deleteExpired(now)
@@ -27,9 +28,10 @@ class CachingRouteEstimateProvider(
                 destination = destination,
                 transportMode = transportMode,
                 routineId = routineId,
+                scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
             )
         }.onSuccess { estimate ->
-            if (!estimate.isFallbackEstimate) {
+            if (!estimate.isFallbackEstimate && !estimate.hasRealtimeAdjustment) {
                 cacheRepository.saveEstimate(
                     cacheNamespace = cacheNamespace,
                     origin = origin,

@@ -18,6 +18,7 @@ import com.mapmate.domain.repository.RouteRealtimeSnapshotRepository
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -36,17 +37,20 @@ class OdsayRouteEstimateProviderTest {
             api = FakeOdsayApi(busRouteResponse),
             config = remoteApiConfig,
             transitArrivalProvider = transitArrivalProvider,
+            nowEpochMillis = { 0L },
         )
 
         val result = provider.getRouteEstimate(
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
         )
 
         assertEquals(49, result.estimatedMinutes)
         assertEquals("ODsay + Realtime", result.providerName)
-        assertTrue(result.reason.contains("Realtime first arrival 12 min"))
+        assertTrue(result.hasRealtimeAdjustment)
+        assertTrue(result.reason.contains("Realtime first bus arrival 12 min"))
 
         val query = transitArrivalProvider.lastQuery as TransitArrivalQuery.Bus
         assertEquals("222", query.stationId)
@@ -56,11 +60,12 @@ class OdsayRouteEstimateProviderTest {
     }
 
     @Test
-    fun getRouteEstimate_keepsOdsayTimeWhenRealtimeArrivalIsMissing() = runTest {
+    fun getRouteEstimate_skipsRealtimeArrivalWithoutScheduledDeparture() = runTest {
+        val transitArrivalProvider = RecordingTransitArrivalProvider(result = realtimeArrivalEstimate)
         val provider = OdsayRouteEstimateProvider(
             api = FakeOdsayApi(busRouteResponse),
             config = remoteApiConfig,
-            transitArrivalProvider = RecordingTransitArrivalProvider(result = null),
+            transitArrivalProvider = transitArrivalProvider,
         )
 
         val result = provider.getRouteEstimate(
@@ -71,6 +76,33 @@ class OdsayRouteEstimateProviderTest {
 
         assertEquals(42, result.estimatedMinutes)
         assertEquals("ODsay", result.providerName)
+        assertEquals(false, result.hasRealtimeAdjustment)
+        assertNull(transitArrivalProvider.lastQuery)
+        assertTrue(result.reason.contains("applyRealtime=false"))
+    }
+
+    @Test
+    fun getRouteEstimate_skipsRealtimeArrivalMoreThanThirtyMinutesBeforeDeparture() = runTest {
+        val transitArrivalProvider = RecordingTransitArrivalProvider(result = realtimeArrivalEstimate)
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(busRouteResponse),
+            config = remoteApiConfig,
+            transitArrivalProvider = transitArrivalProvider,
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 31 * 60 * 1000L,
+        )
+
+        assertEquals(42, result.estimatedMinutes)
+        assertEquals("ODsay", result.providerName)
+        assertEquals(false, result.hasRealtimeAdjustment)
+        assertNull(transitArrivalProvider.lastQuery)
+        assertTrue(result.reason.contains("SKIPPED_TOO_EARLY"))
     }
 
     @Test
@@ -91,6 +123,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
         )
 
         val snapshot = snapshotRepository.savedSnapshots.single()
@@ -120,6 +153,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
         )
         transitArrivalProvider.result = null
         now = 5_000L
@@ -128,10 +162,12 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
         )
 
         assertEquals(49, result.estimatedMinutes)
         assertEquals("ODsay + Realtime snapshot", result.providerName)
+        assertTrue(result.hasRealtimeAdjustment)
         assertTrue(result.reason.contains("Cached realtime snapshot added 7 min delay."))
         assertTrue(result.statusMessage.orEmpty().contains("최근 성공 보정값"))
     }
@@ -154,6 +190,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
         )
         transitArrivalProvider.result = null
         now = 3_000L
@@ -162,11 +199,55 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
         )
 
         assertEquals(42, result.estimatedMinutes)
         assertEquals("ODsay", result.providerName)
         assertEquals(null, result.statusMessage)
+    }
+
+    @Test
+    fun getRouteEstimate_selectsFasterRealtimeAdjustedCandidate() = runTest {
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(twoBusRouteResponse(firstTotalTime = 40, secondTotalTime = 43)),
+            config = remoteApiConfig,
+            transitArrivalProvider = RouteNameTransitArrivalProvider(
+                waitMinutesByRouteName = mapOf(
+                    "740" to 15,
+                    "741" to 5,
+                ),
+            ),
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+        )
+
+        assertEquals(43, result.estimatedMinutes)
+        assertTrue(result.reason.contains("Selected ODsay candidate 2/2"))
+    }
+
+    @Test
+    fun getRouteEstimate_keepsFirstCandidateWhenGainIsBelowSwitchThreshold() = runTest {
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(twoBusRouteResponse(firstTotalTime = 40, secondTotalTime = 38)),
+            config = remoteApiConfig,
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+        )
+
+        assertEquals(40, result.estimatedMinutes)
+        assertTrue(result.reason.contains("Selected ODsay candidate 1/2"))
     }
 
     private class FakeOdsayApi(
@@ -200,6 +281,21 @@ class OdsayRouteEstimateProviderTest {
     ) : TransitArrivalProvider {
         override suspend fun getArrivalEstimate(query: TransitArrivalQuery): TransitArrivalEstimate? {
             return result
+        }
+    }
+
+    private class RouteNameTransitArrivalProvider(
+        private val waitMinutesByRouteName: Map<String, Int>,
+    ) : TransitArrivalProvider {
+        override suspend fun getArrivalEstimate(query: TransitArrivalQuery): TransitArrivalEstimate? {
+            val routeName = (query as? TransitArrivalQuery.Bus)?.routeName ?: return null
+            val waitMinutes = waitMinutesByRouteName[routeName] ?: return null
+            return TransitArrivalEstimate(
+                waitMinutes = waitMinutes,
+                summary = "$routeName bus in $waitMinutes min",
+                providerName = "Realtime",
+                reason = "test",
+            )
         }
     }
 
@@ -260,35 +356,77 @@ class OdsayRouteEstimateProviderTest {
         val busRouteResponse = OdsayRouteResponse(
             result = OdsayRouteResult(
                 path = listOf(
-                    OdsayPath(
-                        info = OdsayPathInfo(
-                            totalTime = 42,
-                            firstStartStation = "Start stop",
-                            lastEndStation = "End station",
-                            busTransitCount = 1,
-                            subwayTransitCount = 1,
-                        ),
-                        subPath = listOf(
-                            OdsaySubPath(
-                                trafficType = 3,
-                                sectionTime = 5,
-                            ),
-                            OdsaySubPath(
-                                trafficType = 2,
-                                startName = "Start stop",
-                                startId = JsonPrimitive("222"),
-                                startArsId = JsonPrimitive("333"),
-                                lane = listOf(
-                                    OdsayLane(
-                                        busNo = "740",
-                                        routeId = JsonPrimitive("111"),
-                                    ),
-                                ),
-                            ),
-                        ),
+                    busPath(
+                        totalTime = 42,
+                        busNo = "740",
+                        routeId = "111",
+                        startId = "222",
+                        startArsId = "333",
                     ),
                 ),
             ),
         )
+
+        fun twoBusRouteResponse(
+            firstTotalTime: Int,
+            secondTotalTime: Int,
+        ): OdsayRouteResponse {
+            return OdsayRouteResponse(
+                result = OdsayRouteResult(
+                    path = listOf(
+                        busPath(
+                            totalTime = firstTotalTime,
+                            busNo = "740",
+                            routeId = "111",
+                            startId = "222",
+                            startArsId = "333",
+                        ),
+                        busPath(
+                            totalTime = secondTotalTime,
+                            busNo = "741",
+                            routeId = "112",
+                            startId = "224",
+                            startArsId = "335",
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        fun busPath(
+            totalTime: Int,
+            busNo: String,
+            routeId: String,
+            startId: String,
+            startArsId: String,
+        ): OdsayPath {
+            return OdsayPath(
+                info = OdsayPathInfo(
+                    totalTime = totalTime,
+                    firstStartStation = "Start stop",
+                    lastEndStation = "End station",
+                    busTransitCount = 1,
+                    subwayTransitCount = 0,
+                ),
+                subPath = listOf(
+                    OdsaySubPath(
+                        trafficType = 3,
+                        sectionTime = 5,
+                    ),
+                    OdsaySubPath(
+                        trafficType = 2,
+                        startName = "Start stop",
+                        startId = JsonPrimitive(startId),
+                        startArsId = JsonPrimitive(startArsId),
+                        lane = listOf(
+                            OdsayLane(
+                                busNo = busNo,
+                                routeId = JsonPrimitive(routeId),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
     }
 }
