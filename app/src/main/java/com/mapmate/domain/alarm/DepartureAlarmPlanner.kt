@@ -55,6 +55,7 @@ class DepartureAlarmPlanner(
             recommendedDepartureTime = nextTrigger.recommendedDepartureTime,
             routeDurationMinutes = routeDurationMinutes,
             triggerAtEpochMillis = nextTrigger.triggerAt.toInstant().toEpochMilli(),
+            targetArrivalAtEpochMillis = nextTrigger.arrivalAt.toInstant().toEpochMilli(),
         )
     }
 
@@ -84,11 +85,13 @@ class DepartureAlarmPlanner(
                     NextDepartureAlarmTrigger(
                         triggerAt = now,
                         recommendedDepartureTime = now.toLocalTime().truncatedTo(ChronoUnit.MINUTES),
+                        arrivalAt = arrivalAt,
                     )
                 } else {
                     NextDepartureAlarmTrigger(
                         triggerAt = plannedTriggerAt,
                         recommendedDepartureTime = recommendedDepartureTime,
+                        arrivalAt = arrivalAt,
                     )
                 }
             }
@@ -102,5 +105,6 @@ class DepartureAlarmPlanner(
     private data class NextDepartureAlarmTrigger(
         val triggerAt: ZonedDateTime,
         val recommendedDepartureTime: LocalTime,
+        val arrivalAt: ZonedDateTime,
     )
 }

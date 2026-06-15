@@ -10,4 +10,5 @@ data class DepartureAlarmSchedule(
     val recommendedDepartureTime: LocalTime,
     val routeDurationMinutes: Int,
     val triggerAtEpochMillis: Long,
+    val targetArrivalAtEpochMillis: Long? = null,
 )
