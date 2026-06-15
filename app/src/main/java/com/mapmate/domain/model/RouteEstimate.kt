@@ -9,4 +9,37 @@ data class RouteEstimate(
     val statusMessage: String? = null,
     val segments: List<RouteSegment> = emptyList(),
     val hasRealtimeAdjustment: Boolean = false,
+    val boardingAdvice: RouteBoardingAdvice? = null,
 )
+
+data class RouteBoardingAdvice(
+    val selectedCandidateIndex: Int,
+    val candidateCount: Int,
+    val routeName: String?,
+    val stationName: String?,
+    val accessMinutes: Int?,
+    val realtimeWaitMinutes: Int?,
+    val slackMinutes: Int?,
+    val status: RouteBoardingStatus,
+    val estimatedTotalMinutes: Int,
+    val alternatives: List<RouteBoardingAlternative> = emptyList(),
+)
+
+data class RouteBoardingAlternative(
+    val candidateIndex: Int,
+    val routeName: String?,
+    val stationName: String?,
+    val accessMinutes: Int?,
+    val realtimeWaitMinutes: Int?,
+    val slackMinutes: Int?,
+    val status: RouteBoardingStatus,
+    val estimatedTotalMinutes: Int,
+)
+
+enum class RouteBoardingStatus {
+    BOARDABLE,
+    TIGHT,
+    MISS_RISK,
+    REALTIME_UNAVAILABLE,
+    NO_FIRST_BUS,
+}

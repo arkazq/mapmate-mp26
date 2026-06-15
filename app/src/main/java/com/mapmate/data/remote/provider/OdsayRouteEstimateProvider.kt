@@ -5,6 +5,9 @@ import com.mapmate.data.remote.config.RemoteApiConfig
 import com.mapmate.data.remote.dto.OdsayPath
 import com.mapmate.data.remote.dto.OdsayPathInfo
 import com.mapmate.domain.model.Destination
+import com.mapmate.domain.model.RouteBoardingAdvice
+import com.mapmate.domain.model.RouteBoardingAlternative
+import com.mapmate.domain.model.RouteBoardingStatus
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.RouteRealtimeSnapshot
 import com.mapmate.domain.model.RouteSegment
@@ -133,6 +136,11 @@ class OdsayRouteEstimateProvider(
             },
             segments = selected.routeSegments,
             hasRealtimeAdjustment = selected.hasRealtimeAdjustment,
+            boardingAdvice = if (applyRealtimeArrival) {
+                selection?.toBoardingAdvice(candidateCount = candidates.size)
+            } else {
+                null
+            },
         )
     }
 
@@ -492,6 +500,58 @@ class OdsayRouteEstimateProvider(
         )
     }
 
+    private fun RouteCandidateSelection.toBoardingAdvice(
+        candidateCount: Int,
+    ): RouteBoardingAdvice? {
+        val selectedBoarding = selected.input.firstBusBoarding ?: return null
+        val alternatives = evaluations
+            .filter { it.input.pathIndex != selected.input.pathIndex }
+            .filter { it.input.firstBusBoarding != null }
+            .sortedWith(
+                compareBy<RouteCandidateEvaluation> { it.score }
+                    .thenBy { it.input.pathIndex },
+            )
+            .take(MAX_BOARDING_ALTERNATIVES)
+            .mapNotNull { it.toBoardingAlternative() }
+
+        return RouteBoardingAdvice(
+            selectedCandidateIndex = selected.input.pathIndex + 1,
+            candidateCount = candidateCount,
+            routeName = selectedBoarding.routeName,
+            stationName = selectedBoarding.stationName,
+            accessMinutes = selectedBoarding.accessMinutes,
+            realtimeWaitMinutes = selectedBoarding.realtimeWaitMinutes,
+            slackMinutes = selected.boardingSlackMinutes,
+            status = selected.boardingStatus.toRouteBoardingStatus(),
+            estimatedTotalMinutes = selected.input.adjustedTotalMinutes,
+            alternatives = alternatives,
+        )
+    }
+
+    private fun RouteCandidateEvaluation.toBoardingAlternative(): RouteBoardingAlternative? {
+        val boarding = input.firstBusBoarding ?: return null
+        return RouteBoardingAlternative(
+            candidateIndex = input.pathIndex + 1,
+            routeName = boarding.routeName,
+            stationName = boarding.stationName,
+            accessMinutes = boarding.accessMinutes,
+            realtimeWaitMinutes = boarding.realtimeWaitMinutes,
+            slackMinutes = boardingSlackMinutes,
+            status = boardingStatus.toRouteBoardingStatus(),
+            estimatedTotalMinutes = input.adjustedTotalMinutes,
+        )
+    }
+
+    private fun BoardingStatus.toRouteBoardingStatus(): RouteBoardingStatus {
+        return when (this) {
+            BoardingStatus.BOARDABLE -> RouteBoardingStatus.BOARDABLE
+            BoardingStatus.TIGHT -> RouteBoardingStatus.TIGHT
+            BoardingStatus.MISS_RISK -> RouteBoardingStatus.MISS_RISK
+            BoardingStatus.REALTIME_UNAVAILABLE -> RouteBoardingStatus.REALTIME_UNAVAILABLE
+            BoardingStatus.NO_FIRST_BUS -> RouteBoardingStatus.NO_FIRST_BUS
+        }
+    }
+
     private fun JsonElement?.asString(): String? {
         val primitive = this as? JsonPrimitive ?: return null
         return primitive.contentOrNull
@@ -540,6 +600,7 @@ class OdsayRouteEstimateProvider(
         const val PLANNED_WAIT_BASELINE_MINUTES = 5
         const val DEFAULT_SNAPSHOT_TTL_MILLIS = 20 * 60 * 1000L
         const val MAX_CANDIDATE_PATH_COUNT = 5
+        const val MAX_BOARDING_ALTERNATIVES = 2
         const val REALTIME_ARRIVAL_LOOKAHEAD_MINUTES = 30
         const val MILLIS_PER_MINUTE = 60_000L
     }

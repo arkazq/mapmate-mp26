@@ -1,27 +1,28 @@
-# MapMate Docs
+# MapMate 문서
 
-This directory contains architecture, API, realtime departure, segment optimization, security, and feature-status notes.
+이 폴더는 아키텍처, API 전략, 실시간 출발 보정, 구간별 소요시간 최적화, 보안 점검, 기능 상태 문서를 모아 둔 위치입니다.
 
-## Current Update
+## 현재 업데이트
 
-- [Implementation Update - 2026-06-16](IMPLEMENTATION_UPDATE_2026_06_16.md)
+- [구현 업데이트 - 2026-06-16](IMPLEMENTATION_UPDATE_2026_06_16.md)
 
-Use this file first when reviewing the current branch. It summarizes:
+현재 브랜치를 검토할 때는 이 파일을 먼저 확인합니다. 주요 내용은 다음과 같습니다.
 
-- departure recheck and alarm-loop fixes
-- home UI synchronization
-- routine-scoped records analysis
-- transit wait segment tracking
-- segment adjustment min/max storage
-- first-bus boarding-aware route ranking
-- future realtime route-ranking UI and nearby-bus search scope
+- 출발 전 재조회와 알림 반복 예약 수정
+- 홈 UI 추천 상태 동기화
+- 루틴별 기록 분석
+- 대중교통 대기 구간 측정
+- 구간 보정값의 최소/최대 실제 소요시간 저장
+- 첫 버스 탑승 가능성 기반 후보 경로 랭킹
+- 홈/상세 예측의 탑승 판단 UI
+- 향후 주변 버스 직접 탐색 범위
 
-## Main References
+## 주요 문서
 
-- [Architecture](ARCHITECTURE.md)
-- [API Strategy](API_STRATEGY.md)
-- [Realtime Departure Strategy](REALTIME_DEPARTURE_STRATEGY.md)
-- [Segment Time Optimization](SEGMENT_TIME_OPTIMIZATION.md)
-- [Feature Status](FEATURE_STATUS.md)
-- [Mobile Security Checklist](MOBILE_SECURITY_CHECKLIST.md)
-- [Team Git Guide](MAPMATE_TEAM_GIT_GUIDE.md)
+- [아키텍처](ARCHITECTURE.md)
+- [API 전략](API_STRATEGY.md)
+- [실시간 출발 전략](REALTIME_DEPARTURE_STRATEGY.md)
+- [구간별 소요시간 최적화](SEGMENT_TIME_OPTIMIZATION.md)
+- [기능 상태](FEATURE_STATUS.md)
+- [모바일 보안 점검 체크리스트](MOBILE_SECURITY_CHECKLIST.md)
+- [팀 Git 가이드](MAPMATE_TEAM_GIT_GUIDE.md)

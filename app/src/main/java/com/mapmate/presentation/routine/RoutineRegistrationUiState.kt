@@ -5,6 +5,7 @@ import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.presentation.common.toKoreanLabel
 
 data class RoutineRegistrationUiState(
     val editingRoutineId: Long? = null,
@@ -53,4 +54,42 @@ data class RoutineRegistrationUiState(
         } else {
             null
         }
+
+    val calculationSummaryText: String?
+        get() = routeEstimate?.toUserFacingSummary(
+            transportMode = selectedTransportMode,
+            personalBufferMinutes = personalBufferMinutes,
+            safetyMarginMinutes = safetyMarginMinutes,
+        )
+}
+
+private fun RouteEstimate.toUserFacingSummary(
+    transportMode: TransportMode,
+    personalBufferMinutes: String,
+    safetyMarginMinutes: String,
+): String {
+    val sourceText = when {
+        isFallbackEstimate || providerName.contains("Mock", ignoreCase = true) -> {
+            "${transportMode.toKoreanLabel()} 기본 예상 시간"
+        }
+        providerName.contains("ODsay", ignoreCase = true) -> {
+            "ODsay 대중교통 경로"
+        }
+        providerName.contains("Google", ignoreCase = true) -> {
+            "Google Routes 경로"
+        }
+        else -> {
+            "${transportMode.toKoreanLabel()} 경로"
+        }
+    }
+    val realtimeText = if (hasRealtimeAdjustment) {
+        " 실시간 도착정보를 반영했습니다."
+    } else {
+        ""
+    }
+    val bufferText = personalBufferMinutes.takeIf(String::isNotBlank) ?: "0"
+    val marginText = safetyMarginMinutes.takeIf(String::isNotBlank) ?: "0"
+
+    return "$sourceText 기준으로 이동 시간 ${estimatedMinutes}분을 계산했습니다.$realtimeText " +
+        "개인 보정 ${bufferText}분과 안전 여유 ${marginText}분을 함께 반영했습니다."
 }

@@ -1,6 +1,7 @@
 package com.mapmate.presentation.common
 
 import com.mapmate.domain.calculator.DepartureTimeCalculator
+import com.mapmate.domain.model.RouteBoardingAdvice
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.RouteSegment
 import com.mapmate.domain.model.Routine
@@ -26,6 +27,7 @@ data class RoutineRecommendationUiModel(
     val routeStatusMessage: String? = null,
     val isImmediateDepartureRecommended: Boolean = false,
     val routeSegments: List<RouteSegment> = emptyList(),
+    val boardingAdvice: RouteBoardingAdvice? = null,
 ) {
     val recommendedDepartureDisplayText: String
         get() = if (isImmediateDepartureRecommended) "지금 출발" else recommendedDepartureTimeText
@@ -109,6 +111,7 @@ fun Routine.toRecommendationUiModel(
         routeStatusMessage = routeEstimate.statusMessage,
         isImmediateDepartureRecommended = departureRecommendation.isImmediateDepartureRecommended,
         routeSegments = routeEstimate.segments,
+        boardingAdvice = routeEstimate.boardingAdvice,
     )
 }
 

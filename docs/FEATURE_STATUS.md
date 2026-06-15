@@ -41,6 +41,8 @@
 | 실제 Kakao API | 완료 | Kakao Local API 키워드 장소 검색과 좌표→주소 변환을 연결했습니다. 키가 없거나 호출이 실패하면 장소 검색은 mock 후보, 현재 위치 주소는 fallback 문구를 사용합니다. | `data/remote/api/KakaoLocalApi.kt`, `data/remote/provider/KakaoPlaceSearchProvider.kt`, `data/remote/provider/KakaoReverseGeocodingProvider.kt` |
 | 실제 ODsay API | 부분 완료 | ODsay 대중교통 경로 검색 provider를 연결했습니다. API 키와 데모 출발 좌표가 있어야 실제 호출합니다. | `data/remote/api/OdsayApi.kt`, `data/remote/provider/OdsayRouteEstimateProvider.kt` |
 | ODsay 후보 경로 랭킹 | 완료 | ODsay `path` 후보를 최대 5개 평가하고, 출발 30분 이내에는 첫 버스 실시간 도착정보와 정류장 접근 시간을 비교해 실제 탑승 가능성이 낮은 후보에 페널티를 줍니다. 후보 전환 이득이 3분 미만이면 기존 1순위 경로를 유지합니다. | `data/remote/provider/OdsayRouteEstimateProvider.kt`, `data/remote/provider/RouteCandidateEvaluator.kt`, `app/src/test/kotlin/com/mapmate/data/remote/provider/OdsayRouteEstimateProviderTest.kt`, `app/src/test/kotlin/com/mapmate/data/remote/provider/RouteCandidateEvaluatorTest.kt` |
+| 후보 랭킹 UI | 완료 | 홈 화면은 추천 버스와 탑승 여유를 요약 카드로 보여주고, 상세 예측 화면은 `탑승 판단` 카드에서 추천 후보와 대안 후보를 표시합니다. | `presentation/common/RouteBoardingAdviceCards.kt`, `presentation/home/HomeScreen.kt`, `presentation/prediction/PredictionDetailScreen.kt`, `domain/model/RouteEstimate.kt` |
+| 계산 결과 사용자 문구 | 완료 | 루틴 등록의 권장 출발 시각 계산 결과는 API 내부 reason 문자열 대신 이동 시간, 개인 보정, 안전 여유, 실시간 반영 여부를 사용자용 문장으로 표시합니다. | `presentation/routine/RoutineRegistrationUiState.kt`, `presentation/routine/RoutineRegistrationScreen.kt` |
 | 실제 Google Routes API | 부분 완료 | Google Routes provider를 연결했습니다. 도보/자동차 경로와 대중교통 fallback에 사용할 수 있으며, 자동차 모드는 `TRAFFIC_AWARE` routing preference를 사용합니다. | `data/remote/api/GoogleRoutesApi.kt`, `data/remote/provider/GoogleRoutesEstimateProvider.kt` |
 | 버스 실시간 도착정보 | 완료 | 출발 예정 시각 30분 이내에 ODsay 첫 버스 탑승 구간에서 정류소/노선 ID를 추출하고 서울특별시 버스도착정보조회 서비스로 첫 대기 시간을 조회해 기본 대기 기준보다 길 때 경로 시간을 보정합니다. 키가 없거나 매칭에 실패하면 fresh snapshot 또는 기존 ODsay/Mock fallback을 유지합니다. | `data/remote/provider/SeoulBusRealtimeArrivalProvider.kt`, `data/remote/provider/SeoulBusArrivalXmlParser.kt` |
 | TAGO 버스정류소정보 | 부분 완료 | ODsay 첫 버스 탑승 정류장 좌표가 있으면 TAGO 근접 정류소 조회로 `cityCode`, `nodeId` 후보를 찾습니다. 실제 지역별 매칭 예외는 API 키 기반 검증이 더 필요합니다. | `data/remote/api/TagoBusStationApi.kt`, `data/remote/provider/TagoBusArrivalProvider.kt` |
@@ -100,10 +102,6 @@ MainActivity
 현재 경로 API는 루틴 등록 화면에서 선택한 출발지와 목적지 좌표를 사용합니다. 출발지는 장소 검색으로 선택하거나 `현재 위치 사용`으로 휴대폰 위치 좌표를 받아 설정할 수 있으며, Kakao 키가 있으면 현재 위치 좌표를 주소로 변환해 표시합니다.
 
 ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하고, `path` 후보는 최대 5개까지 비교합니다. 출발 예정 시각이 30분 이내이면 후보별 첫 버스 탑승 구간의 실시간 도착정보를 조회해 대기 지연분을 보수적으로 추가 보정하고, 정류장까지 접근 시간 대비 버스 도착 시간이 너무 빠른 후보는 놓칠 위험 페널티를 받습니다. 버스는 서울 버스 도착정보를 먼저 사용하고, 좌표가 있는 경우 TAGO 정류소/도착정보 fallback을 시도합니다. 후보 전환 이득이 3분 미만이면 기존 ODsay 1순위 경로를 유지합니다. 버스/지하철 위치정보는 운행 상태 보조 설명으로 reason에 반영합니다. 실시간 보정 성공값은 `RouteRealtimeSnapshot`으로 저장되며, 이후 실시간 도착정보가 실패하거나 매칭되지 않으면 출발 30분 이내에서만 20분 이내의 마지막 성공 보정값을 재사용합니다. 실시간 보정 또는 snapshot fallback이 적용된 결과는 일반 `RouteEstimateCache`에 저장하지 않습니다. 전체 경로 API 실패 시에는 6시간 이내의 `RouteEstimateCache`를 mock fallback 전에 재사용합니다. 출발 전 WorkManager 재조회도 같은 `RouteEstimateProvider`를 다시 호출하므로, 키와 좌표/노선 매칭이 맞으면 출발 전 재조회에 실시간 도착정보 보정 또는 fresh snapshot fallback이 반영됩니다.
-# Current status note
+# 현재 상태 참고
 
-See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest branch update:
-departure recheck self-cancel fix, home countdown sync, alarm-loop prevention,
-routine-scoped records analysis, transit wait segments, segment min/max storage,
-and first-bus boarding-aware ODsay candidate ranking. Nearby-bus search outside
-ODsay paths and a dedicated alternatives UI are still future work.
+최신 브랜치 변경 내용은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 주요 변경은 출발 전 재조회 자기 취소 방지, 홈 카운트다운 동기화, 알림 반복 예약 방지, 루틴별 기록 분석, 대중교통 대기 구간 측정, 구간 보정값의 최소/최대 실제 소요시간 저장, 첫 버스 탑승 가능성 기반 ODsay 후보 랭킹, 홈/상세 예측의 탑승 판단 UI입니다. ODsay 경로 밖의 주변 버스 직접 탐색과 알림 화면의 상세 대안 UI는 아직 후속 작업입니다.

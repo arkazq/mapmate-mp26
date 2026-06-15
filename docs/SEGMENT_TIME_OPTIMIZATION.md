@@ -191,9 +191,6 @@ delay = actualDurationMinutes - plannedDurationMinutes
 - `PersonalBufferOptimizerTest`
 - `.\gradlew.bat testDebugUnitTest`
 - `.\gradlew.bat build`
-# Current segment-optimization note
+# 현재 구간 최적화 참고
 
-See `docs/IMPLEMENTATION_UPDATE_2026_06_16.md` for the latest segment tracking
-and optimization update. Bus/subway wait segments are now tracked explicitly,
-segment adjustments store average/min/max actual durations, and the optimization
-key remains routine and route specific.
+최신 구간 측정과 최적화 변경 내용은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 버스/지하철 대기 구간은 별도로 측정하며, 구간 보정값은 평균/최소/최대 실제 소요시간을 저장합니다. 최적화 키는 루틴과 노선이 달라지면 별도로 학습되도록 유지합니다.

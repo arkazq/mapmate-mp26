@@ -33,6 +33,7 @@ import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
+import com.mapmate.presentation.common.BoardingAdviceSummaryCard
 import com.mapmate.presentation.common.CompactRoutineCard
 import com.mapmate.presentation.common.EmptyStateCard
 import com.mapmate.presentation.common.MapMateElevation
@@ -125,7 +126,9 @@ fun HomeScreen(
                 )
             }
             item {
-                RecommendationReasonCard()
+                recommendation.boardingAdvice?.let { advice ->
+                    BoardingAdviceSummaryCard(advice = advice)
+                } ?: RecommendationReasonCard()
             }
             item {
                 RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
