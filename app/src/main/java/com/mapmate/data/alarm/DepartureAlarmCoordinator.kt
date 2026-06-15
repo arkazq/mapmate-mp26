@@ -2,6 +2,8 @@ package com.mapmate.data.alarm
 
 import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.alarm.DepartureAlarmScheduler
+import com.mapmate.domain.alarm.DepartureAlarmSchedule
+import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
 import com.mapmate.domain.alarm.DepartureRecheckScheduler
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Routine
@@ -21,6 +23,7 @@ class DepartureAlarmCoordinator(
     private val alarmScheduler: DepartureAlarmScheduler,
     private val recheckScheduler: DepartureRecheckScheduler,
     private val planner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
+    private val adjustmentPolicy: DepartureAdjustmentPolicy = DepartureAdjustmentPolicy(),
 ) {
     suspend fun keepAlarmsInSync() {
         settingsRepository.settings
@@ -33,16 +36,18 @@ class DepartureAlarmCoordinator(
             }
     }
 
-    suspend fun rescheduleNextAlarm() {
+    suspend fun rescheduleNextAlarm(previousSchedule: DepartureAlarmSchedule? = null) {
         sync(
             settings = settingsRepository.settings.first(),
             routines = routineRepository.observeRoutines().first(),
+            previousSchedule = previousSchedule,
         )
     }
 
     private suspend fun sync(
         settings: AppSettings,
         routines: List<Routine>,
+        previousSchedule: DepartureAlarmSchedule? = null,
     ) {
         if (!settings.notificationsEnabled || !alarmScheduler.canPostDepartureNotifications()) {
             cancelScheduledWork()
@@ -52,11 +57,15 @@ class DepartureAlarmCoordinator(
         val routineRouteDurations = routines.map { routine ->
             routine to routeDurationMinutes(routine)
         }
-        val nextAlarm = planner.nextAlarm(routineRouteDurations)
+        val proposedNextAlarm = planner.nextAlarm(routineRouteDurations)
 
-        if (nextAlarm == null) {
+        if (proposedNextAlarm == null) {
             cancelScheduledWork()
         } else {
+            val nextAlarm = adjustmentPolicy.adjust(
+                previousSchedule = previousSchedule,
+                proposedSchedule = proposedNextAlarm,
+            )
             alarmScheduler.schedule(nextAlarm)
             recheckScheduler.schedule(nextAlarm)
         }

@@ -2,6 +2,7 @@ package com.mapmate.data.alarm
 
 import android.content.Context
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -17,41 +18,82 @@ class AndroidDepartureRecheckScheduler(
     private val workManager = WorkManager.getInstance(context.applicationContext)
 
     override fun schedule(schedule: DepartureAlarmSchedule) {
-        val recheckAtEpochMillis = schedule.triggerAtEpochMillis - RECHECK_LEAD_TIME_MILLIS
-        val delayMillis = recheckAtEpochMillis - nowEpochMillis()
+        cancel()
+        val now = nowEpochMillis()
 
-        if (delayMillis < MIN_RECHECK_DELAY_MILLIS) {
-            cancel()
-            return
-        }
+        recheckOffsetsFor(schedule.routeDurationMinutes).forEach { offsetMinutes ->
+            val recheckAtEpochMillis = schedule.triggerAtEpochMillis - offsetMinutes * MILLIS_PER_MINUTE
+            val delayMillis = recheckAtEpochMillis - now
+            if (delayMillis < MIN_RECHECK_DELAY_MILLIS) return@forEach
 
-        val request = OneTimeWorkRequestBuilder<DepartureRecheckWorker>()
-            .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build(),
+            val request = OneTimeWorkRequestBuilder<DepartureRecheckWorker>()
+                .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+                .setConstraints(networkConstraints)
+                .setInputData(schedule.toInputData())
+                .addTag(WORK_TAG)
+                .addTag(routineTag(schedule.routineId))
+                .build()
+
+            workManager.enqueueUniqueWork(
+                uniqueWorkName(
+                    schedule = schedule,
+                    offsetMinutes = offsetMinutes,
+                ),
+                ExistingWorkPolicy.REPLACE,
+                request,
             )
-            .addTag(WORK_TAG)
-            .build()
-
-        workManager.enqueueUniqueWork(
-            UNIQUE_WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
-            request,
-        )
+        }
     }
 
     override fun cancel() {
-        workManager.cancelUniqueWork(UNIQUE_WORK_NAME)
+        workManager.cancelAllWorkByTag(WORK_TAG)
+    }
+
+    private val networkConstraints: Constraints
+        get() = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+    private fun recheckOffsetsFor(routeDurationMinutes: Int): List<Long> {
+        return when {
+            routeDurationMinutes >= 90 -> listOf(120, 90, 60, 30, 15, 5)
+            routeDurationMinutes >= 60 -> listOf(90, 60, 30, 15, 5)
+            else -> listOf(60, 30, 15, 5)
+        }
+    }
+
+    private fun uniqueWorkName(
+        schedule: DepartureAlarmSchedule,
+        offsetMinutes: Long,
+    ): String {
+        return "departure_recheck_${schedule.routineId}_${schedule.triggerAtEpochMillis}_${offsetMinutes}"
+    }
+
+    private fun routineTag(routineId: Long): String {
+        return "departure_recheck_routine_$routineId"
+    }
+
+    private fun DepartureAlarmSchedule.toInputData(): Data {
+        return Data.Builder()
+            .putLong(DepartureRecheckWorker.KEY_ROUTINE_ID, routineId)
+            .putString(DepartureRecheckWorker.KEY_ROUTINE_NAME, routineName)
+            .putString(DepartureRecheckWorker.KEY_DESTINATION_NAME, destinationName)
+            .putString(DepartureRecheckWorker.KEY_TARGET_ARRIVAL_TIME, targetArrivalTime.toString())
+            .putString(DepartureRecheckWorker.KEY_RECOMMENDED_DEPARTURE_TIME, recommendedDepartureTime.toString())
+            .putInt(DepartureRecheckWorker.KEY_ROUTE_DURATION_MINUTES, routeDurationMinutes)
+            .putLong(DepartureRecheckWorker.KEY_TRIGGER_AT_EPOCH_MILLIS, triggerAtEpochMillis)
+            .apply {
+                targetArrivalAtEpochMillis?.let {
+                    putLong(DepartureRecheckWorker.KEY_TARGET_ARRIVAL_AT_EPOCH_MILLIS, it)
+                }
+            }
+            .build()
     }
 
     companion object {
-        const val UNIQUE_WORK_NAME = "departure_route_recheck"
         const val WORK_TAG = "departure_route_recheck"
-        const val RECHECK_LEAD_TIME_MINUTES = 30L
         const val MIN_RECHECK_DELAY_MINUTES = 1L
-        const val RECHECK_LEAD_TIME_MILLIS = RECHECK_LEAD_TIME_MINUTES * 60 * 1000
-        private const val MIN_RECHECK_DELAY_MILLIS = MIN_RECHECK_DELAY_MINUTES * 60 * 1000
+        private const val MILLIS_PER_MINUTE = 60 * 1000L
+        private const val MIN_RECHECK_DELAY_MILLIS = MIN_RECHECK_DELAY_MINUTES * MILLIS_PER_MINUTE
     }
 }
