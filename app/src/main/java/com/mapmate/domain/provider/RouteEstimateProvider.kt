@@ -10,5 +10,6 @@ interface RouteEstimateProvider {
         destination: Destination,
         transportMode: TransportMode,
         routineId: Long? = null,
+        scheduledDepartureEpochMillis: Long? = null,
     ): RouteEstimate
 }

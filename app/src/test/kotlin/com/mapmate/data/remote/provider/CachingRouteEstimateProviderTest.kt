@@ -39,6 +39,38 @@ class CachingRouteEstimateProviderTest {
     }
 
     @Test
+    fun getRouteEstimate_doesNotSaveRealtimeAdjustedEstimate() = runTest {
+        val cacheRepository = InMemoryRouteEstimateCacheRepository()
+        val provider = CachingRouteEstimateProvider(
+            cacheNamespace = "Primary",
+            primary = FixedRouteEstimateProvider(
+                primaryEstimate.copy(hasRealtimeAdjustment = true),
+            ),
+            cacheRepository = cacheRepository,
+            nowProvider = { 1_000L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = testOrigin,
+            destination = testDestination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 2_000L,
+        )
+
+        assertTrue(result.hasRealtimeAdjustment)
+        assertEquals(
+            null,
+            cacheRepository.findFreshEstimate(
+                cacheNamespace = "Primary",
+                origin = testOrigin,
+                destination = testDestination,
+                transportMode = TransportMode.TRANSIT,
+                nowEpochMillis = 1_000L,
+            ),
+        )
+    }
+
+    @Test
     fun getRouteEstimate_returnsFreshCacheWhenPrimaryFails() = runTest {
         val cacheRepository = InMemoryRouteEstimateCacheRepository()
         cacheRepository.saveEstimate(
@@ -126,6 +158,7 @@ class CachingRouteEstimateProviderTest {
             destination: Destination,
             transportMode: TransportMode,
             routineId: Long?,
+            scheduledDepartureEpochMillis: Long?,
         ): RouteEstimate {
             error("Remote failed.")
         }
@@ -139,6 +172,7 @@ class CachingRouteEstimateProviderTest {
             destination: Destination,
             transportMode: TransportMode,
             routineId: Long?,
+            scheduledDepartureEpochMillis: Long?,
         ): RouteEstimate {
             return routeEstimate
         }

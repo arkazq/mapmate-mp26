@@ -11,6 +11,7 @@ class MockRouteEstimateProvider : RouteEstimateProvider {
         destination: Destination,
         transportMode: TransportMode,
         routineId: Long?,
+        scheduledDepartureEpochMillis: Long?,
     ): RouteEstimate {
         val estimatedMinutes = when (transportMode) {
             TransportMode.TRANSIT -> 42
