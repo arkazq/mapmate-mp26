@@ -20,21 +20,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -118,6 +125,7 @@ fun RoutineRegistrationScreen(
     modifier: Modifier = Modifier,
 ) {
     var currentStepIndex by rememberSaveable { mutableIntStateOf(0) }
+    var isArrivalTimePickerVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -252,17 +260,12 @@ fun RoutineRegistrationScreen(
         if (currentStepIndex == 2) item {
             SectionCard(
                 title = "도착 목표",
-                subtitle = "HH:mm 형식으로 입력합니다.",
+                subtitle = "시간 선택기로 도착 목표 시각을 설정합니다.",
                 leadingText = "3",
             ) {
-                OutlinedTextField(
-                    value = uiState.targetArrivalTimeText,
-                    onValueChange = { onEvent(RoutineRegistrationEvent.ArrivalTimeChanged(it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("도착 목표 시각") },
-                    placeholder = { Text("09:00") },
-                    shape = MaterialTheme.shapes.medium,
-                    singleLine = true,
+                ArrivalTimePickerButton(
+                    timeText = uiState.targetArrivalTimeText,
+                    onClick = { isArrivalTimePickerVisible = true },
                 )
             }
         }
@@ -336,6 +339,96 @@ fun RoutineRegistrationScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
+
+    if (isArrivalTimePickerVisible) {
+        ArrivalTimePickerDialog(
+            initialTimeText = uiState.targetArrivalTimeText,
+            onDismiss = { isArrivalTimePickerVisible = false },
+            onConfirm = { hour, minute ->
+                onEvent(RoutineRegistrationEvent.ArrivalTimeChanged(hour.toClockText(minute)))
+                isArrivalTimePickerVisible = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun ArrivalTimePickerButton(
+    timeText: String,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(58.dp),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "도착 목표 시각",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = timeText,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            MapMateIcon(
+                icon = MapMateIconType.Time,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ArrivalTimePickerDialog(
+    initialTimeText: String,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit,
+) {
+    val (initialHour, initialMinute) = initialTimeText.toHourMinuteOrDefault()
+    val timePickerState = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = true,
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("도착 목표 시각 선택")
+        },
+        text = {
+            TimePicker(state = timePickerState)
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(timePickerState.hour, timePickerState.minute)
+                },
+            ) {
+                Text("확인")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        },
+    )
 }
 
 @Composable
@@ -349,69 +442,88 @@ private fun RegistrationStepRow(activeStepIndex: Int) {
         "6" to "보정",
     )
 
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            steps.forEachIndexed { index, (number, _) ->
-                val isActive = index == activeStepIndex
-                Surface(
-                    modifier = Modifier.size(26.dp),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = if (isActive) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
-                    border = androidx.compose.foundation.BorderStroke(
-                        width = 1.dp,
+        steps.forEachIndexed { index, (number, label) ->
+            val isActive = index == activeStepIndex
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(26.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (index != 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .fillMaxWidth(0.5f)
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant),
+                        )
+                    }
+                    if (index != steps.lastIndex) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxWidth(0.5f)
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.outlineVariant),
+                        )
+                    }
+                    Surface(
+                        modifier = Modifier.size(26.dp),
+                        shape = MaterialTheme.shapes.extraLarge,
                         color = if (isActive) {
                             MaterialTheme.colorScheme.primary
                         } else {
-                            MaterialTheme.colorScheme.outlineVariant
+                            MaterialTheme.colorScheme.surface
                         },
-                    ),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = number,
-                            style = MaterialTheme.typography.labelLarge,
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.dp,
                             color = if (isActive) {
-                                MaterialTheme.colorScheme.onPrimary
+                                MaterialTheme.colorScheme.primary
                             } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
+                                MaterialTheme.colorScheme.outlineVariant
                             },
-                            fontWeight = FontWeight.Bold,
-                        )
+                        ),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = number,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (isActive) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
-                if (index != steps.lastIndex) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(1.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant),
-                    )
-                }
-            }
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            steps.forEach { (_, label) ->
                 Text(
                     text = label,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isActive) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     textAlign = TextAlign.Center,
-                    fontWeight = if (steps.indexOfFirst { it.second == label } == activeStepIndex) {
+                    fontWeight = if (isActive) {
                         FontWeight.Bold
                     } else {
                         FontWeight.Normal
                     },
+                    minLines = 2,
                 )
             }
         }
@@ -605,6 +717,26 @@ private fun StepNavigationArea(
             Text("다음")
         }
     }
+}
+
+private fun String.toHourMinuteOrDefault(): Pair<Int, Int> {
+    val parts = split(":")
+    val hour = parts.getOrNull(0)?.toIntOrNull()
+    val minute = parts.getOrNull(1)?.toIntOrNull()
+    return if (
+        hour != null &&
+        minute != null &&
+        hour in 0..23 &&
+        minute in 0..59
+    ) {
+        hour to minute
+    } else {
+        9 to 0
+    }
+}
+
+private fun Int.toClockText(minute: Int): String {
+    return "${toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
 }
 
 @Preview(showBackground = true)

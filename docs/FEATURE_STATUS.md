@@ -11,7 +11,7 @@
 | 구간 소요시간 개인화 | 완료 | 최근 완료된 구간 기록을 `routineId`, `segmentType`, `routeName`, `startName`, `endName` 기준으로 묶고 평균 지연과 신뢰도를 계산해 이후 경로 예측에 반영합니다. | `domain/calculator/SegmentTimeAdjustmentCalculator.kt`, `data/remote/provider/SegmentAdjustedRouteEstimateProvider.kt` |
 | 시간대/요일별 구간 학습 | 미구현 | 구간 보정값은 아직 시간대나 요일별로 분리하지 않습니다. | 향후 작업 |
 | 자동 탑승/하차 감지 | 미구현 | 앱이 기기 위치를 기반으로 구간 시작/종료를 자동 추론하지는 않습니다. | 향후 작업 |
-| 모바일 보안 점검 | 미구현 | API key/keystore Git 포함 여부, 위치/이동 기록 로그 노출, cleartext 통신 범위, release 빌드 보안 설정을 별도 체크리스트로 점검해야 합니다. | `docs/MOBILE_SECURITY_CHECKLIST.md` |
+| 모바일 보안 기본 점검 | 완료 | 사용자 입력 제한, 앱 백업 차단, 데이터 추출 제외, release 축소/난독화, cleartext 범위 제한, 민감 파일 Git 추적 여부를 점검했습니다. 운영 전 API 키 제한, 백엔드 프록시, release 서명 정책은 후속 항목입니다. | `docs/MOBILE_SECURITY_CHECKLIST.md` |
 
 현재 구현 상태를 기준으로 기능별 진행 상황을 정리합니다.
 
@@ -22,6 +22,7 @@
 | 홈 대시보드 UI | 완료 | 오늘 권장 출발 시각, 출발까지 남은 시간, 추천 근거, 이동 시간/보정/안전 여유 요약, 오늘의 루틴을 표시합니다. | `presentation/home/HomeScreen.kt` |
 | 루틴 목록 UI | 완료 | 저장된 루틴을 카드 목록으로 표시하고 수정/삭제/상세 예측 진입을 제공합니다. | `presentation/routine/RoutinesScreen.kt`, `presentation/routine/RoutinesViewModel.kt` |
 | 루틴 등록 UI | 완료 | 루틴 이름, 장소, 도착 시각, 요일, 이동 수단, 보정 시간을 단계형 UI로 입력합니다. | `presentation/routine/RoutineRegistrationScreen.kt` |
+| 루틴 등록 입력 보안 | 완료 | 도착 목표 시각은 TimePicker로 선택하고, 루틴명/장소 검색어는 제어문자 제거와 길이 제한을 적용하며, 보정 시간은 ASCII 숫자만 허용합니다. | `presentation/routine/RoutineRegistrationScreen.kt`, `presentation/routine/RoutineRegistrationViewModel.kt` |
 | 목적지 후보 표시 | 완료 | Kakao Local API 키가 있으면 실제 장소 검색 결과를 표시하고, 실패하거나 키가 없으면 mock 후보를 표시합니다. | `data/remote/provider/KakaoPlaceSearchProvider.kt`, `data/mock/MockPlaceSearchProvider.kt` |
 | 목적지 선택 | 완료 | 목적지 후보를 선택하면 `selectedDestination`에 반영됩니다. | `presentation/routine/RoutineRegistrationViewModel.kt` |
 | 출발지 검색 선택 | 완료 | Kakao Local API 또는 mock 장소 후보에서 출발지를 검색하고 선택할 수 있습니다. | `presentation/routine/RoutineRegistrationScreen.kt`, `presentation/routine/RoutineRegistrationViewModel.kt` |
@@ -65,6 +66,7 @@
 | 홈 화면 | 완료 | 앱 첫 화면에서 오늘 권장 출발 시각과 오늘의 루틴 요약을 확인할 수 있습니다. 출발까지 남은 시간이 60분 이상이면 `k시간 l분` 형식으로 표시합니다. | `presentation/home`, `presentation/common/RoutineRecommendationUiModel.kt` |
 | 통계 화면 | 완료 | 별도 탭을 추가하지 않고 기록 탭 상단에 최근 기록 기반 통계 요약을 제공합니다. | `presentation/history/RecordsScreen.kt`, `presentation/history/RecordsUiState.kt` |
 | 설정 화면 | 완료 | 보정값, 기본 이동수단, 알림 사용 여부를 변경할 수 있습니다. | `presentation/settings` |
+| 모바일 보안 기본 하드닝 | 완료 | 앱 자동 백업을 비활성화하고 Android 데이터 추출에서 DB/DataStore/파일을 제외했으며 release 빌드에 minify와 resource shrink를 적용했습니다. | `AndroidManifest.xml`, `data_extraction_rules.xml`, `app/build.gradle.kts` |
 
 ## 현재 앱 진입점
 
@@ -104,4 +106,4 @@ MainActivity
 ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하고, `path` 후보는 최대 5개까지 비교합니다. 출발 예정 시각이 30분 이내이면 후보별 첫 버스 탑승 구간의 실시간 도착정보를 조회해 대기 지연분을 보수적으로 추가 보정하고, 정류장까지 접근 시간 대비 버스 도착 시간이 너무 빠른 후보는 놓칠 위험 페널티를 받습니다. 버스는 서울 버스 도착정보를 먼저 사용하고, 좌표가 있는 경우 TAGO 정류소/도착정보 fallback을 시도합니다. 후보 전환 이득이 3분 미만이면 기존 ODsay 1순위 경로를 유지합니다. 버스/지하철 위치정보는 운행 상태 보조 설명으로 reason에 반영합니다. 실시간 보정 성공값은 `RouteRealtimeSnapshot`으로 저장되며, 이후 실시간 도착정보가 실패하거나 매칭되지 않으면 출발 30분 이내에서만 20분 이내의 마지막 성공 보정값을 재사용합니다. 실시간 보정 또는 snapshot fallback이 적용된 결과는 일반 `RouteEstimateCache`에 저장하지 않습니다. 전체 경로 API 실패 시에는 6시간 이내의 `RouteEstimateCache`를 mock fallback 전에 재사용합니다. 출발 전 WorkManager 재조회도 같은 `RouteEstimateProvider`를 다시 호출하므로, 키와 좌표/노선 매칭이 맞으면 출발 전 재조회에 실시간 도착정보 보정 또는 fresh snapshot fallback이 반영됩니다.
 # 현재 상태 참고
 
-최신 브랜치 변경 내용은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 주요 변경은 출발 전 재조회 자기 취소 방지, 홈 카운트다운 동기화, 알림 반복 예약 방지, 루틴별 기록 분석, 대중교통 대기 구간 측정, 구간 보정값의 최소/최대 실제 소요시간 저장, 첫 버스 탑승 가능성 기반 ODsay 후보 랭킹, 홈/상세 예측의 탑승 판단 UI입니다. ODsay 경로 밖의 주변 버스 직접 탐색과 알림 화면의 상세 대안 UI는 아직 후속 작업입니다.
+최신 브랜치 변경 내용은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`와 `docs/MOBILE_SECURITY_CHECKLIST.md`를 확인합니다. 주요 변경은 출발 전 재조회 자기 취소 방지, 홈 카운트다운 동기화, 알림 반복 예약 방지, 루틴별 기록 분석, 대중교통 대기 구간 측정, 구간 보정값의 최소/최대 실제 소요시간 저장, 첫 버스 탑승 가능성 기반 ODsay 후보 랭킹, 홈/상세 예측의 탑승 판단 UI, 루틴 등록 입력 제한, 앱 백업 차단, release 축소/난독화입니다. ODsay 경로 밖의 주변 버스 직접 탐색과 알림 화면의 상세 대안 UI, 운영 API 키 보호 전략은 아직 후속 작업입니다.

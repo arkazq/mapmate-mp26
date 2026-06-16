@@ -103,9 +103,10 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onRoutineNameChanged(name: String) {
+        val safeName = name.toSafeSingleLineInput(maxLength = ROUTINE_NAME_MAX_LENGTH)
         updateState {
             copy(
-                routineName = name,
+                routineName = safeName,
                 successMessage = null,
                 errorMessage = null,
                 isSaveCompleted = false,
@@ -114,9 +115,10 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onOriginQueryChanged(query: String) {
+        val safeQuery = query.toSafeSingleLineInput(maxLength = PLACE_QUERY_MAX_LENGTH)
         updateState {
             copy(
-                originQuery = query,
+                originQuery = safeQuery,
                 selectedOrigin = null,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
@@ -124,7 +126,7 @@ class RoutineRegistrationViewModel(
                 errorMessage = null,
             )
         }
-        searchOriginCandidates(query)
+        searchOriginCandidates(safeQuery)
     }
 
     private fun onOriginSelected(origin: Destination) {
@@ -141,9 +143,10 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onDestinationQueryChanged(query: String) {
+        val safeQuery = query.toSafeSingleLineInput(maxLength = PLACE_QUERY_MAX_LENGTH)
         updateState {
             copy(
-                destinationQuery = query,
+                destinationQuery = safeQuery,
                 selectedDestination = null,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
@@ -151,7 +154,7 @@ class RoutineRegistrationViewModel(
                 errorMessage = null,
             )
         }
-        searchDestinationCandidates(query)
+        searchDestinationCandidates(safeQuery)
     }
 
     private fun onDestinationSelected(destination: Destination) {
@@ -209,7 +212,7 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onPersonalBufferChanged(minutesText: String) {
-        val filteredMinutesText = minutesText.filter(Char::isDigit).take(2)
+        val filteredMinutesText = minutesText.filterAsciiDigits().take(2)
         updateState {
             copy(
                 personalBufferMinutes = filteredMinutesText,
@@ -223,7 +226,7 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onSafetyMarginChanged(minutesText: String) {
-        val filteredMinutesText = minutesText.filter(Char::isDigit).take(2)
+        val filteredMinutesText = minutesText.filterAsciiDigits().take(2)
         updateState {
             copy(
                 safetyMarginMinutes = filteredMinutesText,
@@ -581,6 +584,18 @@ class RoutineRegistrationViewModel(
         }
     }
 
+    private fun String.filterAsciiDigits(): String {
+        return filter { it in '0'..'9' }
+    }
+
+    private fun String.toSafeSingleLineInput(maxLength: Int): String {
+        return map { character ->
+            if (character.isISOControl()) ' ' else character
+        }.joinToString(separator = "")
+            .replace(Regex("""\s+"""), " ")
+            .take(maxLength)
+    }
+
     private data class ValidatedRoutineInput(
         val routineName: String,
         val origin: Destination,
@@ -593,6 +608,9 @@ class RoutineRegistrationViewModel(
     )
 
     companion object {
+        private const val ROUTINE_NAME_MAX_LENGTH = 30
+        private const val PLACE_QUERY_MAX_LENGTH = 80
+
         private object UnavailableCurrentLocationProvider : CurrentLocationProvider {
             override suspend fun getCurrentLocation(): Destination {
                 error("Current location provider is unavailable.")

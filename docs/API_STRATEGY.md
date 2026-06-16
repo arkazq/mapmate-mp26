@@ -41,6 +41,10 @@ SEOUL_BUS_SERVICE_KEY=API_KEY_PLACEHOLDER
 TAGO_SERVICE_KEY=API_KEY_PLACEHOLDER
 ```
 
+Android/Gradle 흐름에서는 `local.properties`를 기본 로컬 키 파일로 사용합니다. `.env`도 Git에 올리지 않는 로컬 파일로 쓸 수는 있지만, 현재 구조에서는 추가 보안 이점을 주지 않으므로 사용하지 않습니다.
+
+주의할 점은 `BuildConfig`로 주입된 키가 APK 안에 포함된다는 것입니다. 이 방식은 저장소 커밋 방지에는 효과가 있지만, 운영 앱에서 키를 완전히 숨기는 수단은 아닙니다. 운영 배포 전에는 API별 앱 제한, API 제한, 호출량 모니터링을 설정하고, 노출되면 안 되는 키나 과금 위험이 큰 API는 백엔드 프록시를 통해 호출하는 방식을 검토합니다.
+
 출발지는 앱의 루틴 등록 화면에서 검색으로 선택하거나 `현재 위치 사용` 버튼으로 설정합니다. 현재 위치는 Kakao 좌표→주소 API로 읽기 쉬운 주소 변환을 시도하고, ODsay/Google Routes 실제 경로 조회는 선택된 출발지와 목적지에 위도/경도 좌표가 있을 때 우선 시도합니다.
 
 ## API 후보별 역할
@@ -161,6 +165,8 @@ origin + destination + transportMode
 - ODsay/Google API 실패 이유는 상세 예외문 대신 `API key 없음`, `좌표 없음`, `이동수단 미지원`, `경로 없음`, `요청 실패` 수준의 사용자용 메시지로 요약하고 mock fallback으로 복구합니다.
 - 전체 경로 API 마지막 성공값 cache는 6시간 TTL을 사용합니다. 실시간 보정 또는 snapshot fallback이 적용된 `RouteEstimate`는 이 cache에 저장하지 않습니다. 오래된 cache는 조회 전에 정리하며, cache도 없으면 기존 mock fallback으로 복구합니다.
 - 실제 API 키는 저장소에 포함하지 않습니다.
+- 로컬 키 파일은 `local.properties`를 사용하고 `.env`는 기본 키 파일로 사용하지 않습니다.
+- API 키는 `BuildConfig`를 통해 APK에 들어가므로 운영 배포 전 키 제한 또는 백엔드 프록시를 검토해야 합니다.
 - 현재 위치 주소 역지오코딩은 Kakao 키와 네트워크가 유효할 때만 성공하므로, 실패 시에는 `현재 위치` 이름과 fallback 주소를 저장합니다.
 - 개인 보정 자동 업데이트는 단일 기록의 도착 오차를 제한적으로 반영합니다. 기록 탭 통계는 표시용이며, 최근 기록 평균이나 이동수단별 보정 분리는 아직 자동 보정 정책에 연결하지 않았습니다.
 - 출발 전 재조회는 현재 경로 provider/fallback을 다시 호출하므로, 첫 버스 탑승 구간 매칭과 실시간 API 키가 유효하면 30분 정책 안에서 실시간 도착정보 보정 또는 fresh snapshot fallback이 반영됩니다.
@@ -172,6 +178,7 @@ origin + destination + transportMode
 3. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
 4. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
 5. 기본 출발지를 설정 화면에서 저장해 루틴 등록 기본값으로 반영합니다.
+6. 운영 배포 전 API 키 제한, 호출량 모니터링, 백엔드 프록시 필요 여부를 확정합니다.
 # 현재 API 참고
 
 최신 API 동작은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 ODsay는 대중교통 기본 경로 provider이며, 실시간 보정과 탑승 가능성 랭킹은 ODsay 후보 경로 안의 첫 버스 후보에 우선 적용합니다. 주변 정류장의 모든 버스 대안을 직접 탐색하는 기능은 아직 구현하지 않았습니다.
