@@ -34,7 +34,7 @@ class SettingsViewModel(
     }
 
     private fun onPersonalBufferChanged(minutesText: String) {
-        val filteredText = minutesText.filter(Char::isDigit).take(2)
+        val filteredText = minutesText.filterAsciiDigits().take(2)
         _uiState.update {
             it.copy(
                 personalBufferMinutes = filteredText,
@@ -49,7 +49,7 @@ class SettingsViewModel(
     }
 
     private fun onSafetyMarginChanged(minutesText: String) {
-        val filteredText = minutesText.filter(Char::isDigit).take(2)
+        val filteredText = minutesText.filterAsciiDigits().take(2)
         _uiState.update {
             it.copy(
                 safetyMarginMinutes = filteredText,
@@ -161,6 +161,10 @@ class SettingsViewModel(
 
     private fun String.toValidBufferMinutesOrNull(): Int? {
         return toIntOrNull()?.takeIf(AppSettings::isValidBufferMinutes)
+    }
+
+    private fun String.filterAsciiDigits(): String {
+        return filter { it in '0'..'9' }
     }
 
     companion object {

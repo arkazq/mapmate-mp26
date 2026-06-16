@@ -360,7 +360,7 @@ Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 - `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환합니다. 현재 ODsay 후보 랭킹의 시간 보정 호출은 첫 버스 구간에 우선 적용합니다.
 - `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산
 - `SeoulSubwayRealtimeArrivalProvider`: 서울 지하철 실시간 도착정보 JSON 응답에서 가장 빠른 첫 지하철 대기 시간을 계산
-- `network_security_config.xml`: 서울 공공 API의 HTTP endpoint에 한해 cleartext 통신을 허용
+- `network_security_config.xml`: 기본 cleartext 통신을 차단하고 서울/TAGO 공공 API HTTP endpoint에 한해 cleartext 통신을 허용
 
 ## `di`
 
@@ -401,9 +401,9 @@ User input
 
 상세 흐름은 다음과 같습니다.
 
-1. 사용자가 루틴 이름, 목적지, 도착 시각, 요일, 이동 수단, 보정 시간을 입력합니다.
+1. 사용자가 루틴 이름, 목적지, 도착 시각, 요일, 이동 수단, 보정 시간을 입력합니다. 도착 시각은 직접 문자열이 아니라 TimePicker로 선택합니다.
 2. `RoutineRegistrationScreen`은 입력 이벤트를 `RoutineRegistrationEvent`로 ViewModel에 전달합니다.
-3. `RoutineRegistrationViewModel`은 상태를 갱신하고 입력값을 검증합니다.
+3. `RoutineRegistrationViewModel`은 루틴명/장소 검색어의 제어문자와 길이를 제한하고, 보정값은 ASCII 숫자로 제한한 뒤 상태를 갱신하고 입력값을 검증합니다.
 4. 개인 보정 시간과 안전 여유 시간, 기본 이동수단, 알림 설정값이 변경되면 `SettingsRepository`를 통해 DataStore에 저장합니다.
 5. 출발지/목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
 6. 현재 위치 출발지는 `CurrentLocationProvider`가 좌표를 가져오고, Kakao 키가 있으면 `ReverseGeocodingProvider`로 주소 변환을 시도합니다.
@@ -448,12 +448,14 @@ Google Routes 자동차 모드는 `GoogleRoutesEstimateProvider`에서 `routingP
 - 앱 수준 의존성 생성은 `AppContainer`에 모읍니다.
 - 실제 API provider는 fallback provider 뒤에 두고, 키 누락/호출 실패 시 mock provider 결과로 복구합니다. 경로 fallback은 UI 모델로 전달되어 주요 화면에 상태 메시지로 표시됩니다.
 - domain 계층에는 Android, Compose, Room, Retrofit 의존성을 넣지 않습니다.
+- 앱 백업은 비활성화하고 Android 데이터 추출 규칙에서 DB/DataStore/파일을 제외합니다.
+- release 빌드는 코드 축소/난독화와 리소스 shrink를 적용합니다.
 
 ## 앞으로 확장할 영역
 
 - 통계/분석 화면
 - 필요 시 Navigation Compose 도입
-- 모바일 보안 점검: 민감 정보 저장/로그 노출, 위치/이동 기록 개인정보 취급, cleartext 통신 범위, release 빌드 보안 설정 확인
+- 운영 보안 정책: API 키 제한/백엔드 프록시, release 서명 keystore 관리, 위치/이동 기록 개인정보 보관 정책 정리
 # 현재 아키텍처 참고
 
 최신 브랜치 단위 아키텍처 변경은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 주요 내용은 출발 전 재조회 예약, 홈 UI 동기화, 알림 반복 예약 방지, 기록 필터링, 대중교통 대기 구간, 구간 보정값 저장, 첫 버스 탑승 판단 UI입니다.
