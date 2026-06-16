@@ -7,10 +7,10 @@
 현재 브랜치:
 
 ```text
-feature/predeparture-status-notification
+feature/seoul-bus-station-arrival
 ```
 
-현재 브랜치는 출발 전 상태 알림, 홈 화면의 다음 루틴 선택 기준 정리, 홈/알림 권장 출발 시각 동기화, TAGO 노선명 정규화 보강을 다룹니다. 이전 브랜치에서 구현한 첫 버스 탑승 가능성 기반 후보 랭킹과 홈/상세 예측 탑승 판단 UI를 유지하면서, 발표 전 데모에서 눈에 보일 수 있는 시각 불일치와 루틴 선택 불일치를 정리했습니다.
+현재 브랜치는 서울버스 실시간 도착정보를 정류장 ARS(`getStationByUid`) 기준으로 조회하고 노선번호로 매칭하는 개선을 다룹니다. 이전 브랜치에서 구현한 출발 전 상태 알림, 홈 화면의 다음 루틴 선택 기준 정리, 홈/알림 권장 출발 시각 동기화, TAGO 노선명 정규화, 첫 버스 탑승 가능성 기반 후보 랭킹과 홈/상세 예측 탑승 판단 UI를 유지하면서, ODsay `busID/routeID`가 서울버스 `busRouteId`와 맞지 않는 경로의 실시간 보정 누락을 보완했습니다.
 
 주변 정류장의 버스를 ODsay 결과 밖에서 직접 탐색하거나, 모든 환승 구간의 실시간 도착정보를 평가하는 기능은 아직 이 브랜치 범위가 아닙니다.
 
@@ -94,19 +94,28 @@ feature/predeparture-status-notification
 - `app/src/main/java/com/mapmate/data/remote/provider/TagoBusArrivalProvider.kt`
 - `app/src/test/kotlin/com/mapmate/data/remote/provider/TagoBusArrivalProviderTest.kt`
 
-## 서울버스 매칭 한계와 후속 작업
+## 서울버스 정류장 ARS 기준 매칭
 
-확인된 내용:
+배경:
 
 - `SEOUL_BUS_SERVICE_KEY`와 서울특별시 버스도착정보조회 endpoint는 정상 응답을 확인했습니다.
 - 다만 일부 ODsay 경로에서 `busID/routeID`를 서울버스 `busRouteId`로 사용하면 `결과가 없습니다`가 반환될 수 있습니다.
-- 따라서 해당 경로는 현재 실시간 보정이 붙지 않고 TAGO/fresh snapshot/ODsay 기본값 fallback으로 복구됩니다.
 
-후속 개선:
+구현된 내용:
 
-- `startArsID`가 있으면 서울버스 정류장 도착목록 endpoint를 조회합니다.
-- 도착목록에서 `rtNm` 또는 `busRouteAbrv`를 ODsay `busNo`와 매칭합니다.
-- 실패 시 현재 `busRouteId` 기반 조회를 fallback으로 유지합니다.
+- `startArsID`가 있으면 서울버스 정류장 도착목록 endpoint(`getStationByUid`)를 먼저 조회합니다.
+- 도착목록에서 `rtNm` 또는 `busRouteAbrv`를 ODsay `busNo`와 매칭하며, 괄호/대괄호 업체명·공백·`번` 제거 정규화를 적용합니다.
+- 같은 노선이 여러 건이면 가장 빠른 도착 항목을 선택합니다.
+- 정류장 기준 조회/매칭이 실패하면 기존 `busRouteId` 기반 조회로 fallback합니다.
+- 도착시간 필드는 endpoint별 차이를 흡수하기 위해 `exps1`/`exps2`와 `traTime1`/`traTime2`를 함께 처리합니다.
+
+관련 파일:
+
+- `app/src/main/java/com/mapmate/data/remote/api/SeoulBusArrivalApi.kt`
+- `app/src/main/java/com/mapmate/data/remote/provider/SeoulBusRealtimeArrivalProvider.kt`
+- `app/src/main/java/com/mapmate/data/remote/provider/SeoulBusArrivalXmlParser.kt`
+- `app/src/test/kotlin/com/mapmate/data/remote/provider/SeoulBusRealtimeArrivalProviderTest.kt`
+- `app/src/test/kotlin/com/mapmate/data/remote/provider/SeoulBusArrivalXmlParserTest.kt`
 
 ## 첫 버스 탑승 가능성 기반 후보 랭킹
 

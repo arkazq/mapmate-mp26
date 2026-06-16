@@ -10,4 +10,10 @@ interface SeoulBusArrivalApi {
         @Query(value = "serviceKey", encoded = true) serviceKey: String,
         @Query("busRouteId") busRouteId: String,
     ): ResponseBody
+
+    @GET("api/rest/stationinfo/getStationByUid")
+    suspend fun getArrivalsByStationUid(
+        @Query(value = "serviceKey", encoded = true) serviceKey: String,
+        @Query("arsId") stationArsId: String,
+    ): ResponseBody
 }

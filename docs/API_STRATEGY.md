@@ -161,7 +161,7 @@ origin + destination + transportMode
 - 주변 정류장의 버스를 직접 탐색해 ODsay 결과 밖의 대안을 추천하는 기능은 아직 구현하지 않았습니다.
 - `RouteRealtimeSnapshot` fallback은 같은 ODsay 기본 경로와 첫 버스 탑승 구간에서 20분 이내 성공값만 재사용하며, `scheduledDepartureEpochMillis`가 없거나 출발까지 30분을 초과하면 사용하지 않습니다.
 - TAGO provider는 ODsay 첫 탑승 정류장 좌표가 있어야 동작합니다. 좌표가 없거나 지역별 정류장/노선 표기가 맞지 않으면 기존 서울 provider 또는 mock fallback을 유지합니다.
-- 서울특별시 버스도착정보조회 서비스 키와 도착정보 endpoint는 정상 응답을 확인했습니다. 다만 일부 ODsay 응답의 `busID/routeID`는 서울버스 `busRouteId`와 일치하지 않을 수 있어, 해당 경로는 서울버스 provider가 매칭 실패 후 TAGO/fresh snapshot/ODsay 기본값으로 fallback합니다.
+- 서울특별시 버스도착정보조회 서비스 키와 도착정보 endpoint는 정상 응답을 확인했습니다. 일부 ODsay 응답의 `busID/routeID`가 서울버스 `busRouteId`와 일치하지 않는 경로를 위해, 서울버스 provider는 `startArsID` 기반 정류장 도착목록 조회와 `rtNm`/`busRouteAbrv` 노선명 매칭을 먼저 사용하고 실패 시 기존 `busRouteId` 조회로 fallback합니다.
 - 버스 위치정보와 지하철 열차 위치정보는 운행 상태 보조 설명으로만 사용하며, 권장 출발 시각 계산값을 직접 대체하지 않습니다.
 - ODsay/Google API 실패 이유는 상세 예외문 대신 `API key 없음`, `좌표 없음`, `이동수단 미지원`, `경로 없음`, `요청 실패` 수준의 사용자용 메시지로 요약하고 mock fallback으로 복구합니다.
 - 전체 경로 API 마지막 성공값 cache는 6시간 TTL을 사용합니다. 실시간 보정 또는 snapshot fallback이 적용된 `RouteEstimate`는 이 cache에 저장하지 않습니다. 오래된 cache는 조회 전에 정리하며, cache도 없으면 기존 mock fallback으로 복구합니다.
@@ -174,8 +174,8 @@ origin + destination + transportMode
 
 ## 다음 권장 작업
 
-1. 서울 버스 도착정보 provider에 정류장 ARS 기준 조회 fallback을 추가하고, 도착목록에서 `rtNm`/`busRouteAbrv`를 ODsay `busNo`와 매칭합니다.
-2. TAGO 정류소/노선 매칭을 실제 API 키와 여러 지역 샘플로 계속 검증하고, 도시별 표기 예외를 보강합니다.
+1. TAGO 정류소/노선 매칭을 실제 API 키와 여러 지역 샘플로 계속 검증하고, 도시별 표기 예외를 보강합니다.
+2. 서울버스 정류장 ARS 기준 매칭을 실기기 데모 경로와 추가 서울 노선 샘플로 검증합니다.
 3. Google Routes `arrivalTime` 또는 `departureTime`을 추천 계산 흐름에 맞게 연결합니다.
 4. 실시간 매칭 실패 상태도 경로 fallback 메시지와 같은 UI 패턴으로 통합합니다.
 5. 최근 기록 평균 또는 이동수단별 도착 오차를 개인 보정 정책에 추가합니다.
@@ -183,4 +183,4 @@ origin + destination + transportMode
 7. 운영 배포 전 API 키 제한, 호출량 모니터링, 백엔드 프록시 필요 여부를 확정합니다.
 # 현재 API 참고
 
-최신 API 동작은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 ODsay는 대중교통 기본 경로 provider이며, 실시간 보정과 탑승 가능성 랭킹은 ODsay 후보 경로 안의 첫 버스 후보에 우선 적용합니다. 주변 정류장의 모든 버스 대안을 직접 탐색하는 기능은 아직 구현하지 않았습니다. 서울버스는 현재 ODsay 노선 ID 기반 조회를 사용하므로, ID가 맞지 않는 경로를 위해 정류장 ARS 기반 도착목록 fallback을 후속 작업으로 둡니다.
+최신 API 동작은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 ODsay는 대중교통 기본 경로 provider이며, 실시간 보정과 탑승 가능성 랭킹은 ODsay 후보 경로 안의 첫 버스 후보에 우선 적용합니다. 주변 정류장의 모든 버스 대안을 직접 탐색하는 기능은 아직 구현하지 않았습니다. 서울버스는 정류장 ARS 기반 도착목록과 노선명 매칭을 우선 사용하고, 실패하면 기존 ODsay 노선 ID 기반 조회로 fallback합니다.
