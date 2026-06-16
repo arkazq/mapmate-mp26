@@ -46,6 +46,22 @@ class RoutineRecommendationUiModelTest {
     }
 
     @Test
+    fun toRecommendationUiModel_usesDisplayedDepartureTimeWhenAlarmPolicyAdjustedSchedule() {
+        val recommendation = sampleRoutine.toRecommendationUiModel(
+            routeEstimate = routeEstimate,
+            now = LocalTime.of(7, 30),
+            recommendedDepartureAtEpochMillis = 70 * 60 * 1000L,
+            displayedDepartureTime = LocalTime.of(8, 10),
+        )
+
+        assertEquals("08:07", recommendation.calculatedDepartureTimeText)
+        assertEquals("08:10", recommendation.recommendedDepartureTimeText)
+        assertEquals("08:10", recommendation.recommendedDepartureDisplayText)
+        assertEquals(LocalTime.of(8, 10), recommendation.recommendedDepartureTime)
+        assertEquals(LocalTime.of(8, 7), recommendation.calculatedDepartureTime)
+    }
+
+    @Test
     fun departureCountdownText_formatsLongRemainingTimeAsHoursAndMinutes() {
         val recommendation = sampleRoutine.toRecommendationUiModel(
             routeEstimate = routeEstimate,

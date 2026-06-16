@@ -7,12 +7,32 @@
 현재 브랜치:
 
 ```text
-feature/realtime-route-candidate-ranking-ui
+feature/predeparture-status-notification
 ```
 
-현재 브랜치는 ODsay 후보 경로 랭킹 결과를 사용자가 이해할 수 있게 보여주는 UI 작업을 다룹니다. 이전 브랜치에서 구현한 첫 버스 탑승 가능성 기반 후보 랭킹을 기반으로, 홈 화면과 상세 예측 화면에 구조화된 탑승 판단 정보를 표시합니다.
+현재 브랜치는 출발 전 상태 알림, 홈 화면의 다음 루틴 선택 기준 정리, 홈/알림 권장 출발 시각 동기화, TAGO 노선명 정규화 보강을 다룹니다. 이전 브랜치에서 구현한 첫 버스 탑승 가능성 기반 후보 랭킹과 홈/상세 예측 탑승 판단 UI를 유지하면서, 발표 전 데모에서 눈에 보일 수 있는 시각 불일치와 루틴 선택 불일치를 정리했습니다.
 
 주변 정류장의 버스를 ODsay 결과 밖에서 직접 탐색하거나, 모든 환승 구간의 실시간 도착정보를 평가하는 기능은 아직 이 브랜치 범위가 아닙니다.
+
+## 출발 전 상태 알림
+
+구현된 내용:
+
+- 설정 화면에 `출발 전 상태 알림` 토글을 추가했습니다.
+- 출발 알림이 켜져 있고 상태 알림 토글이 켜져 있으면, 권장 출발 시각 30분 이내에 일반 notification으로 권장 출발 시각을 표시합니다.
+- T-30/T-15/T-5 재조회 결과로 권장 출발 시각이 바뀌면 같은 루틴의 상태 알림을 갱신합니다.
+- 실제 출발 알림이 울릴 때는 해당 루틴의 상태 알림을 정리합니다.
+- 토글을 끄거나 알림 권한이 없으면 상태 알림을 정리하고 기존 출발 알림/재조회 흐름은 유지합니다.
+
+관련 파일:
+
+- `app/src/main/java/com/mapmate/domain/alarm/PredepartureStatusNotificationPublisher.kt`
+- `app/src/main/java/com/mapmate/data/alarm/AndroidPredepartureStatusNotificationPublisher.kt`
+- `app/src/main/java/com/mapmate/data/alarm/DepartureAlarmCoordinator.kt`
+- `app/src/main/java/com/mapmate/data/alarm/DepartureAlarmReceiver.kt`
+- `app/src/main/java/com/mapmate/domain/model/AppSettings.kt`
+- `app/src/main/java/com/mapmate/data/preferences/DataStoreSettingsRepository.kt`
+- `app/src/main/java/com/mapmate/presentation/settings/SettingsScreen.kt`
 
 ## 출발 전 재조회와 알림
 
@@ -27,6 +47,7 @@ feature/realtime-route-candidate-ranking-ui
 - `DepartureRecheckScheduler.schedule()`은 `replaceExisting` 값을 받아 기존 재조회 작업 정리 여부를 구분합니다.
 - 알림 수신 후 다음 반복 알림을 계산할 때 방금 울린 출발 이벤트는 제외합니다.
 - 출발까지 5분 이내로 재계산되면 사용자에게 출발 준비 알림이 즉시 표시될 수 있습니다.
+- 출발 전 상태 알림은 출발 알림과 별도 ID 범위를 사용하며, 실제 출발 알림 전환 시 중복으로 남지 않도록 정리합니다.
 
 관련 파일:
 
@@ -43,8 +64,12 @@ feature/realtime-route-candidate-ranking-ui
 구현된 내용:
 
 - 홈 추천 정보는 현재 시각을 기준으로 다시 계산됩니다.
+- 홈 대시보드의 메인 추천은 저장 순서가 아니라 현 시간 기준 가장 가까운 다음 출발 루틴을 선택합니다.
+- 홈 화면은 메인 추천 아래에 저장된 모든 루틴 목록을 함께 표시합니다.
+- 홈 메인 추천의 `이동 기록 시작` 대상도 가장 가까운 다음 출발 루틴을 따릅니다.
 - 홈 대시보드는 1분 단위 ticker를 사용해 남은 출발 시간과 진행률을 갱신합니다.
 - `recommendedDepartureTime`, `recommendedDepartureAtEpochMillis`, `minutesUntilDeparture`, `departureCountdownText`, `departureProgress`는 고정 문자열이 아니라 추천 상태에서 계산됩니다.
+- 홈/상세 예측 화면의 표시 권장 출발 시각은 출발 알림의 `DepartureAdjustmentPolicy`와 같은 기준을 적용해 알림 시각과 화면 시각이 어긋나지 않도록 맞춥니다.
 - 홈 화면의 실시간 재조회는 권장 출발 시각이 현재 기준 `0..30`분 안에 있을 때만 수행합니다.
 - 남은 출발 시간이 60분 이상이면 `1328분` 같은 원시 분 값 대신 `22시간 8분` 형식으로 표시합니다.
 
@@ -54,6 +79,34 @@ feature/realtime-route-candidate-ranking-ui
 - `app/src/main/java/com/mapmate/presentation/home/HomeScreen.kt`
 - `app/src/main/java/com/mapmate/presentation/home/HomeUiState.kt`
 - `app/src/main/java/com/mapmate/presentation/common/RoutineRecommendationUiModel.kt`
+
+## TAGO 노선명 정규화
+
+구현된 내용:
+
+- TAGO 도착정보 매칭 시 ODsay 노선명에 붙는 괄호/대괄호 업체명 표기를 제거합니다.
+- 예를 들어 ODsay `11(남양여객)`은 TAGO `11`과 같은 노선으로 비교됩니다.
+- 기존 공백 제거와 `번` 제거 정책은 유지합니다.
+- 정류장 좌표, 노선명, 도착정보가 맞지 않으면 기존처럼 null을 반환해 서울 provider/fresh snapshot/ODsay 기본값 fallback을 유지합니다.
+
+관련 파일:
+
+- `app/src/main/java/com/mapmate/data/remote/provider/TagoBusArrivalProvider.kt`
+- `app/src/test/kotlin/com/mapmate/data/remote/provider/TagoBusArrivalProviderTest.kt`
+
+## 서울버스 매칭 한계와 후속 작업
+
+확인된 내용:
+
+- `SEOUL_BUS_SERVICE_KEY`와 서울특별시 버스도착정보조회 endpoint는 정상 응답을 확인했습니다.
+- 다만 일부 ODsay 경로에서 `busID/routeID`를 서울버스 `busRouteId`로 사용하면 `결과가 없습니다`가 반환될 수 있습니다.
+- 따라서 해당 경로는 현재 실시간 보정이 붙지 않고 TAGO/fresh snapshot/ODsay 기본값 fallback으로 복구됩니다.
+
+후속 개선:
+
+- `startArsID`가 있으면 서울버스 정류장 도착목록 endpoint를 조회합니다.
+- 도착목록에서 `rtNm` 또는 `busRouteAbrv`를 ODsay `busNo`와 매칭합니다.
+- 실패 시 현재 `busRouteId` 기반 조회를 fallback으로 유지합니다.
 
 ## 첫 버스 탑승 가능성 기반 후보 랭킹
 

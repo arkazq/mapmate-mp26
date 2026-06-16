@@ -82,6 +82,8 @@ fun Routine.toRecommendationUiModel(
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     now: LocalTime = LocalTime.now(),
     recommendedDepartureAtEpochMillis: Long? = null,
+    displayedDepartureTime: LocalTime? = null,
+    isImmediateDepartureOverride: Boolean = false,
 ): RoutineRecommendationUiModel {
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
     val departureRecommendation = departureTimeCalculator.calculateWithNowClamp(
@@ -91,12 +93,13 @@ fun Routine.toRecommendationUiModel(
         safetyMarginMinutes = safetyMarginMinutes,
         now = now,
     )
+    val recommendedDepartureTime = displayedDepartureTime ?: departureRecommendation.recommendedDepartureTime
 
     return RoutineRecommendationUiModel(
         routine = this,
-        recommendedDepartureTimeText = departureRecommendation.recommendedDepartureTime.format(formatter),
+        recommendedDepartureTimeText = recommendedDepartureTime.format(formatter),
         calculatedDepartureTimeText = departureRecommendation.calculatedDepartureTime.format(formatter),
-        recommendedDepartureTime = departureRecommendation.recommendedDepartureTime,
+        recommendedDepartureTime = recommendedDepartureTime,
         calculatedDepartureTime = departureRecommendation.calculatedDepartureTime,
         recommendedDepartureAtEpochMillis = recommendedDepartureAtEpochMillis,
         targetArrivalTimeText = targetArrivalTime.format(formatter),
@@ -109,7 +112,8 @@ fun Routine.toRecommendationUiModel(
         },
         isFallbackEstimate = routeEstimate.isFallbackEstimate,
         routeStatusMessage = routeEstimate.statusMessage,
-        isImmediateDepartureRecommended = departureRecommendation.isImmediateDepartureRecommended,
+        isImmediateDepartureRecommended = isImmediateDepartureOverride ||
+            departureRecommendation.isImmediateDepartureRecommended,
         routeSegments = routeEstimate.segments,
         boardingAdvice = routeEstimate.boardingAdvice,
     )
@@ -119,6 +123,8 @@ fun Routine.toFallbackRecommendationUiModel(
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     now: LocalTime = LocalTime.now(),
     recommendedDepartureAtEpochMillis: Long? = null,
+    displayedDepartureTime: LocalTime? = null,
+    isImmediateDepartureOverride: Boolean = false,
 ): RoutineRecommendationUiModel {
     val estimatedMinutes = when (transportMode) {
         TransportMode.TRANSIT -> 42
@@ -139,5 +145,7 @@ fun Routine.toFallbackRecommendationUiModel(
         departureTimeCalculator = departureTimeCalculator,
         now = now,
         recommendedDepartureAtEpochMillis = recommendedDepartureAtEpochMillis,
+        displayedDepartureTime = displayedDepartureTime,
+        isImmediateDepartureOverride = isImmediateDepartureOverride,
     )
 }

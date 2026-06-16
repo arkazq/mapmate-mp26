@@ -48,6 +48,8 @@ class DataStoreSettingsRepository(
                 ),
                 notificationsEnabled = preferences[NOTIFICATIONS_ENABLED]
                     ?: AppSettings.DEFAULT_NOTIFICATIONS_ENABLED,
+                predepartureStatusNotificationEnabled = preferences[PREDEPARTURE_STATUS_NOTIFICATION_ENABLED]
+                    ?: AppSettings.DEFAULT_PREDEPARTURE_STATUS_NOTIFICATION_ENABLED,
                 defaultTransportMode = AppSettings.transportModeOrDefault(
                     storedName = preferences[DEFAULT_TRANSPORT_MODE],
                 ),
@@ -90,6 +92,12 @@ class DataStoreSettingsRepository(
         }
     }
 
+    override suspend fun updatePredepartureStatusNotificationEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PREDEPARTURE_STATUS_NOTIFICATION_ENABLED] = enabled
+        }
+    }
+
     override suspend fun updateDefaultTransportMode(transportMode: TransportMode) {
         dataStore.edit { preferences ->
             preferences[DEFAULT_TRANSPORT_MODE] = transportMode.name
@@ -106,6 +114,8 @@ class DataStoreSettingsRepository(
         val PERSONAL_BUFFER_MINUTES = intPreferencesKey("personal_buffer_minutes")
         val SAFETY_MARGIN_MINUTES = intPreferencesKey("safety_margin_minutes")
         val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+        val PREDEPARTURE_STATUS_NOTIFICATION_ENABLED =
+            booleanPreferencesKey("predeparture_status_notification_enabled")
         val DEFAULT_TRANSPORT_MODE = stringPreferencesKey("default_transport_mode")
     }
 }

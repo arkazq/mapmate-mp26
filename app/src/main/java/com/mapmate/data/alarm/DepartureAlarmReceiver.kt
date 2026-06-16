@@ -41,6 +41,7 @@ class DepartureAlarmReceiver : BroadcastReceiver() {
         val routineId = intent.getLongExtra(EXTRA_ROUTINE_ID, DEFAULT_ROUTINE_ID)
         val routeDurationMinutes = intent.getIntExtra(EXTRA_ROUTE_DURATION_MINUTES, 0)
 
+        AndroidPredepartureStatusNotificationPublisher(context).cancel(routineId)
         DepartureAlarmNotificationPublisher(context).show(
             routineId = routineId,
             routineName = routineName,

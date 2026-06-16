@@ -4,6 +4,7 @@ import android.content.Context
 import com.mapmate.BuildConfig
 import com.mapmate.data.alarm.AndroidDepartureAlarmScheduler
 import com.mapmate.data.alarm.AndroidDepartureRecheckScheduler
+import com.mapmate.data.alarm.AndroidPredepartureStatusNotificationPublisher
 import com.mapmate.data.alarm.DepartureAlarmCoordinator
 import com.mapmate.data.location.AndroidCurrentLocationProvider
 import com.mapmate.data.local.MapMateDatabase
@@ -213,6 +214,8 @@ class AppContainer(
             routeEstimateProvider = routeEstimateProvider,
             alarmScheduler = AndroidDepartureAlarmScheduler(applicationContext),
             recheckScheduler = AndroidDepartureRecheckScheduler(applicationContext),
+            predepartureStatusNotificationPublisher =
+                AndroidPredepartureStatusNotificationPublisher(applicationContext),
         )
     }
 

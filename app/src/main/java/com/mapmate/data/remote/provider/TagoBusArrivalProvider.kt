@@ -127,6 +127,8 @@ class TagoBusArrivalProvider(
 
     private fun String?.normalizedRouteName(): String {
         return orEmpty()
+            .replace("\\([^)]*\\)".toRegex(), "")
+            .replace("\\[[^]]*]".toRegex(), "")
             .replace("\\s+".toRegex(), "")
             .replace("번", "")
             .trim()
