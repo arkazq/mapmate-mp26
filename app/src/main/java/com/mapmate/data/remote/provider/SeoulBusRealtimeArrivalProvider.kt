@@ -15,6 +15,37 @@ class SeoulBusRealtimeArrivalProvider(
         val busQuery = query as? TransitArrivalQuery.Bus ?: return null
         check(config.hasSeoulBusServiceKey) { "Seoul bus service key is missing." }
 
+        return getArrivalByStationUid(busQuery)
+            ?: getArrivalByRouteAll(busQuery)
+    }
+
+    private suspend fun getArrivalByStationUid(
+        busQuery: TransitArrivalQuery.Bus,
+    ): TransitArrivalEstimate? {
+        val stationArsId = busQuery.stationArsId?.takeIf(String::isNotBlank) ?: return null
+        val routeName = busQuery.routeName?.takeIf(String::isNotBlank) ?: return null
+        val responseXml = runCatching {
+            api.getArrivalsByStationUid(
+                serviceKey = config.seoulBusServiceKey,
+                stationArsId = stationArsId,
+            ).string()
+        }.getOrNull() ?: return null
+
+        val item = SeoulBusArrivalXmlParser.parse(responseXml)
+            .firstRouteMatchOrNull(routeName)
+            ?: return null
+        val waitMinutes = item.firstWaitMinutes() ?: return null
+
+        return item.toEstimate(
+            busQuery = busQuery,
+            waitMinutes = waitMinutes,
+            reasonSuffix = "ARS ${stationArsId} 정류장 기준",
+        )
+    }
+
+    private suspend fun getArrivalByRouteAll(
+        busQuery: TransitArrivalQuery.Bus,
+    ): TransitArrivalEstimate? {
         val busRouteId = busQuery.busRouteId?.takeIf(String::isNotBlank) ?: return null
         val responseXml = api.getArrivalsByRouteAll(
             serviceKey = config.seoulBusServiceKey,
@@ -26,15 +57,28 @@ class SeoulBusRealtimeArrivalProvider(
             ?: return null
         val waitMinutes = item.firstWaitMinutes() ?: return null
 
+        return item.toEstimate(
+            busQuery = busQuery,
+            waitMinutes = waitMinutes,
+            reasonSuffix = "busRouteId ${busRouteId} 기준",
+        )
+    }
+
+    private fun SeoulBusArrivalItem.toEstimate(
+        busQuery: TransitArrivalQuery.Bus,
+        waitMinutes: Int,
+        reasonSuffix: String,
+    ): TransitArrivalEstimate {
         return TransitArrivalEstimate(
             waitMinutes = waitMinutes,
-            summary = "${item.stationName ?: busQuery.stationName.orEmpty()} first bus arrival in ${waitMinutes} min",
+            summary = "${stationName ?: busQuery.stationName.orEmpty()} ${displayRouteName(busQuery.routeName)} 버스 ${waitMinutes}분 후 도착 예정",
             providerName = "Seoul Bus Realtime",
             reason = listOfNotNull(
-                item.routeName?.takeIf(String::isNotBlank),
-                item.arrivalMessage1?.takeIf(String::isNotBlank),
+                displayRouteName(busQuery.routeName).takeIf(String::isNotBlank),
+                arrivalMessage1?.takeIf(String::isNotBlank),
+                reasonSuffix,
             ).joinToString(" ").ifBlank {
-                "Seoul realtime bus arrival."
+                "서울버스 실시간 도착정보 기준입니다."
             },
         )
     }
@@ -45,6 +89,20 @@ class SeoulBusRealtimeArrivalProvider(
             stationArsId != null && stationArsId == query.stationArsId,
             stationName != null && stationName.normalizedStationName() == query.stationName.normalizedStationName(),
         ).any { it }
+    }
+
+    private fun List<SeoulBusArrivalItem>.firstRouteMatchOrNull(
+        routeName: String,
+    ): SeoulBusArrivalItem? {
+        val normalizedRouteName = routeName.normalizedRouteName()
+        if (normalizedRouteName.isBlank()) return null
+        return filter { item ->
+            item.routeNames().any { it.normalizedRouteName() == normalizedRouteName }
+        }.minByOrNull { it.firstWaitMinutes() ?: Int.MAX_VALUE }
+    }
+
+    private fun SeoulBusArrivalItem.routeNames(): List<String> {
+        return listOfNotNull(routeName, routeShortName)
     }
 
     private fun SeoulBusArrivalItem.firstWaitMinutes(): Int? {
@@ -71,9 +129,24 @@ class SeoulBusRealtimeArrivalProvider(
         }
     }
 
+    private fun SeoulBusArrivalItem.displayRouteName(fallback: String?): String {
+        return routeName?.takeIf(String::isNotBlank)
+            ?: routeShortName?.takeIf(String::isNotBlank)
+            ?: fallback.orEmpty()
+    }
+
     private fun String?.normalizedStationName(): String {
         return this.orEmpty()
             .replace("\\s+".toRegex(), "")
+            .trim()
+    }
+
+    private fun String?.normalizedRouteName(): String {
+        return this.orEmpty()
+            .replace("\\([^)]*\\)".toRegex(), "")
+            .replace("\\[[^]]*]".toRegex(), "")
+            .replace("\\s+".toRegex(), "")
+            .replace("번", "")
             .trim()
     }
 

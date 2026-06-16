@@ -21,12 +21,12 @@ internal object SeoulBusArrivalXmlParser {
                         stationArsId = element.text("arsId"),
                         stationName = element.text("stNm"),
                         routeId = element.text("busRouteId"),
-                        routeName = element.text("rtNm")
-                            ?: element.text("busRouteAbrv"),
+                        routeName = element.text("rtNm"),
+                        routeShortName = element.text("busRouteAbrv"),
                         arrivalMessage1 = element.text("arrmsg1"),
                         arrivalMessage2 = element.text("arrmsg2"),
-                        arrivalSeconds1 = element.text("exps1")?.toIntOrNull(),
-                        arrivalSeconds2 = element.text("exps2")?.toIntOrNull(),
+                        arrivalSeconds1 = element.firstInt("exps1", "traTime1"),
+                        arrivalSeconds2 = element.firstInt("exps2", "traTime2"),
                     ),
                 )
             }
@@ -51,6 +51,12 @@ internal object SeoulBusArrivalXmlParser {
             .orEmpty()
         return value.takeIf(String::isNotBlank)
     }
+
+    private fun Element.firstInt(vararg tagNames: String): Int? {
+        return tagNames.firstNotNullOfOrNull { tagName ->
+            text(tagName)?.toIntOrNull()
+        }
+    }
 }
 
 internal data class SeoulBusArrivalItem(
@@ -59,6 +65,7 @@ internal data class SeoulBusArrivalItem(
     val stationName: String?,
     val routeId: String?,
     val routeName: String?,
+    val routeShortName: String?,
     val arrivalMessage1: String?,
     val arrivalMessage2: String?,
     val arrivalSeconds1: Int?,

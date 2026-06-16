@@ -360,7 +360,7 @@ Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 - `OdsayRouteEstimateProvider`: ODsay 대중교통 `path` 후보를 최대 5개 평가하고, 출발 30분 이내 첫 버스 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정합니다. 선택된 후보의 `RouteSegment`만 `RouteEstimate.segments`에 넣고, 성공값은 `RouteRealtimeSnapshotRepository`에 저장합니다.
 - `RouteCandidateEvaluator`: ODsay 후보별 총 소요시간, 첫 버스 탑승 여유, 놓칠 위험, 환승 수, 도보 시간, 실시간 신뢰도를 점수화해 실제로 타기 어려운 첫 버스 후보를 낮게 평가합니다.
 - `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환합니다. 현재 ODsay 후보 랭킹의 시간 보정 호출은 첫 버스 구간에 우선 적용합니다.
-- `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산. 현재는 ODsay `busID/routeID`를 서울버스 `busRouteId`로 사용할 수 있는 경로에서 동작하며, 일부 ID 불일치 경로는 정류장 ARS 기준 도착목록 조회 fallback이 후속 작업입니다.
+- `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산. ODsay `startArsID`가 있으면 `getStationByUid` 정류장 도착목록에서 `rtNm`/`busRouteAbrv`를 노선번호와 매칭하고, 실패하면 기존 `busRouteId` 기준 조회로 fallback합니다.
 - `SeoulSubwayRealtimeArrivalProvider`: 서울 지하철 실시간 도착정보 JSON 응답에서 가장 빠른 첫 지하철 대기 시간을 계산
 - `network_security_config.xml`: 기본 cleartext 통신을 차단하고 서울/TAGO 공공 API HTTP endpoint에 한해 cleartext 통신을 허용
 
@@ -434,7 +434,7 @@ User input
 
 전체 경로 예상값 cache는 `RouteEstimateCacheRepository`와 Room `route_estimate_cache` 테이블이 담당합니다. `CachingRouteEstimateProvider`는 ODsay/Google 실제 provider가 성공하고 `RouteEstimate.hasRealtimeAdjustment`가 false이면 6시간 TTL로 예상값을 저장합니다. 이후 해당 provider가 실패하면 mock fallback 전에 fresh cache를 반환합니다. 실시간 첫 버스 보정값은 일반 cache에 저장하지 않고 `RouteRealtimeSnapshot`에 별도로 저장됩니다.
 
-대중교통 실시간 보정은 ODsay 후보 경로의 첫 버스 구간에 대해 `CompositeTransitArrivalProvider`가 서울 버스 도착정보와 TAGO 버스 도착정보를 순서대로 시도합니다. 서울 버스 provider는 도착정보 endpoint와 키가 정상이어도 ODsay 노선 ID가 서울버스 `busRouteId`와 다른 일부 경로에서는 매칭에 실패할 수 있으므로, 이 경우 기존 fallback 흐름을 유지합니다. TAGO provider는 ODsay 첫 버스 탑승 정류장 좌표가 있을 때 근접 정류소를 조회하고, 정류장명/거리/노선번호 매칭으로 `arrtime`을 선택합니다. ODsay 노선명에 붙는 괄호/대괄호 업체명 표기는 제거해 TAGO `routeno`와 비교합니다. 좌표, 키, 매칭이 없으면 null을 반환해 기존 provider/fallback 흐름을 유지합니다.
+대중교통 실시간 보정은 ODsay 후보 경로의 첫 버스 구간에 대해 `CompositeTransitArrivalProvider`가 서울 버스 도착정보와 TAGO 버스 도착정보를 순서대로 시도합니다. 서울 버스 provider는 ODsay `startArsID`와 `busNo`가 있으면 정류장 ARS 기준 도착목록에서 노선명을 먼저 매칭해 ODsay 노선 ID와 서울버스 `busRouteId`가 다른 경로도 처리합니다. 정류장 기준 매칭이 실패하면 기존 `busRouteId` 기준 조회로 fallback합니다. TAGO provider는 ODsay 첫 버스 탑승 정류장 좌표가 있을 때 근접 정류소를 조회하고, 정류장명/거리/노선번호 매칭으로 `arrtime`을 선택합니다. ODsay 노선명에 붙는 괄호/대괄호 업체명 표기는 제거해 TAGO `routeno`와 비교합니다. 좌표, 키, 매칭이 없으면 null을 반환해 기존 provider/fallback 흐름을 유지합니다.
 
 운행 상태 보조 설명은 `TransitOperationStatusProvider` 계층이 담당합니다. `SeoulBusOperationStatusProvider`는 서울 버스 위치정보에서 운행 중 차량 수와 정류장 접근 차량 수를 요약하고, `SeoulSubwayOperationStatusProvider`는 서울 지하철 실시간 열차 위치정보에서 호선 운행 상태와 현재 역 주변 열차 수를 요약합니다. 이 값은 권장 출발 시각 계산값을 직접 대체하지 않고 ODsay reason에 보조 설명으로 붙습니다.
 
