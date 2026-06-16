@@ -12,6 +12,7 @@ import com.mapmate.presentation.common.toFallbackRecommendationUiModel
 import com.mapmate.presentation.common.toRecommendationUiModel
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,67 +31,75 @@ class PredictionDetailViewModel(
     val uiState: StateFlow<PredictionDetailUiState> = _uiState.asStateFlow()
 
     init {
-        loadPrediction()
+        startPredictionRefresh()
     }
 
-    private fun loadPrediction() {
+    // 실시간 도착/탑승 정보가 stale해지지 않도록 화면이 떠 있는 동안 주기적으로 다시 계산한다.
+    private fun startPredictionRefresh() {
         viewModelScope.launch {
-            val recommendation = runCatching {
-                val now = nowProvider()
-                val baseRouteEstimate = routeEstimateProvider.getRouteEstimate(
+            while (true) {
+                refreshPrediction()
+                delay(REFRESH_INTERVAL_MILLIS)
+            }
+        }
+    }
+
+    private suspend fun refreshPrediction() {
+        val recommendation = runCatching {
+            val now = nowProvider()
+            val baseRouteEstimate = routeEstimateProvider.getRouteEstimate(
+                origin = routine.origin,
+                destination = routine.destination,
+                transportMode = routine.transportMode,
+                routineId = routine.id,
+            )
+            val baseSchedule = alarmPlanner.nextAlarmForRoutine(
+                routine = routine,
+                routeDurationMinutes = baseRouteEstimate.estimatedMinutes,
+                now = now,
+            )
+            val routeEstimate = if (baseSchedule?.shouldApplyRealtime(now) == true) {
+                routeEstimateProvider.getRouteEstimate(
                     origin = routine.origin,
                     destination = routine.destination,
                     transportMode = routine.transportMode,
                     routineId = routine.id,
+                    scheduledDepartureEpochMillis = baseSchedule.triggerAtEpochMillis,
                 )
-                val baseSchedule = alarmPlanner.nextAlarmForRoutine(
-                    routine = routine,
-                    routeDurationMinutes = baseRouteEstimate.estimatedMinutes,
-                    now = now,
-                )
-                val routeEstimate = if (baseSchedule?.shouldApplyRealtime(now) == true) {
-                    routeEstimateProvider.getRouteEstimate(
-                        origin = routine.origin,
-                        destination = routine.destination,
-                        transportMode = routine.transportMode,
-                        routineId = routine.id,
-                        scheduledDepartureEpochMillis = baseSchedule.triggerAtEpochMillis,
-                    )
-                } else {
-                    baseRouteEstimate
-                }
-                val finalSchedule = alarmPlanner.nextAlarmForRoutine(
-                    routine = routine,
-                    routeDurationMinutes = routeEstimate.estimatedMinutes,
-                    now = now,
-                )
-                val displaySchedule = finalSchedule?.let {
-                    adjustmentPolicy.adjust(
-                        previousSchedule = baseSchedule,
-                        proposedSchedule = it,
-                    )
-                }
-                routine.toRecommendationUiModel(
-                    routeEstimate = routeEstimate,
-                    departureTimeCalculator = departureTimeCalculator,
-                    now = now.toLocalTime(),
-                    recommendedDepartureAtEpochMillis = displaySchedule?.triggerAtEpochMillis,
-                    displayedDepartureTime = displaySchedule?.recommendedDepartureTime,
-                    isImmediateDepartureOverride = displaySchedule?.triggerAtEpochMillis
-                        ?.let { it <= now.toInstant().toEpochMilli() }
-                        ?: false,
-                )
-            }.getOrElse {
-                routine.toFallbackRecommendationUiModel(departureTimeCalculator)
+            } else {
+                baseRouteEstimate
             }
+            val finalSchedule = alarmPlanner.nextAlarmForRoutine(
+                routine = routine,
+                routeDurationMinutes = routeEstimate.estimatedMinutes,
+                now = now,
+            )
+            val displaySchedule = finalSchedule?.let {
+                adjustmentPolicy.adjust(
+                    previousSchedule = baseSchedule,
+                    proposedSchedule = it,
+                )
+            }
+            routine.toRecommendationUiModel(
+                routeEstimate = routeEstimate,
+                departureTimeCalculator = departureTimeCalculator,
+                now = now.toLocalTime(),
+                recommendedDepartureAtEpochMillis = displaySchedule?.triggerAtEpochMillis,
+                displayedDepartureTime = displaySchedule?.recommendedDepartureTime,
+                isImmediateDepartureOverride = displaySchedule?.triggerAtEpochMillis
+                    ?.let { it <= now.toInstant().toEpochMilli() }
+                    ?: false,
+            )
+        }.getOrElse {
+            routine.toFallbackRecommendationUiModel(departureTimeCalculator)
+        }
 
-            _uiState.update {
-                it.copy(
-                    recommendation = recommendation,
-                    isLoading = false,
-                    errorMessage = null,
-                )
-            }
+        _uiState.update {
+            it.copy(
+                recommendation = recommendation,
+                isLoading = false,
+                errorMessage = null,
+            )
         }
     }
 
@@ -102,6 +111,7 @@ class PredictionDetailViewModel(
     companion object {
         private const val MILLIS_PER_MINUTE = 60_000L
         private const val REALTIME_LOOKAHEAD_MINUTES = 30L
+        private const val REFRESH_INTERVAL_MILLIS = 60_000L
 
         fun factory(
             routine: Routine,
