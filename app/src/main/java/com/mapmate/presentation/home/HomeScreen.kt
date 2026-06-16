@@ -21,8 +21,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +54,7 @@ import com.mapmate.presentation.common.toFallbackRecommendationUiModel
 import com.mapmate.presentation.common.transportModeIcon
 import com.mapmate.ui.theme.MapMateTheme
 import java.time.LocalTime
+import kotlinx.coroutines.delay
 
 @Composable
 fun HomeRoute(
@@ -91,6 +96,16 @@ fun HomeScreen(
     onRoutinesClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 카운트다운/진행바 표시는 1초마다 갱신해 부드럽게 움직이게 한다.
+    // 경로 재계산(getRouteEstimate, 60초)과 분리되어 추가 API 호출은 없다.
+    var displayNowEpochMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            displayNowEpochMillis = System.currentTimeMillis()
+            delay(1_000L)
+        }
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -125,7 +140,7 @@ fun HomeScreen(
             item {
                 CountdownProgressCard(
                     recommendation = recommendation,
-                    nowEpochMillis = uiState.nowEpochMillis,
+                    nowEpochMillis = displayNowEpochMillis,
                 )
             }
             item {
