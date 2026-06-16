@@ -37,7 +37,7 @@ ODsay 경로 결과
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 대시보드, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록/통계 요약, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, WorkManager 기반 출발 전 재조회, ODsay 후보 경로 랭킹, 출발 30분 이내 첫 버스 실시간 도착정보 기반 대기 지연 보정, TAGO 버스 도착정보 fallback, 버스/지하철 위치정보 기반 운행 상태 보조 설명, 전체 경로 예상값 cache까지 구현되어 있습니다. Room 기반 루틴/이동 기록/경로 cache 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 홈 대시보드, 현 시간 기준 다음 출발 루틴 표시, 홈의 전체 루틴 목록, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록/통계 요약, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, 출발 전 상태 알림, WorkManager 기반 출발 전 재조회, ODsay 후보 경로 랭킹, 출발 30분 이내 첫 버스 실시간 도착정보 기반 대기 지연 보정, TAGO 버스 도착정보 fallback, 버스/지하철 위치정보 기반 운행 상태 보조 설명, 전체 경로 예상값 cache까지 구현되어 있습니다. Room 기반 루틴/이동 기록/경로 cache 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
 
 ## 현재 아키텍처 개요
 
@@ -183,8 +183,8 @@ com.mapmate
 
 홈 화면의 UI와 상태 관리를 담당합니다.
 
-- `HomeScreen`: 오늘 권장 출발 시각, 출발까지 남은 시간, 추천 근거, 첫 버스 탑승 판단 요약, 지표 카드, 오늘의 루틴 요약 표시
-- `HomeViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 홈 대시보드 추천 UI 모델을 생성
+- `HomeScreen`: 현 시간 기준 다음 출발 루틴의 권장 출발 시각, 출발까지 남은 시간, 추천 근거, 첫 버스 탑승 판단 요약, 지표 카드, 저장된 전체 루틴 목록 표시
+- `HomeViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 각 루틴의 다음 출발 시각을 계산한 뒤 가장 가까운 출발 루틴을 홈 대시보드 추천 UI 모델로 선택
 - `HomeUiState`: 홈 화면에 필요한 저장 루틴 목록, 대시보드 추천, 상태값
 
 ## `presentation/routine`
@@ -262,6 +262,7 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 - `DepartureAlarmSchedule`: 예약할 루틴, 목적지, 권장 출발 시각, 알림 trigger epoch millis를 담는 모델
 - `DepartureAlarmScheduler`: Android `AlarmManager` 구현체를 domain 밖으로 숨기기 위한 interface
 - `DepartureRecheckScheduler`: Android `WorkManager` 구현체를 domain 밖으로 숨기기 위한 interface
+- `PredepartureStatusNotificationPublisher`: 출발 30분 이내 권장 출발 시각 상태 알림 구현체를 domain 밖으로 숨기기 위한 interface
 
 ## `domain/calculator`
 
@@ -335,7 +336,7 @@ domain repository interface의 Room 구현체입니다.
 
 Preferences DataStore 기반 설정 저장 구조입니다.
 
-- `DataStoreSettingsRepository`: 개인 보정 시간, 안전 여유 시간, 알림 설정값, 기본 이동수단을 저장하고 `Flow<AppSettings>`로 관찰하며, 이동 기록 도착 오차를 개인 보정값에 반영
+- `DataStoreSettingsRepository`: 개인 보정 시간, 안전 여유 시간, 출발 알림 설정값, 출발 전 상태 알림 설정값, 기본 이동수단을 저장하고 `Flow<AppSettings>`로 관찰하며, 이동 기록 도착 오차를 개인 보정값에 반영
 
 ## `data/alarm`
 
@@ -347,6 +348,7 @@ Android `AlarmManager`, `BroadcastReceiver`, `NotificationManager` 기반 출발
 - `DepartureAlarmReceiver`: 예약된 알림을 수신해 notification을 표시하고 다음 반복 알림을 재예약
 - `DepartureAlarmBootReceiver`: 기기 부팅 또는 앱 업데이트 후 알림을 재예약
 - `DepartureAlarmNotificationPublisher`: notification channel 생성과 출발 알림 표시
+- `AndroidPredepartureStatusNotificationPublisher`: 출발 30분 이내 권장 출발 시각을 일반 notification으로 표시하고, 재조회 결과가 바뀌면 같은 루틴의 상태 알림을 갱신
 - `DepartureRecheckWorker`: 현재 루틴/설정과 경로 provider를 다시 사용해 다음 출발 알림과 다음 재조회 작업을 갱신
 
 ## `data/remote`
@@ -358,7 +360,7 @@ Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 - `OdsayRouteEstimateProvider`: ODsay 대중교통 `path` 후보를 최대 5개 평가하고, 출발 30분 이내 첫 버스 구간을 `TransitArrivalProvider`에 전달해 실시간 대기 지연을 보정합니다. 선택된 후보의 `RouteSegment`만 `RouteEstimate.segments`에 넣고, 성공값은 `RouteRealtimeSnapshotRepository`에 저장합니다.
 - `RouteCandidateEvaluator`: ODsay 후보별 총 소요시간, 첫 버스 탑승 여유, 놓칠 위험, 환승 수, 도보 시간, 실시간 신뢰도를 점수화해 실제로 타기 어려운 첫 버스 후보를 낮게 평가합니다.
 - `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환합니다. 현재 ODsay 후보 랭킹의 시간 보정 호출은 첫 버스 구간에 우선 적용합니다.
-- `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산
+- `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산. 현재는 ODsay `busID/routeID`를 서울버스 `busRouteId`로 사용할 수 있는 경로에서 동작하며, 일부 ID 불일치 경로는 정류장 ARS 기준 도착목록 조회 fallback이 후속 작업입니다.
 - `SeoulSubwayRealtimeArrivalProvider`: 서울 지하철 실시간 도착정보 JSON 응답에서 가장 빠른 첫 지하철 대기 시간을 계산
 - `network_security_config.xml`: 기본 cleartext 통신을 차단하고 서울/TAGO 공공 API HTTP endpoint에 한해 cleartext 통신을 허용
 
@@ -432,7 +434,7 @@ User input
 
 전체 경로 예상값 cache는 `RouteEstimateCacheRepository`와 Room `route_estimate_cache` 테이블이 담당합니다. `CachingRouteEstimateProvider`는 ODsay/Google 실제 provider가 성공하고 `RouteEstimate.hasRealtimeAdjustment`가 false이면 6시간 TTL로 예상값을 저장합니다. 이후 해당 provider가 실패하면 mock fallback 전에 fresh cache를 반환합니다. 실시간 첫 버스 보정값은 일반 cache에 저장하지 않고 `RouteRealtimeSnapshot`에 별도로 저장됩니다.
 
-대중교통 실시간 보정은 ODsay 후보 경로의 첫 버스 구간에 대해 `CompositeTransitArrivalProvider`가 서울 버스 도착정보와 TAGO 버스 도착정보를 순서대로 시도합니다. TAGO provider는 ODsay 첫 버스 탑승 정류장 좌표가 있을 때 근접 정류소를 조회하고, 정류장명/거리/노선번호 매칭으로 `arrtime`을 선택합니다. 좌표, 키, 매칭이 없으면 null을 반환해 기존 provider/fallback 흐름을 유지합니다.
+대중교통 실시간 보정은 ODsay 후보 경로의 첫 버스 구간에 대해 `CompositeTransitArrivalProvider`가 서울 버스 도착정보와 TAGO 버스 도착정보를 순서대로 시도합니다. 서울 버스 provider는 도착정보 endpoint와 키가 정상이어도 ODsay 노선 ID가 서울버스 `busRouteId`와 다른 일부 경로에서는 매칭에 실패할 수 있으므로, 이 경우 기존 fallback 흐름을 유지합니다. TAGO provider는 ODsay 첫 버스 탑승 정류장 좌표가 있을 때 근접 정류소를 조회하고, 정류장명/거리/노선번호 매칭으로 `arrtime`을 선택합니다. ODsay 노선명에 붙는 괄호/대괄호 업체명 표기는 제거해 TAGO `routeno`와 비교합니다. 좌표, 키, 매칭이 없으면 null을 반환해 기존 provider/fallback 흐름을 유지합니다.
 
 운행 상태 보조 설명은 `TransitOperationStatusProvider` 계층이 담당합니다. `SeoulBusOperationStatusProvider`는 서울 버스 위치정보에서 운행 중 차량 수와 정류장 접근 차량 수를 요약하고, `SeoulSubwayOperationStatusProvider`는 서울 지하철 실시간 열차 위치정보에서 호선 운행 상태와 현재 역 주변 열차 수를 요약합니다. 이 값은 권장 출발 시각 계산값을 직접 대체하지 않고 ODsay reason에 보조 설명으로 붙습니다.
 
@@ -458,4 +460,4 @@ Google Routes 자동차 모드는 `GoogleRoutesEstimateProvider`에서 `routingP
 - 운영 보안 정책: API 키 제한/백엔드 프록시, release 서명 keystore 관리, 위치/이동 기록 개인정보 보관 정책 정리
 # 현재 아키텍처 참고
 
-최신 브랜치 단위 아키텍처 변경은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 주요 내용은 출발 전 재조회 예약, 홈 UI 동기화, 알림 반복 예약 방지, 기록 필터링, 대중교통 대기 구간, 구간 보정값 저장, 첫 버스 탑승 판단 UI입니다.
+최신 브랜치 단위 아키텍처 변경은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 주요 내용은 출발 전 재조회 예약, 출발 전 상태 알림, 홈 UI/알림 시각 동기화, 현 시간 기준 다음 루틴 선택, 알림 반복 예약 방지, 기록 필터링, 대중교통 대기 구간, 구간 보정값 저장, 첫 버스 탑승 판단 UI, TAGO 노선명 정규화입니다.

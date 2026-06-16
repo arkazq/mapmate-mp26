@@ -27,6 +27,8 @@ class SettingsViewModel(
             is SettingsEvent.PersonalBufferChanged -> onPersonalBufferChanged(event.minutesText)
             is SettingsEvent.SafetyMarginChanged -> onSafetyMarginChanged(event.minutesText)
             is SettingsEvent.NotificationsEnabledChanged -> onNotificationsEnabledChanged(event.enabled)
+            is SettingsEvent.PredepartureStatusNotificationEnabledChanged ->
+                onPredepartureStatusNotificationEnabledChanged(event.enabled)
             SettingsEvent.NotificationPermissionDenied -> onNotificationPermissionDenied()
             is SettingsEvent.DefaultTransportModeSelected -> onDefaultTransportModeSelected(event.transportMode)
             SettingsEvent.MessageCleared -> clearMessage()
@@ -80,6 +82,23 @@ class SettingsViewModel(
         }
     }
 
+    private fun onPredepartureStatusNotificationEnabledChanged(enabled: Boolean) {
+        _uiState.update {
+            it.copy(
+                predepartureStatusNotificationEnabled = enabled,
+                errorMessage = null,
+            )
+        }
+        viewModelScope.launch {
+            val result = runCatching {
+                settingsRepository.updatePredepartureStatusNotificationEnabled(enabled)
+            }
+            if (result.isFailure) {
+                showPersistenceError()
+            }
+        }
+    }
+
     private fun onNotificationPermissionDenied() {
         _uiState.update {
             it.copy(
@@ -119,6 +138,8 @@ class SettingsViewModel(
                         personalBufferMinutes = settings.personalBufferMinutes.toString(),
                         safetyMarginMinutes = settings.safetyMarginMinutes.toString(),
                         notificationsEnabled = settings.notificationsEnabled,
+                        predepartureStatusNotificationEnabled =
+                            settings.predepartureStatusNotificationEnabled,
                         defaultTransportMode = settings.defaultTransportMode,
                     )
                 }

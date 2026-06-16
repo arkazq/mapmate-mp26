@@ -4,6 +4,7 @@ import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.alarm.DepartureAlarmSchedule
 import com.mapmate.domain.alarm.DepartureAlarmScheduler
 import com.mapmate.domain.alarm.DepartureRecheckScheduler
+import com.mapmate.domain.alarm.PredepartureStatusNotificationPublisher
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
@@ -15,6 +16,7 @@ import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -111,12 +113,61 @@ class DepartureAlarmCoordinatorTest {
         assertEquals(alarmScheduler.scheduled, recheckScheduler.scheduled)
     }
 
+    @Test
+    fun rescheduleNextAlarm_showsPredepartureStatusNotificationWithinThirtyMinutes() = runTest {
+        val now = ZonedDateTime.of(2026, 6, 16, 8, 0, 0, 0, ZoneId.of("Asia/Seoul"))
+        val statusNotificationPublisher = FakePredepartureStatusNotificationPublisher()
+        val coordinator = coordinator(
+            settings = AppSettings(
+                notificationsEnabled = true,
+                predepartureStatusNotificationEnabled = true,
+            ),
+            routines = listOf(sampleRoutine(targetArrivalTime = LocalTime.of(8, 20))),
+            routeEstimateProvider = FixedRouteEstimateProvider(estimatedMinutes = 10),
+            alarmScheduler = FakeAlarmScheduler(),
+            recheckScheduler = FakeRecheckScheduler(),
+            predepartureStatusNotificationPublisher = statusNotificationPublisher,
+            nowProvider = { now },
+        )
+
+        coordinator.rescheduleNextAlarm()
+
+        assertNotNull(statusNotificationPublisher.shown)
+        assertEquals(LocalTime.of(8, 10), statusNotificationPublisher.shown!!.recommendedDepartureTime)
+    }
+
+    @Test
+    fun rescheduleNextAlarm_doesNotShowPredepartureStatusNotificationBeforeThirtyMinuteWindow() = runTest {
+        val now = ZonedDateTime.of(2026, 6, 16, 8, 0, 0, 0, ZoneId.of("Asia/Seoul"))
+        val statusNotificationPublisher = FakePredepartureStatusNotificationPublisher()
+        val coordinator = coordinator(
+            settings = AppSettings(
+                notificationsEnabled = true,
+                predepartureStatusNotificationEnabled = true,
+            ),
+            routines = listOf(sampleRoutine(targetArrivalTime = LocalTime.of(9, 0))),
+            routeEstimateProvider = FixedRouteEstimateProvider(estimatedMinutes = 10),
+            alarmScheduler = FakeAlarmScheduler(),
+            recheckScheduler = FakeRecheckScheduler(),
+            predepartureStatusNotificationPublisher = statusNotificationPublisher,
+            nowProvider = { now },
+        )
+
+        coordinator.rescheduleNextAlarm()
+
+        assertNull(statusNotificationPublisher.shown)
+        assertEquals(listOf(7L), statusNotificationPublisher.cancelledAllRoutineIds)
+    }
+
     private fun coordinator(
         settings: AppSettings,
         routines: List<Routine>,
         routeEstimateProvider: RouteEstimateProvider,
         alarmScheduler: DepartureAlarmScheduler,
         recheckScheduler: DepartureRecheckScheduler,
+        predepartureStatusNotificationPublisher: PredepartureStatusNotificationPublisher =
+            PredepartureStatusNotificationPublisher.NoOp,
+        nowProvider: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.of("Asia/Seoul")) },
     ): DepartureAlarmCoordinator {
         return DepartureAlarmCoordinator(
             settingsRepository = FakeSettingsRepository(settings),
@@ -124,7 +175,9 @@ class DepartureAlarmCoordinatorTest {
             routeEstimateProvider = routeEstimateProvider,
             alarmScheduler = alarmScheduler,
             recheckScheduler = recheckScheduler,
+            predepartureStatusNotificationPublisher = predepartureStatusNotificationPublisher,
             planner = DepartureAlarmPlanner(zoneId = ZoneId.of("Asia/Seoul")),
+            nowProvider = nowProvider,
         )
     }
 
@@ -161,6 +214,24 @@ class DepartureAlarmCoordinatorTest {
         }
     }
 
+    private class FakePredepartureStatusNotificationPublisher : PredepartureStatusNotificationPublisher {
+        var shown: DepartureAlarmSchedule? = null
+        var cancelledRoutineId: Long? = null
+        var cancelledAllRoutineIds: List<Long> = emptyList()
+
+        override fun show(schedule: DepartureAlarmSchedule) {
+            shown = schedule
+        }
+
+        override fun cancel(routineId: Long) {
+            cancelledRoutineId = routineId
+        }
+
+        override fun cancelAll(routineIds: Collection<Long>) {
+            cancelledAllRoutineIds = routineIds.toList()
+        }
+    }
+
     private class FakeRoutineRepository(
         private val routines: List<Routine>,
     ) : RoutineRepository {
@@ -185,6 +256,8 @@ class DepartureAlarmCoordinatorTest {
         override suspend fun updateSafetyMarginMinutes(minutes: Int) = Unit
 
         override suspend fun updateNotificationsEnabled(enabled: Boolean) = Unit
+
+        override suspend fun updatePredepartureStatusNotificationEnabled(enabled: Boolean) = Unit
 
         override suspend fun updateDefaultTransportMode(transportMode: TransportMode) = Unit
     }
@@ -224,7 +297,9 @@ class DepartureAlarmCoordinatorTest {
     }
 
     private companion object {
-        fun sampleRoutine(): Routine {
+        fun sampleRoutine(
+            targetArrivalTime: LocalTime = LocalTime.of(23, 59),
+        ): Routine {
             return Routine(
                 id = 7L,
                 name = "등교",
@@ -240,7 +315,7 @@ class DepartureAlarmCoordinatorTest {
                     latitude = 37.5,
                     longitude = 127.5,
                 ),
-                targetArrivalTime = LocalTime.of(23, 59),
+                targetArrivalTime = targetArrivalTime,
                 repeatDays = RepeatDay.entries.toSet(),
                 transportMode = TransportMode.TRANSIT,
                 personalBufferMinutes = 0,

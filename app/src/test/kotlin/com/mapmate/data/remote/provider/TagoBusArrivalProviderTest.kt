@@ -68,6 +68,51 @@ class TagoBusArrivalProviderTest {
     }
 
     @Test
+    fun getArrivalEstimate_matchesOdsayRouteNameWithOperatorSuffix() = runTest {
+        val provider = TagoBusArrivalProvider(
+            stationApi = FakeStationApi(
+                stations = listOf(
+                    TagoBusStationItem(
+                        citycode = "31010",
+                        nodeid = "GGB202000208",
+                        nodenm = "수원역4번출구.노보텔수원",
+                        gpslati = 37.268096,
+                        gpslong = 126.999572,
+                    ),
+                ),
+            ),
+            arrivalApi = FakeArrivalApi(
+                arrivals = listOf(
+                    TagoBusArrivalItem(
+                        nodeid = "GGB202000208",
+                        nodenm = "수원역4번출구.노보텔수원",
+                        routeno = "11",
+                        routetp = "일반",
+                        arrprevstationcnt = 2,
+                        arrtime = 360,
+                    ),
+                ),
+            ),
+            config = configWithTagoKey,
+        )
+
+        val estimate = provider.getArrivalEstimate(
+            TransitArrivalQuery.Bus(
+                stationName = "수원역4번출구.노보텔수원",
+                stationId = null,
+                stationArsId = null,
+                busRouteId = null,
+                routeName = "11(남양여객)",
+                stationLatitude = 37.268096,
+                stationLongitude = 126.999572,
+            ),
+        )
+
+        assertEquals(6, estimate?.waitMinutes)
+        assertTrue(estimate?.summary.orEmpty().contains("11번 버스"))
+    }
+
+    @Test
     fun getArrivalEstimate_returnsNullWhenStationCoordinateIsMissing() = runTest {
         val provider = TagoBusArrivalProvider(
             stationApi = FakeStationApi(emptyList()),

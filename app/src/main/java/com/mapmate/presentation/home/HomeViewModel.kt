@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.mapmate.domain.alarm.DepartureAlarmPlanner
+import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
 import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.RouteEstimateProvider
@@ -28,6 +29,7 @@ class HomeViewModel(
     private val routeEstimateProvider: RouteEstimateProvider,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     private val alarmPlanner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
+    private val adjustmentPolicy: DepartureAdjustmentPolicy = DepartureAdjustmentPolicy(),
     private val nowProvider: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.systemDefault()) },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -86,8 +88,9 @@ class HomeViewModel(
                     }
                 }
                 .collect { (routines, now) ->
-                    val dashboardRecommendation = routines.firstOrNull()
-                        ?.toDashboardRecommendation(now)
+                    val dashboardRecommendation = routines
+                        .map { it.toDashboardRecommendation(now) }
+                        .nextDepartureRecommendation()
 
                     _uiState.update {
                         it.copy(
@@ -100,6 +103,12 @@ class HomeViewModel(
                     }
                 }
         }
+    }
+
+    private fun List<RoutineRecommendationUiModel>.nextDepartureRecommendation(): RoutineRecommendationUiModel? {
+        return filter { it.recommendedDepartureAtEpochMillis != null }
+            .minByOrNull { it.recommendedDepartureAtEpochMillis ?: Long.MAX_VALUE }
+            ?: firstOrNull()
     }
 
     private fun minuteTicker() = flow {
@@ -138,11 +147,21 @@ class HomeViewModel(
                 routeDurationMinutes = routeEstimate.estimatedMinutes,
                 now = now,
             )
+            val displaySchedule = finalSchedule?.let {
+                adjustmentPolicy.adjust(
+                    previousSchedule = baseSchedule,
+                    proposedSchedule = it,
+                )
+            }
             toRecommendationUiModel(
                 routeEstimate = routeEstimate,
                 departureTimeCalculator = departureTimeCalculator,
                 now = now.toLocalTime(),
-                recommendedDepartureAtEpochMillis = finalSchedule?.triggerAtEpochMillis,
+                recommendedDepartureAtEpochMillis = displaySchedule?.triggerAtEpochMillis,
+                displayedDepartureTime = displaySchedule?.recommendedDepartureTime,
+                isImmediateDepartureOverride = displaySchedule?.triggerAtEpochMillis
+                    ?.let { it <= now.toInstant().toEpochMilli() }
+                    ?: false,
             )
         }.getOrElse {
             val fallbackRouteDurationMinutes = fallbackRouteDurationMinutes()
@@ -155,6 +174,10 @@ class HomeViewModel(
                 departureTimeCalculator = departureTimeCalculator,
                 now = now.toLocalTime(),
                 recommendedDepartureAtEpochMillis = fallbackSchedule?.triggerAtEpochMillis,
+                displayedDepartureTime = fallbackSchedule?.recommendedDepartureTime,
+                isImmediateDepartureOverride = fallbackSchedule?.triggerAtEpochMillis
+                    ?.let { it <= now.toInstant().toEpochMilli() }
+                    ?: false,
             )
         }
     }

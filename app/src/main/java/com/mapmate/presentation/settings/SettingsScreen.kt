@@ -184,13 +184,15 @@ fun SettingsScreen(
                         onEvent(SettingsEvent.NotificationsEnabledChanged(it))
                     },
                 )
-                // TODO: 실시간 도착정보 provider가 추가되면 별도 변경 알림 설정으로 승격한다.
                 SettingsSwitchRow(
-                    title = "추천 시간 재계산 알림",
-                    description = "교통 상황 변화 시 새로운 추천 시간을 알려드립니다.",
-                    checked = false,
-                    enabled = false,
-                    onCheckedChange = {},
+                    title = "출발 전 상태 알림",
+                    description = "출발 30분 전부터 권장 출발 시각을 알림창에 표시합니다.",
+                    checked = uiState.notificationsEnabled &&
+                        uiState.predepartureStatusNotificationEnabled,
+                    enabled = uiState.notificationsEnabled,
+                    onCheckedChange = {
+                        onEvent(SettingsEvent.PredepartureStatusNotificationEnabledChanged(it))
+                    },
                 )
             }
         }
@@ -317,6 +319,8 @@ private fun SettingsScreenPreview() {
             uiState = SettingsUiState(
                 personalBufferMinutes = "6",
                 safetyMarginMinutes = "5",
+                notificationsEnabled = true,
+                predepartureStatusNotificationEnabled = true,
                 defaultTransportMode = TransportMode.TRANSIT,
             ),
             onEvent = {},

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,8 +23,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -34,7 +37,6 @@ import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.presentation.common.BoardingAdviceSummaryCard
-import com.mapmate.presentation.common.CompactRoutineCard
 import com.mapmate.presentation.common.EmptyStateCard
 import com.mapmate.presentation.common.MapMateElevation
 import com.mapmate.presentation.common.MapMateIcon
@@ -45,6 +47,7 @@ import com.mapmate.presentation.common.RouteEstimateStatusMessage
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.ScreenHeader
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
+import com.mapmate.presentation.common.transportModeIcon
 import com.mapmate.ui.theme.MapMateTheme
 import java.time.LocalTime
 
@@ -146,14 +149,23 @@ fun HomeScreen(
                     onStartTrackingClick = onStartTrackingClick,
                 )
             }
+        }
+
+        if (uiState.savedRoutines.isNotEmpty()) {
             item {
-                CompactRoutineCard(
-                    routine = recommendation.routine,
-                    recommendationText = recommendation.recommendedDepartureDisplayText,
-                    targetArrivalTimeText = recommendation.targetArrivalTimeText,
-                    statusMessage = recommendation.routeStatusMessage,
+                HomeRoutineListHeader(
+                    routineCount = uiState.savedRoutines.size,
                     onManageClick = onRoutinesClick,
-                    onDetailClick = { onPredictionClick(recommendation.routine) },
+                )
+            }
+            items(
+                items = uiState.savedRoutines,
+                key = { it.id ?: it.name },
+            ) { routine ->
+                HomeRoutineSummaryCard(
+                    routine = routine,
+                    onDetailClick = { onPredictionClick(routine) },
+                    onEditClick = { onEditRoutineClick(routine) },
                 )
             }
         }
@@ -170,6 +182,105 @@ fun HomeScreen(
 
         item {
             Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun HomeRoutineListHeader(
+    routineCount: Int,
+    onManageClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "저장된 루틴",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.ExtraBold,
+            )
+            Text(
+                text = "${routineCount}개 루틴을 관리 중입니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        OutlinedButton(
+            onClick = onManageClick,
+            shape = MaterialTheme.shapes.medium,
+        ) {
+            Text("전체 관리")
+        }
+    }
+}
+
+@Composable
+private fun HomeRoutineSummaryCard(
+    routine: Routine,
+    onDetailClick: () -> Unit,
+    onEditClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                MapMateIcon(
+                    icon = transportModeIcon(routine.transportMode),
+                    contentDescription = null,
+                    modifier = Modifier.padding(9.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = routine.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${routine.targetArrivalTime} 도착 목표 · ${routine.destination.name}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            OutlinedButton(
+                onClick = onEditClick,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text("수정")
+            }
+            Button(
+                onClick = onDetailClick,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Text("예측")
+            }
         }
     }
 }

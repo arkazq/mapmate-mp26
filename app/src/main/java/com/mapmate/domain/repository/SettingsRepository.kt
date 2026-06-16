@@ -15,5 +15,7 @@ interface SettingsRepository {
 
     suspend fun updateNotificationsEnabled(enabled: Boolean)
 
+    suspend fun updatePredepartureStatusNotificationEnabled(enabled: Boolean)
+
     suspend fun updateDefaultTransportMode(transportMode: TransportMode)
 }
