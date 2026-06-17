@@ -72,39 +72,22 @@ class DepartureAlarmCoordinator(
 
         val now = nowProvider()
         val nowEpochMillis = now.toInstant().toEpochMilli()
-        val routineRouteEstimates = routines.map { routine ->
-            routine to routeEstimateFor(
-                routine = routine,
-                schedule = previousSchedule
-                    ?.takeIf { it.routineId == routine.id }
-                    ?.takeIf { it.triggerAtEpochMillis >= nowEpochMillis }
-            )
-        }
-        val routineRouteDurations = routineRouteEstimates.map { (routine, estimate) ->
-            routine to estimate.estimatedMinutes
-        }
-        val routeEstimateByRoutineId = routineRouteEstimates
-            .mapNotNull { (routine, estimate) ->
-                routine.id?.let { it to estimate }
+        val nextAlarm = routines
+            .mapNotNull { routine ->
+                alarmCandidateFor(
+                    routine = routine,
+                    now = now,
+                    nowEpochMillis = nowEpochMillis,
+                    previousSchedule = previousSchedule,
+                    firedSchedule = firedSchedule,
+                )
             }
-            .toMap()
-        val proposedNextAlarm = planner.nextAlarm(
-            routineRouteDurations = routineRouteDurations,
-            now = now,
-            excludedSchedule = firedSchedule,
-        )
+            .minByOrNull { it.schedule.triggerAtEpochMillis }
+            ?.schedule
 
-        if (proposedNextAlarm == null) {
+        if (nextAlarm == null) {
             cancelScheduledWork(routines)
         } else {
-            val nextAlarm = adjustmentPolicy.adjust(
-                previousSchedule = previousSchedule,
-                proposedSchedule = proposedNextAlarm,
-            ).applyBoardingSafeDeparture(
-                boardingAdvice = routeEstimateByRoutineId[proposedNextAlarm.routineId]?.boardingAdvice,
-                nowEpochMillis = nowEpochMillis,
-                zoneId = now.zone,
-            )
             alarmScheduler.schedule(nextAlarm)
             recheckScheduler.schedule(
                 schedule = nextAlarm,
@@ -117,6 +100,57 @@ class DepartureAlarmCoordinator(
                 nowEpochMillis = nowEpochMillis,
             )
         }
+    }
+
+    private suspend fun alarmCandidateFor(
+        routine: Routine,
+        now: ZonedDateTime,
+        nowEpochMillis: Long,
+        previousSchedule: DepartureAlarmSchedule?,
+        firedSchedule: DepartureAlarmSchedule?,
+    ): AlarmCandidate? {
+        val baseEstimate = routeEstimateFor(
+            routine = routine,
+            schedule = null,
+        )
+        val excludedArrivalAtEpochMillis = firedSchedule
+            ?.takeIf { it.routineId == routine.id }
+            ?.targetArrivalAtEpochMillis
+        val baseSchedule = planner.nextAlarmForRoutine(
+            routine = routine,
+            routeDurationMinutes = baseEstimate.estimatedMinutes,
+            now = now,
+            excludedArrivalAtEpochMillis = excludedArrivalAtEpochMillis,
+        ) ?: return null
+        val routeEstimate = if (baseSchedule.shouldApplyRealtime(now)) {
+            routeEstimateFor(
+                routine = routine,
+                schedule = baseSchedule,
+            )
+        } else {
+            baseEstimate
+        }
+        val proposedSchedule = if (routeEstimate === baseEstimate) {
+            baseSchedule
+        } else {
+            planner.nextAlarmForRoutine(
+                routine = routine,
+                routeDurationMinutes = routeEstimate.estimatedMinutes,
+                now = now,
+                excludedArrivalAtEpochMillis = excludedArrivalAtEpochMillis,
+            ) ?: return null
+        }
+
+        val adjustedSchedule = adjustmentPolicy.adjust(
+            previousSchedule = previousSchedule?.takeIf { it.routineId == routine.id },
+            proposedSchedule = proposedSchedule,
+        ).applyBoardingSafeDeparture(
+            boardingAdvice = routeEstimate.boardingAdvice,
+            nowEpochMillis = nowEpochMillis,
+            zoneId = now.zone,
+        )
+
+        return AlarmCandidate(schedule = adjustedSchedule)
     }
 
     private fun cancelScheduledWork(routines: List<Routine>) {
@@ -173,6 +207,15 @@ class DepartureAlarmCoordinator(
         }
     }
 
+    private data class AlarmCandidate(
+        val schedule: DepartureAlarmSchedule,
+    )
+
+    private fun DepartureAlarmSchedule.shouldApplyRealtime(now: ZonedDateTime): Boolean {
+        val minutesUntilDeparture = (triggerAtEpochMillis - now.toInstant().toEpochMilli()) / MILLIS_PER_MINUTE
+        return minutesUntilDeparture in 0..REALTIME_LOOKAHEAD_MINUTES
+    }
+
     private fun TransportMode.fallbackRouteDurationMinutes(): Int {
         return when (this) {
             TransportMode.TRANSIT -> 42
@@ -182,6 +225,8 @@ class DepartureAlarmCoordinator(
     }
 
     private companion object {
+        const val MILLIS_PER_MINUTE = 60_000L
+        const val REALTIME_LOOKAHEAD_MINUTES = 30L
         const val PREDEPARTURE_STATUS_WINDOW_MILLIS = 30 * 60 * 1000L
     }
 }

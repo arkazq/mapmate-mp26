@@ -65,6 +65,9 @@ class DepartureAlarmCoordinatorTest {
             routeEstimateProvider = routeEstimateProvider,
             alarmScheduler = alarmScheduler,
             recheckScheduler = recheckScheduler,
+            nowProvider = {
+                ZonedDateTime.of(2026, 6, 16, 8, 0, 0, 0, ZoneId.of("Asia/Seoul"))
+            },
         )
 
         coordinator.rescheduleNextAlarm(previousSchedule = previousSchedule)
@@ -72,7 +75,7 @@ class DepartureAlarmCoordinatorTest {
         assertNotNull(alarmScheduler.scheduled)
         assertEquals(alarmScheduler.scheduled, recheckScheduler.scheduled)
         assertEquals(false, recheckScheduler.replaceExisting)
-        assertEquals(listOf(previousSchedule.triggerAtEpochMillis), routeEstimateProvider.scheduledDepartureCalls)
+        assertEquals(listOf<Long?>(null), routeEstimateProvider.scheduledDepartureCalls)
         assertEquals(0, recheckScheduler.cancelCount)
     }
 
@@ -120,8 +123,46 @@ class DepartureAlarmCoordinatorTest {
 
         assertEquals(epochAt(9, 5), alarmScheduler.scheduled!!.triggerAtEpochMillis)
         assertEquals(LocalTime.of(9, 5), alarmScheduler.scheduled!!.recommendedDepartureTime)
-        assertEquals(listOf(epochAt(9, 20)), routeEstimateProvider.scheduledDepartureCalls)
-        assertEquals(listOf(epochAt(9, 30)), routeEstimateProvider.targetArrivalCalls)
+        assertEquals(listOf(null, epochAt(9, 20)), routeEstimateProvider.scheduledDepartureCalls)
+        assertEquals(listOf(null, epochAt(9, 30)), routeEstimateProvider.targetArrivalCalls)
+    }
+
+    @Test
+    fun rescheduleNextAlarm_appliesBoardingSafeDepartureOnInitialSync() = runTest {
+        val now = ZonedDateTime.of(2026, 6, 16, 9, 0, 0, 0, ZoneId.of("Asia/Seoul"))
+        val routine = sampleRoutine(targetArrivalTime = LocalTime.of(9, 30))
+        val routeEstimateProvider = FixedRouteEstimateProvider(
+            estimatedMinutes = 10,
+            boardingAdvice = RouteBoardingAdvice(
+                selectedCandidateIndex = 1,
+                candidateCount = 1,
+                routeName = "753",
+                stationName = "station",
+                accessMinutes = 4,
+                realtimeWaitMinutes = 12,
+                slackMinutes = -12,
+                status = RouteBoardingStatus.MISS_RISK,
+                estimatedTotalMinutes = 10,
+                safeDepartureEpochMillis = epochAt(9, 5),
+                earlyDepartureRequiredMinutes = 15,
+            ),
+        )
+        val alarmScheduler = FakeAlarmScheduler()
+        val coordinator = coordinator(
+            settings = AppSettings(notificationsEnabled = true),
+            routines = listOf(routine),
+            routeEstimateProvider = routeEstimateProvider,
+            alarmScheduler = alarmScheduler,
+            recheckScheduler = FakeRecheckScheduler(),
+            nowProvider = { now },
+        )
+
+        coordinator.rescheduleNextAlarm()
+
+        assertEquals(epochAt(9, 5), alarmScheduler.scheduled!!.triggerAtEpochMillis)
+        assertEquals(LocalTime.of(9, 5), alarmScheduler.scheduled!!.recommendedDepartureTime)
+        assertEquals(listOf(null, epochAt(9, 20)), routeEstimateProvider.scheduledDepartureCalls)
+        assertEquals(listOf(null, epochAt(9, 30)), routeEstimateProvider.targetArrivalCalls)
     }
 
     @Test
