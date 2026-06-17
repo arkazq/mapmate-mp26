@@ -1,4 +1,4 @@
-package com.mapmate.presentation.home
+package com.mapmate.presentation.common
 
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Destination
@@ -13,7 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class HomeCompletionExclusionTest {
+class CompletedCommuteEventsTest {
     private val zoneId = ZoneId.of("Asia/Seoul")
 
     @Test
@@ -70,6 +70,102 @@ class HomeCompletionExclusionTest {
         assertNull(result)
     }
 
+    @Test
+    fun completedArrivalEventToExclude_handlesOvernightTargetWhenRecordCompletedBeforeMidnight() {
+        val now = ZonedDateTime.of(2026, 6, 7, 23, 40, 0, 0, zoneId)
+        val record = sampleRecord(
+            routineId = 1L,
+            targetArrivalTime = LocalTime.of(0, 30),
+            arrivedAt = ZonedDateTime.of(2026, 6, 7, 23, 35, 0, 0, zoneId),
+        )
+
+        val result = listOf(record).completedArrivalEventToExclude(
+            routine = sampleRoutine(
+                id = 1L,
+                targetArrivalTime = LocalTime.of(0, 30),
+            ),
+            now = now,
+        )
+
+        assertEquals(
+            ZonedDateTime.of(2026, 6, 8, 0, 30, 0, 0, zoneId).toEpochMillis(),
+            result,
+        )
+    }
+
+    @Test
+    fun completedArrivalEventToExclude_prefersStoredTargetArrivalEpoch() {
+        val targetArrivalAt = ZonedDateTime.of(2026, 6, 8, 0, 30, 0, 0, zoneId)
+        val now = ZonedDateTime.of(2026, 6, 7, 23, 40, 0, 0, zoneId)
+        val record = sampleRecord(
+            routineId = 1L,
+            targetArrivalTime = LocalTime.of(0, 30),
+            arrivedAt = ZonedDateTime.of(2026, 6, 8, 1, 50, 0, 0, zoneId),
+            targetArrivalAt = targetArrivalAt,
+        )
+
+        val result = listOf(record).completedArrivalEventToExclude(
+            routine = sampleRoutine(
+                id = 1L,
+                targetArrivalTime = LocalTime.of(0, 30),
+            ),
+            now = now,
+        )
+
+        assertEquals(targetArrivalAt.toEpochMillis(), result)
+    }
+
+    @Test
+    fun completedArrivalEventToExclude_handlesBeforeMidnightTargetCompletedAfterMidnight() {
+        val now = ZonedDateTime.of(2026, 6, 8, 0, 25, 0, 0, zoneId)
+        val record = sampleRecord(
+            routineId = 1L,
+            targetArrivalTime = LocalTime.of(23, 30),
+            arrivedAt = ZonedDateTime.of(2026, 6, 8, 0, 20, 0, 0, zoneId),
+            targetArrivalAt = ZonedDateTime.of(2026, 6, 7, 23, 30, 0, 0, zoneId),
+        )
+
+        val result = listOf(record).completedArrivalEventToExclude(
+            routine = sampleRoutine(
+                id = 1L,
+                targetArrivalTime = LocalTime.of(23, 30),
+            ),
+            now = now,
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun hasCompletedCommuteToday_returnsTrueOnlyForTodayRecords() {
+        val now = ZonedDateTime.of(2026, 6, 17, 23, 30, 0, 0, zoneId)
+        val todayRecord = sampleRecord(
+            routineId = 1L,
+            targetArrivalTime = LocalTime.of(10, 30),
+            arrivedAt = ZonedDateTime.of(2026, 6, 17, 9, 35, 0, 0, zoneId),
+        )
+        val yesterdayRecord = sampleRecord(
+            routineId = 1L,
+            targetArrivalTime = LocalTime.of(10, 30),
+            arrivedAt = ZonedDateTime.of(2026, 6, 16, 9, 35, 0, 0, zoneId),
+        )
+
+        assertEquals(true, listOf(todayRecord).hasCompletedCommuteToday(now))
+        assertEquals(false, listOf(yesterdayRecord).hasCompletedCommuteToday(now))
+    }
+
+    @Test
+    fun hasCompletedCommuteToday_usesTargetArrivalDateForOvernightRecords() {
+        val now = ZonedDateTime.of(2026, 6, 8, 0, 10, 0, 0, zoneId)
+        val record = sampleRecord(
+            routineId = 1L,
+            targetArrivalTime = LocalTime.of(0, 30),
+            arrivedAt = ZonedDateTime.of(2026, 6, 7, 23, 35, 0, 0, zoneId),
+        )
+
+        assertEquals(true, listOf(record).hasCompletedCommuteToday(now))
+    }
+
     private fun sampleRoutine(
         id: Long,
         targetArrivalTime: LocalTime,
@@ -101,6 +197,7 @@ class HomeCompletionExclusionTest {
         routineId: Long,
         targetArrivalTime: LocalTime,
         arrivedAt: ZonedDateTime,
+        targetArrivalAt: ZonedDateTime? = null,
     ): CommuteRecord {
         return CommuteRecord(
             id = 10L,
@@ -110,6 +207,7 @@ class HomeCompletionExclusionTest {
             destinationName = "학교",
             transportMode = TransportMode.TRANSIT,
             targetArrivalTime = targetArrivalTime,
+            targetArrivalAtEpochMillis = targetArrivalAt?.toEpochMillis(),
             recommendedDepartureTime = LocalTime.of(9, 56),
             routeDurationMinutes = 26,
             routeSummary = "테스트 경로",

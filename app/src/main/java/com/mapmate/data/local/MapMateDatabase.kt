@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RouteSegmentEntity::class,
         SegmentTimeAdjustmentEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class MapMateDatabase : RoomDatabase() {
@@ -52,6 +52,7 @@ abstract class MapMateDatabase : RoomDatabase() {
                         MIGRATION_4_5,
                         MIGRATION_5_6,
                         MIGRATION_6_7,
+                        MIGRATION_7_8,
                     )
                     .build()
                     .also { instance = it }
@@ -79,6 +80,7 @@ abstract class MapMateDatabase : RoomDatabase() {
                         destinationName TEXT NOT NULL,
                         transportMode TEXT NOT NULL,
                         targetArrivalTime TEXT NOT NULL,
+                        targetArrivalAtEpochMillis INTEGER,
                         recommendedDepartureTime TEXT NOT NULL,
                         routeDurationMinutes INTEGER NOT NULL,
                         routeSummary TEXT NOT NULL,
@@ -228,6 +230,12 @@ abstract class MapMateDatabase : RoomDatabase() {
                     "ALTER TABLE segment_time_adjustments " +
                         "ADD COLUMN maxActualDurationMinutes INTEGER NOT NULL DEFAULT 0",
                 )
+            }
+        }
+
+        internal val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE commute_records ADD COLUMN targetArrivalAtEpochMillis INTEGER")
             }
         }
     }

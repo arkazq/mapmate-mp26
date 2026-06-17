@@ -17,6 +17,7 @@ data class RoutineRecommendationUiModel(
     val recommendedDepartureTime: LocalTime,
     val calculatedDepartureTime: LocalTime = recommendedDepartureTime,
     val recommendedDepartureAtEpochMillis: Long? = null,
+    val targetArrivalAtEpochMillis: Long? = null,
     val targetArrivalTimeText: String,
     val routeDurationMinutes: Int,
     val personalBufferMinutes: Int,
@@ -82,6 +83,7 @@ fun Routine.toRecommendationUiModel(
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     now: LocalTime = LocalTime.now(),
     recommendedDepartureAtEpochMillis: Long? = null,
+    targetArrivalAtEpochMillis: Long? = null,
     displayedDepartureTime: LocalTime? = null,
     isImmediateDepartureOverride: Boolean = false,
 ): RoutineRecommendationUiModel {
@@ -107,6 +109,7 @@ fun Routine.toRecommendationUiModel(
         recommendedDepartureTime = recommendedDepartureTime,
         calculatedDepartureTime = departureRecommendation.calculatedDepartureTime,
         recommendedDepartureAtEpochMillis = recommendedDepartureAtEpochMillis,
+        targetArrivalAtEpochMillis = targetArrivalAtEpochMillis,
         targetArrivalTimeText = targetArrivalTime.format(formatter),
         routeDurationMinutes = routeEstimate.estimatedMinutes,
         personalBufferMinutes = personalBufferMinutes,
@@ -127,6 +130,7 @@ fun Routine.toFallbackRecommendationUiModel(
     departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     now: LocalTime = LocalTime.now(),
     recommendedDepartureAtEpochMillis: Long? = null,
+    targetArrivalAtEpochMillis: Long? = null,
     displayedDepartureTime: LocalTime? = null,
     isImmediateDepartureOverride: Boolean = false,
 ): RoutineRecommendationUiModel {
@@ -149,6 +153,7 @@ fun Routine.toFallbackRecommendationUiModel(
         departureTimeCalculator = departureTimeCalculator,
         now = now,
         recommendedDepartureAtEpochMillis = recommendedDepartureAtEpochMillis,
+        targetArrivalAtEpochMillis = targetArrivalAtEpochMillis,
         displayedDepartureTime = displayedDepartureTime,
         isImmediateDepartureOverride = isImmediateDepartureOverride,
     )

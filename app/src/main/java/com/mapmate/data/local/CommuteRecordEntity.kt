@@ -17,6 +17,7 @@ data class CommuteRecordEntity(
     val destinationName: String,
     val transportMode: String,
     val targetArrivalTime: String,
+    val targetArrivalAtEpochMillis: Long?,
     val recommendedDepartureTime: String,
     val routeDurationMinutes: Int,
     val routeSummary: String,

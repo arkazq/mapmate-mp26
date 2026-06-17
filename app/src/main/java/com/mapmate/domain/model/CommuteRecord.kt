@@ -10,6 +10,7 @@ data class CommuteRecord(
     val destinationName: String,
     val transportMode: TransportMode,
     val targetArrivalTime: LocalTime,
+    val targetArrivalAtEpochMillis: Long? = null,
     val recommendedDepartureTime: LocalTime,
     val routeDurationMinutes: Int,
     val routeSummary: String,

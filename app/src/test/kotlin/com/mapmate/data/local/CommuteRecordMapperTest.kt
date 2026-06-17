@@ -17,6 +17,7 @@ class CommuteRecordMapperTest {
             destinationName = "숭실대학교",
             transportMode = TransportMode.TRANSIT,
             targetArrivalTime = LocalTime.of(9, 0),
+            targetArrivalAtEpochMillis = 9_000L,
             recommendedDepartureTime = LocalTime.of(8, 7),
             routeDurationMinutes = 42,
             routeSummary = "대중교통 기준 42분 예상",
@@ -34,6 +35,7 @@ class CommuteRecordMapperTest {
         assertEquals("숭실대학교", entity.destinationName)
         assertEquals("TRANSIT", entity.transportMode)
         assertEquals("09:00", entity.targetArrivalTime)
+        assertEquals(9_000L, entity.targetArrivalAtEpochMillis)
         assertEquals("08:07", entity.recommendedDepartureTime)
         assertEquals(42, entity.routeDurationMinutes)
         assertEquals("대중교통 기준 42분 예상", entity.routeSummary)
@@ -52,6 +54,7 @@ class CommuteRecordMapperTest {
             destinationName = "집",
             transportMode = "CAR",
             targetArrivalTime = "18:30",
+            targetArrivalAtEpochMillis = 18_300L,
             recommendedDepartureTime = "17:52",
             routeDurationMinutes = 25,
             routeSummary = "자동차 기준 25분 예상",
@@ -69,6 +72,7 @@ class CommuteRecordMapperTest {
         assertEquals("집", record.destinationName)
         assertEquals(TransportMode.CAR, record.transportMode)
         assertEquals(LocalTime.of(18, 30), record.targetArrivalTime)
+        assertEquals(18_300L, record.targetArrivalAtEpochMillis)
         assertEquals(LocalTime.of(17, 52), record.recommendedDepartureTime)
         assertEquals(25, record.routeDurationMinutes)
         assertEquals("자동차 기준 25분 예상", record.routeSummary)
