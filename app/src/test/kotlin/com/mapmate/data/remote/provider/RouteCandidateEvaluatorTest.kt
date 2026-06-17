@@ -139,6 +139,8 @@ class RouteCandidateEvaluatorTest {
 
         assertEquals(minutes(6), selection?.selected?.safeDepartureEpochMillis)
         assertEquals(15, selection?.selected?.earlyDepartureRequiredMinutes)
+        assertEquals(3, selection?.selected?.boardingSlackMinutes)
+        assertEquals(BoardingStatus.BOARDABLE, selection?.selected?.boardingStatus)
         assertEquals(false, selection?.selected?.mayMissTargetArrival)
     }
 

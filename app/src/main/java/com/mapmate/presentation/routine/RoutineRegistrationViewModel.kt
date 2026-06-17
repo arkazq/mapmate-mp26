@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.mapmate.data.mock.MockPlaceSearchProvider
 import com.mapmate.data.mock.MockRouteEstimateProvider
+import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
+import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Destination
@@ -16,12 +18,15 @@ import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
+import com.mapmate.presentation.common.ScheduleAwareRecommendationResolver
+import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalTime
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
@@ -32,12 +37,21 @@ class RoutineRegistrationViewModel(
     private val routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
     private val currentLocationProvider: CurrentLocationProvider = UnavailableCurrentLocationProvider,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
+    private val alarmPlanner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
+    private val adjustmentPolicy: DepartureAdjustmentPolicy = DepartureAdjustmentPolicy(),
+    private val nowProvider: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.systemDefault()) },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(RoutineRegistrationUiState())
     val uiState: StateFlow<RoutineRegistrationUiState> = _uiState.asStateFlow()
 
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private var latestSettings = AppSettings()
+    private val recommendationResolver = ScheduleAwareRecommendationResolver(
+        routeEstimateProvider = routeEstimateProvider,
+        departureTimeCalculator = departureTimeCalculator,
+        alarmPlanner = alarmPlanner,
+        adjustmentPolicy = adjustmentPolicy,
+    )
 
     init {
         observeSettings()
@@ -245,27 +259,31 @@ class RoutineRegistrationViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isCalculating = true, errorMessage = null, successMessage = null) }
 
-            val routeEstimate = routeEstimateProvider.getRouteEstimate(
-                origin = validatedInput.origin,
-                destination = validatedInput.destination,
-                transportMode = validatedInput.transportMode,
-                routineId = _uiState.value.editingRoutineId,
-            )
-            val departureRecommendation = departureTimeCalculator.calculateWithNowClamp(
-                targetArrivalTime = validatedInput.targetArrivalTime,
-                routeDurationMinutes = routeEstimate.estimatedMinutes,
-                personalBufferMinutes = validatedInput.personalBufferMinutes,
-                safetyMarginMinutes = validatedInput.safetyMarginMinutes,
-            )
-
-            _uiState.update {
-                it.copy(
-                    routeEstimate = routeEstimate,
-                    recommendedDepartureTimeText = departureRecommendation.recommendedDepartureTime.format(timeFormatter),
-                    calculatedDepartureTimeText = departureRecommendation.calculatedDepartureTime.format(timeFormatter),
-                    isImmediateDepartureRecommended = departureRecommendation.isImmediateDepartureRecommended,
-                    isCalculating = false,
-                    errorMessage = null,
+            val result = runCatching {
+                recommendationResolver.resolve(
+                    routine = validatedInput.toRoutine(id = _uiState.value.editingRoutineId),
+                    now = nowProvider(),
+                )
+            }
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { scheduleAwareRecommendation ->
+                        val recommendation = scheduleAwareRecommendation.recommendation
+                        state.copy(
+                            routeEstimate = scheduleAwareRecommendation.routeEstimate,
+                            recommendedDepartureTimeText = recommendation.recommendedDepartureTimeText,
+                            calculatedDepartureTimeText = recommendation.calculatedDepartureTimeText,
+                            isImmediateDepartureRecommended = recommendation.isImmediateDepartureRecommended,
+                            isCalculating = false,
+                            errorMessage = null,
+                        )
+                    },
+                    onFailure = {
+                        state.copy(
+                            isCalculating = false,
+                            errorMessage = "寃쎈줈 怨꾩궛???ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄??二쇱꽭??",
+                        )
+                    },
                 )
             }
             refreshSaveEnabled()
@@ -606,6 +624,20 @@ class RoutineRegistrationViewModel(
         val personalBufferMinutes: Int,
         val safetyMarginMinutes: Int,
     )
+
+    private fun ValidatedRoutineInput.toRoutine(id: Long?): Routine {
+        return Routine(
+            id = id,
+            name = routineName,
+            origin = origin,
+            destination = destination,
+            targetArrivalTime = targetArrivalTime,
+            repeatDays = repeatDays,
+            transportMode = transportMode,
+            personalBufferMinutes = personalBufferMinutes,
+            safetyMarginMinutes = safetyMarginMinutes,
+        )
+    }
 
     companion object {
         private const val ROUTINE_NAME_MAX_LENGTH = 30

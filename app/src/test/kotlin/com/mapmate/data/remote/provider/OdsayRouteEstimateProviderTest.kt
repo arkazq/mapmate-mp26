@@ -234,7 +234,7 @@ class OdsayRouteEstimateProviderTest {
     }
 
     @Test
-    fun getRouteEstimate_selectsFasterRealtimeAdjustedCandidate() = runTest {
+    fun getRouteEstimate_selectsBoardableCandidateWhenFasterCandidateRequiresImmediateDeparture() = runTest {
         val provider = OdsayRouteEstimateProvider(
             api = FakeOdsayApi(twoBusRouteResponse(firstTotalTime = 40, secondTotalTime = 43)),
             config = remoteApiConfig,
@@ -254,8 +254,8 @@ class OdsayRouteEstimateProviderTest {
             scheduledDepartureEpochMillis = 20 * 60 * 1000L,
         )
 
-        assertEquals(43, result.estimatedMinutes)
-        assertTrue(result.reason.contains("Selected ODsay candidate 2/2"))
+        assertEquals(50, result.estimatedMinutes)
+        assertTrue(result.reason.contains("Selected ODsay candidate 1/2"))
     }
 
     @Test

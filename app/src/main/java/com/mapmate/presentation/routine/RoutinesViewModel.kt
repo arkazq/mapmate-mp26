@@ -3,13 +3,16 @@ package com.mapmate.presentation.routine
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
+import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
-import com.mapmate.presentation.common.toFallbackRecommendationUiModel
-import com.mapmate.presentation.common.toRecommendationUiModel
+import com.mapmate.presentation.common.ScheduleAwareRecommendationResolver
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,9 +24,18 @@ class RoutinesViewModel(
     private val routineRepository: RoutineRepository,
     private val routeEstimateProvider: RouteEstimateProvider,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
+    private val alarmPlanner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
+    private val adjustmentPolicy: DepartureAdjustmentPolicy = DepartureAdjustmentPolicy(),
+    private val nowProvider: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.systemDefault()) },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(RoutinesUiState())
     val uiState: StateFlow<RoutinesUiState> = _uiState.asStateFlow()
+    private val recommendationResolver = ScheduleAwareRecommendationResolver(
+        routeEstimateProvider = routeEstimateProvider,
+        departureTimeCalculator = departureTimeCalculator,
+        alarmPlanner = alarmPlanner,
+        adjustmentPolicy = adjustmentPolicy,
+    )
 
     init {
         observeRoutines()
@@ -91,19 +103,17 @@ class RoutinesViewModel(
     }
 
     private suspend fun Routine.toRecommendation(): RoutineRecommendationUiModel {
+        val now = nowProvider()
         return runCatching {
-            val routeEstimate = routeEstimateProvider.getRouteEstimate(
-                origin = origin,
-                destination = destination,
-                transportMode = transportMode,
-                routineId = id,
-            )
-            toRecommendationUiModel(
-                routeEstimate = routeEstimate,
-                departureTimeCalculator = departureTimeCalculator,
-            )
+            recommendationResolver.resolve(
+                routine = this,
+                now = now,
+            ).recommendation
         }.getOrElse {
-            toFallbackRecommendationUiModel(departureTimeCalculator)
+            recommendationResolver.fallback(
+                routine = this,
+                now = now,
+            ).recommendation
         }
     }
 
