@@ -202,7 +202,7 @@ fun TrackingScreen(
                     }
                 }
 
-                if (!uiState.isCompleted && uiState.hasRouteSegments && uiState.isAllSegmentsFinished) {
+                if (!uiState.isCompleted && uiState.hasRouteSegments) {
                     item {
                         Button(
                             onClick = onPrimaryActionClick,

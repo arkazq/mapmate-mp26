@@ -3,6 +3,8 @@ package com.mapmate.presentation.tracking
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
+import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.calculator.PersonalBufferOptimizer
 import com.mapmate.domain.model.CommuteRecord
@@ -15,12 +17,12 @@ import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
-import com.mapmate.presentation.common.toFallbackRecommendationUiModel
-import com.mapmate.presentation.common.toRecommendationUiModel
+import com.mapmate.presentation.common.ScheduleAwareRecommendationResolver
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,18 +37,33 @@ class TrackingViewModel(
     private val routineRepository: RoutineRepository,
     private val settingsRepository: SettingsRepository,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
+    private val alarmPlanner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
+    private val adjustmentPolicy: DepartureAdjustmentPolicy = DepartureAdjustmentPolicy(),
+    private val nowProvider: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.systemDefault()) },
     private val personalBufferOptimizer: PersonalBufferOptimizer = PersonalBufferOptimizer(),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(TrackingUiState(routine = routine))
     val uiState: StateFlow<TrackingUiState> = _uiState.asStateFlow()
     private var startedAtEpochMillis: Long? = null
+    private val recommendationResolver = ScheduleAwareRecommendationResolver(
+        routeEstimateProvider = routeEstimateProvider,
+        departureTimeCalculator = departureTimeCalculator,
+        alarmPlanner = alarmPlanner,
+        adjustmentPolicy = adjustmentPolicy,
+    )
 
     init {
         loadTrackingSummary()
     }
 
     fun onPrimaryActionClick() {
-        when (_uiState.value.stage) {
+        val state = _uiState.value
+        if (state.hasRouteSegments && state.stage != TrackingStage.Arrived) {
+            saveCompletedRecord()
+            return
+        }
+
+        when (state.stage) {
             TrackingStage.Planned -> {
                 startedAtEpochMillis = System.currentTimeMillis()
                 _uiState.update {
@@ -64,19 +81,17 @@ class TrackingViewModel(
 
     private fun loadTrackingSummary() {
         viewModelScope.launch {
+            val now = nowProvider()
             val recommendation = runCatching {
-                val routeEstimate = routeEstimateProvider.getRouteEstimate(
-                    origin = routine.origin,
-                    destination = routine.destination,
-                    transportMode = routine.transportMode,
-                    routineId = routine.id,
-                )
-                routine.toRecommendationUiModel(
-                    routeEstimate = routeEstimate,
-                    departureTimeCalculator = departureTimeCalculator,
-                )
+                recommendationResolver.resolve(
+                    routine = routine,
+                    now = now,
+                ).recommendation
             }.getOrElse {
-                routine.toFallbackRecommendationUiModel(departureTimeCalculator)
+                recommendationResolver.fallback(
+                    routine = routine,
+                    now = now,
+                ).recommendation
             }
 
             _uiState.update {

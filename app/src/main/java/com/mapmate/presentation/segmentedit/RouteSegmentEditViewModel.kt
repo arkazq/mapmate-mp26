@@ -151,6 +151,11 @@ class RouteSegmentEditViewModel(
                             ?: state.record.arrivedAtEpochMillis
                     }
                     val selectedEpochMillis = baseEpochMillis.withTime(hour, minute)
+                        .adjustOvernightEndIfNeeded(
+                            record = state.record,
+                            segment = segment,
+                            isStart = isStart,
+                        )
                     if (isStart) {
                         segment.copy(actualStartedAtEpochMillis = selectedEpochMillis)
                     } else {
@@ -237,4 +242,26 @@ private fun Long.withTime(
         .atZone(zoneId)
         .toInstant()
         .toEpochMilli()
+}
+
+private fun Long.adjustOvernightEndIfNeeded(
+    record: CommuteRecord,
+    segment: RouteSegment,
+    isStart: Boolean,
+): Long {
+    if (isStart) return this
+    val startedAt = segment.actualStartedAtEpochMillis ?: return this
+    if (!record.spansMultipleDates()) return this
+    return if (this < startedAt) this + Duration.ofDays(1).toMillis() else this
+}
+
+private fun CommuteRecord.spansMultipleDates(): Boolean {
+    val zoneId = ZoneId.systemDefault()
+    val startedDate = Instant.ofEpochMilli(startedAtEpochMillis)
+        .atZone(zoneId)
+        .toLocalDate()
+    val arrivedDate = Instant.ofEpochMilli(arrivedAtEpochMillis)
+        .atZone(zoneId)
+        .toLocalDate()
+    return arrivedDate.isAfter(startedDate)
 }

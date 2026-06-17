@@ -39,11 +39,11 @@ internal class RouteCandidateEvaluator(
 
     private fun RouteCandidateEvaluationInput.evaluate(): RouteCandidateEvaluation {
         val boarding = firstBusBoarding
-        val boardingSlackMinutes = boarding
-            ?.takeIf { it.realtimeWaitMinutes != null }
-            ?.boardingSlackMinutes()
         val boardingSafeDepartureEpochMillis = boarding?.boardingSafeDepartureEpochMillis()
         val finalDepartureEpochMillis = finalDepartureEpochMillis(boardingSafeDepartureEpochMillis)
+        val boardingSlackMinutes = boarding
+            ?.takeIf { it.realtimeWaitMinutes != null }
+            ?.boardingSlackMinutes(finalDepartureEpochMillis)
         val earlyDepartureRequiredMinutes = earlyDepartureRequiredMinutes(finalDepartureEpochMillis)
         val visibleSafeDepartureEpochMillis = finalDepartureEpochMillis
             ?.takeIf { boardingSafeDepartureEpochMillis != null }
@@ -89,8 +89,10 @@ internal class RouteCandidateEvaluator(
         )
     }
 
-    private fun RouteCandidateBoardingInput.boardingSlackMinutes(): Int {
-        val departureBaseEpochMillis = maxOf(
+    private fun RouteCandidateBoardingInput.boardingSlackMinutes(
+        departureEpochMillis: Long?,
+    ): Int {
+        val departureBaseEpochMillis = departureEpochMillis ?: maxOf(
             scheduledDepartureEpochMillis ?: nowEpochMillis,
             nowEpochMillis,
         )
