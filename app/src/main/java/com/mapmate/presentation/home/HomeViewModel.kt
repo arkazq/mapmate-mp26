@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
+import com.mapmate.domain.alarm.applyBoardingSafeDeparture
 import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Routine
@@ -159,6 +160,7 @@ class HomeViewModel(
                     transportMode = transportMode,
                     routineId = id,
                     scheduledDepartureEpochMillis = baseSchedule.triggerAtEpochMillis,
+                    targetArrivalEpochMillis = baseSchedule.targetArrivalAtEpochMillis,
                 )
             } else {
                 baseRouteEstimate
@@ -173,6 +175,10 @@ class HomeViewModel(
                 adjustmentPolicy.adjust(
                     previousSchedule = baseSchedule,
                     proposedSchedule = it,
+                ).applyBoardingSafeDeparture(
+                    boardingAdvice = routeEstimate.boardingAdvice,
+                    nowEpochMillis = now.toInstant().toEpochMilli(),
+                    zoneId = now.zone,
                 )
             }
             toRecommendationUiModel(

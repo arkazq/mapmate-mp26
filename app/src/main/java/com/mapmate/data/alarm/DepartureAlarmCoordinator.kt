@@ -6,7 +6,9 @@ import com.mapmate.domain.alarm.DepartureAlarmSchedule
 import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
 import com.mapmate.domain.alarm.DepartureRecheckScheduler
 import com.mapmate.domain.alarm.PredepartureStatusNotificationPublisher
+import com.mapmate.domain.alarm.applyBoardingSafeDeparture
 import com.mapmate.domain.model.AppSettings
+import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
@@ -70,15 +72,22 @@ class DepartureAlarmCoordinator(
 
         val now = nowProvider()
         val nowEpochMillis = now.toInstant().toEpochMilli()
-        val routineRouteDurations = routines.map { routine ->
-            routine to routeDurationMinutes(
+        val routineRouteEstimates = routines.map { routine ->
+            routine to routeEstimateFor(
                 routine = routine,
-                scheduledDepartureEpochMillis = previousSchedule
+                schedule = previousSchedule
                     ?.takeIf { it.routineId == routine.id }
                     ?.takeIf { it.triggerAtEpochMillis >= nowEpochMillis }
-                    ?.triggerAtEpochMillis,
             )
         }
+        val routineRouteDurations = routineRouteEstimates.map { (routine, estimate) ->
+            routine to estimate.estimatedMinutes
+        }
+        val routeEstimateByRoutineId = routineRouteEstimates
+            .mapNotNull { (routine, estimate) ->
+                routine.id?.let { it to estimate }
+            }
+            .toMap()
         val proposedNextAlarm = planner.nextAlarm(
             routineRouteDurations = routineRouteDurations,
             now = now,
@@ -91,6 +100,10 @@ class DepartureAlarmCoordinator(
             val nextAlarm = adjustmentPolicy.adjust(
                 previousSchedule = previousSchedule,
                 proposedSchedule = proposedNextAlarm,
+            ).applyBoardingSafeDeparture(
+                boardingAdvice = routeEstimateByRoutineId[proposedNextAlarm.routineId]?.boardingAdvice,
+                nowEpochMillis = nowEpochMillis,
+                zoneId = now.zone,
             )
             alarmScheduler.schedule(nextAlarm)
             recheckScheduler.schedule(
@@ -136,20 +149,27 @@ class DepartureAlarmCoordinator(
         }
     }
 
-    private suspend fun routeDurationMinutes(
+    private suspend fun routeEstimateFor(
         routine: Routine,
-        scheduledDepartureEpochMillis: Long?,
-    ): Int {
+        schedule: DepartureAlarmSchedule?,
+    ): RouteEstimate {
         return runCatching {
             routeEstimateProvider.getRouteEstimate(
                 origin = routine.origin,
                 destination = routine.destination,
                 transportMode = routine.transportMode,
                 routineId = routine.id,
-                scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
-            ).estimatedMinutes
+                scheduledDepartureEpochMillis = schedule?.triggerAtEpochMillis,
+                targetArrivalEpochMillis = schedule?.targetArrivalAtEpochMillis,
+            )
         }.getOrElse {
-            routine.transportMode.fallbackRouteDurationMinutes()
+            RouteEstimate(
+                estimatedMinutes = routine.transportMode.fallbackRouteDurationMinutes(),
+                summary = "기본 예상 이동 시간",
+                providerName = "Fallback",
+                reason = "경로 계산 실패로 기본 예상 시간을 사용했습니다.",
+                isFallbackEstimate = true,
+            )
         }
     }
 

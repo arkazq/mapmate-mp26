@@ -22,6 +22,7 @@ class GoogleRoutesEstimateProvider(
         transportMode: TransportMode,
         routineId: Long?,
         scheduledDepartureEpochMillis: Long?,
+        targetArrivalEpochMillis: Long?,
     ): RouteEstimate {
         check(config.hasGoogleRoutesKey) { "Google Routes API key is missing." }
 

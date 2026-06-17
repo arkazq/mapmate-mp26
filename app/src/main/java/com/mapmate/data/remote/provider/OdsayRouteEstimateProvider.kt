@@ -41,6 +41,7 @@ class OdsayRouteEstimateProvider(
         transportMode: TransportMode,
         routineId: Long?,
         scheduledDepartureEpochMillis: Long?,
+        targetArrivalEpochMillis: Long?,
     ): RouteEstimate {
         check(transportMode == TransportMode.TRANSIT) {
             "ODsay route estimate supports only public transit."
@@ -100,6 +101,7 @@ class OdsayRouteEstimateProvider(
             candidates.map { candidate ->
                 candidate.toEvaluationInput(
                     scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+                    targetArrivalEpochMillis = targetArrivalEpochMillis,
                     nowEpochMillis = now,
                 )
             },
@@ -474,6 +476,7 @@ class OdsayRouteEstimateProvider(
 
     private fun RouteCandidateEstimate.toEvaluationInput(
         scheduledDepartureEpochMillis: Long?,
+        targetArrivalEpochMillis: Long?,
         nowEpochMillis: Long,
     ): RouteCandidateEvaluationInput {
         val busQuery = firstTransitQuery as? TransitArrivalQuery.Bus
@@ -496,6 +499,9 @@ class OdsayRouteEstimateProvider(
             transferCount = transferCount,
             walkingMinutes = walkingMinutes,
             realtimeStatusRank = realtimeStatus.rank,
+            scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+            targetArrivalEpochMillis = targetArrivalEpochMillis,
+            nowEpochMillis = nowEpochMillis,
             firstBusBoarding = firstBusBoarding,
         )
     }
@@ -524,6 +530,9 @@ class OdsayRouteEstimateProvider(
             slackMinutes = selected.boardingSlackMinutes,
             status = selected.boardingStatus.toRouteBoardingStatus(),
             estimatedTotalMinutes = selected.input.adjustedTotalMinutes,
+            safeDepartureEpochMillis = selected.safeDepartureEpochMillis,
+            earlyDepartureRequiredMinutes = selected.earlyDepartureRequiredMinutes?.takeIf { it > 0 },
+            mayMissTargetArrival = selected.mayMissTargetArrival,
             alternatives = alternatives,
         )
     }
@@ -539,6 +548,9 @@ class OdsayRouteEstimateProvider(
             slackMinutes = boardingSlackMinutes,
             status = boardingStatus.toRouteBoardingStatus(),
             estimatedTotalMinutes = input.adjustedTotalMinutes,
+            safeDepartureEpochMillis = safeDepartureEpochMillis,
+            earlyDepartureRequiredMinutes = earlyDepartureRequiredMinutes?.takeIf { it > 0 },
+            mayMissTargetArrival = mayMissTargetArrival,
         )
     }
 

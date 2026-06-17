@@ -22,6 +22,9 @@ data class RouteBoardingAdvice(
     val slackMinutes: Int?,
     val status: RouteBoardingStatus,
     val estimatedTotalMinutes: Int,
+    val safeDepartureEpochMillis: Long? = null,
+    val earlyDepartureRequiredMinutes: Int? = null,
+    val mayMissTargetArrival: Boolean = false,
     val alternatives: List<RouteBoardingAlternative> = emptyList(),
 )
 
@@ -34,6 +37,9 @@ data class RouteBoardingAlternative(
     val slackMinutes: Int?,
     val status: RouteBoardingStatus,
     val estimatedTotalMinutes: Int,
+    val safeDepartureEpochMillis: Long? = null,
+    val earlyDepartureRequiredMinutes: Int? = null,
+    val mayMissTargetArrival: Boolean = false,
 )
 
 enum class RouteBoardingStatus {
