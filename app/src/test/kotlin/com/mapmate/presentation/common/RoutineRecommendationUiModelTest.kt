@@ -62,6 +62,20 @@ class RoutineRecommendationUiModelTest {
     }
 
     @Test
+    fun toRecommendationUiModel_doesNotClampToImmediateWhenScheduledEpochIsFuture() {
+        val recommendation = sampleRoutine.toRecommendationUiModel(
+            routeEstimate = routeEstimate,
+            now = LocalTime.of(8, 8),
+            recommendedDepartureAtEpochMillis = 7 * 24 * 60 * 60 * 1000L,
+            displayedDepartureTime = LocalTime.of(8, 7),
+        )
+
+        assertEquals("08:07", recommendation.recommendedDepartureDisplayText)
+        assertEquals(false, recommendation.isImmediateDepartureRecommended)
+        assertNull(recommendation.departureStatusMessage)
+    }
+
+    @Test
     fun departureCountdownText_formatsLongRemainingTimeAsHoursAndMinutes() {
         val recommendation = sampleRoutine.toRecommendationUiModel(
             routeEstimate = routeEstimate,

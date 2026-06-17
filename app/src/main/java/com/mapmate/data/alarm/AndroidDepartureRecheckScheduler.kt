@@ -27,7 +27,7 @@ class AndroidDepartureRecheckScheduler(
         }
         val now = nowEpochMillis()
 
-        recheckOffsetsFor(schedule.routeDurationMinutes).forEach { offsetMinutes ->
+        departureRecheckOffsetsFor(schedule.routeDurationMinutes).forEach { offsetMinutes ->
             val recheckAtEpochMillis = schedule.triggerAtEpochMillis - offsetMinutes * MILLIS_PER_MINUTE
             val delayMillis = recheckAtEpochMillis - now
             if (delayMillis < MIN_RECHECK_DELAY_MILLIS) return@forEach
@@ -59,14 +59,6 @@ class AndroidDepartureRecheckScheduler(
         get() = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
-
-    private fun recheckOffsetsFor(routeDurationMinutes: Int): List<Long> {
-        return when {
-            routeDurationMinutes >= 90 -> listOf(120, 90, 60, 30, 15, 5)
-            routeDurationMinutes >= 60 -> listOf(90, 60, 30, 15, 5)
-            else -> listOf(60, 30, 15, 5)
-        }
-    }
 
     private fun uniqueWorkName(
         schedule: DepartureAlarmSchedule,
@@ -101,5 +93,13 @@ class AndroidDepartureRecheckScheduler(
         const val MIN_RECHECK_DELAY_MINUTES = 1L
         private const val MILLIS_PER_MINUTE = 60 * 1000L
         private const val MIN_RECHECK_DELAY_MILLIS = MIN_RECHECK_DELAY_MINUTES * MILLIS_PER_MINUTE
+    }
+}
+
+internal fun departureRecheckOffsetsFor(routeDurationMinutes: Int): List<Long> {
+    return when {
+        routeDurationMinutes >= 90 -> listOf(120, 90, 60, 30, 15, 10, 5)
+        routeDurationMinutes >= 60 -> listOf(90, 60, 30, 15, 10, 5)
+        else -> listOf(60, 30, 15, 10, 5)
     }
 }

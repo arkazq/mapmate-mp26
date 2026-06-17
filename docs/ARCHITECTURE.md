@@ -344,7 +344,7 @@ Android `AlarmManager`, `BroadcastReceiver`, `NotificationManager` 기반 출발
 
 - `DepartureAlarmCoordinator`: 알림 설정과 저장된 루틴을 읽어 다음 출발 알림을 예약/취소
 - `AndroidDepartureAlarmScheduler`: `AlarmManager`로 가장 가까운 출발 알림 하나를 예약하고 기존 예약을 취소
-- `AndroidDepartureRecheckScheduler`: 출발 전 `T-60/T-30/T-15/T-5` 기준 unique WorkManager one-time work를 예약하고, 긴 이동에는 `T-90/T-120` 재조회도 추가합니다.
+- `AndroidDepartureRecheckScheduler`: 출발 전 `T-60/T-30/T-15/T-10/T-5` 기준 unique WorkManager one-time work를 예약하고, 긴 이동에는 `T-90/T-120` 재조회도 추가합니다.
 - `DepartureAlarmReceiver`: 예약된 알림을 수신해 notification을 표시하고 다음 반복 알림을 재예약
 - `DepartureAlarmBootReceiver`: 기기 부팅 또는 앱 업데이트 후 알림을 재예약
 - `DepartureAlarmNotificationPublisher`: notification channel 생성과 출발 알림 표시

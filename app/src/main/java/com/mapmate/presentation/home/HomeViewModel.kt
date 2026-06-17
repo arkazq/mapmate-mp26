@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
 import com.mapmate.domain.calculator.DepartureTimeCalculator
+import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
@@ -15,17 +17,18 @@ import com.mapmate.presentation.common.toRecommendationUiModel
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class HomeViewModel(
     private val routineRepository: RoutineRepository,
+    private val commuteRecordRepository: CommuteRecordRepository,
     private val routeEstimateProvider: RouteEstimateProvider,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     private val alarmPlanner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
@@ -75,10 +78,17 @@ class HomeViewModel(
 
     private fun observeSavedRoutines() {
         viewModelScope.launch {
-            routineRepository.observeRoutines()
-                .combine(minuteTicker()) { routines, now ->
-                    routines to now
-                }
+            combine(
+                routineRepository.observeRoutines(),
+                commuteRecordRepository.observeRecords(),
+                minuteTicker(),
+            ) { routines, records, now ->
+                HomeSourceState(
+                    routines = routines,
+                    records = records,
+                    now = now,
+                )
+            }
                 .catch {
                     _uiState.update {
                         it.copy(
@@ -87,9 +97,12 @@ class HomeViewModel(
                         )
                     }
                 }
-                .collect { (routines, now) ->
+                .collect { sourceState ->
+                    val routines = sourceState.routines
+                    val records = sourceState.records
+                    val now = sourceState.now
                     val dashboardRecommendation = routines
-                        .map { it.toDashboardRecommendation(now) }
+                        .map { it.toDashboardRecommendation(now, records) }
                         .nextDepartureRecommendation()
 
                     _uiState.update {
@@ -118,7 +131,14 @@ class HomeViewModel(
         }
     }
 
-    private suspend fun Routine.toDashboardRecommendation(now: ZonedDateTime): RoutineRecommendationUiModel {
+    private suspend fun Routine.toDashboardRecommendation(
+        now: ZonedDateTime,
+        records: List<CommuteRecord>,
+    ): RoutineRecommendationUiModel {
+        val excludedArrivalAtEpochMillis = records.completedArrivalEventToExclude(
+            routine = this,
+            now = now,
+        )
         return runCatching {
             val baseRouteEstimate = routeEstimateProvider.getRouteEstimate(
                 origin = origin,
@@ -130,6 +150,7 @@ class HomeViewModel(
                 routine = this,
                 routeDurationMinutes = baseRouteEstimate.estimatedMinutes,
                 now = now,
+                excludedArrivalAtEpochMillis = excludedArrivalAtEpochMillis,
             )
             val routeEstimate = if (baseSchedule?.shouldApplyRealtime(now) == true) {
                 routeEstimateProvider.getRouteEstimate(
@@ -146,6 +167,7 @@ class HomeViewModel(
                 routine = this,
                 routeDurationMinutes = routeEstimate.estimatedMinutes,
                 now = now,
+                excludedArrivalAtEpochMillis = excludedArrivalAtEpochMillis,
             )
             val displaySchedule = finalSchedule?.let {
                 adjustmentPolicy.adjust(
@@ -169,6 +191,7 @@ class HomeViewModel(
                 routine = this,
                 routeDurationMinutes = fallbackRouteDurationMinutes,
                 now = now,
+                excludedArrivalAtEpochMillis = excludedArrivalAtEpochMillis,
             )
             toFallbackRecommendationUiModel(
                 departureTimeCalculator = departureTimeCalculator,
@@ -202,6 +225,7 @@ class HomeViewModel(
 
         fun factory(
             routineRepository: RoutineRepository,
+            commuteRecordRepository: CommuteRecordRepository,
             routeEstimateProvider: RouteEstimateProvider,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
@@ -210,6 +234,7 @@ class HomeViewModel(
                     if (modelClass.isAssignableFrom(HomeViewModel::class.java)) {
                         return HomeViewModel(
                             routineRepository = routineRepository,
+                            commuteRecordRepository = commuteRecordRepository,
                             routeEstimateProvider = routeEstimateProvider,
                         ) as T
                     }
@@ -218,4 +243,32 @@ class HomeViewModel(
             }
         }
     }
+
+    private data class HomeSourceState(
+        val routines: List<Routine>,
+        val records: List<CommuteRecord>,
+        val now: ZonedDateTime,
+    )
+}
+
+internal fun List<CommuteRecord>.completedArrivalEventToExclude(
+    routine: Routine,
+    now: ZonedDateTime,
+): Long? {
+    val routineId = routine.id ?: return null
+    return asSequence()
+        .filter { record -> record.routineId == routineId }
+        .sortedByDescending { record -> record.arrivedAtEpochMillis }
+        .map { record ->
+            val arrivalDate = java.time.Instant.ofEpochMilli(record.arrivedAtEpochMillis)
+                .atZone(now.zone)
+                .toLocalDate()
+            arrivalDate.atTime(record.targetArrivalTime)
+                .atZone(now.zone)
+        }
+        .firstOrNull { targetArrivalAt ->
+            !targetArrivalAt.isBefore(now)
+        }
+        ?.toInstant()
+        ?.toEpochMilli()
 }
