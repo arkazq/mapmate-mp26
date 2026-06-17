@@ -70,6 +70,7 @@ class ScheduleAwareRecommendationResolver(
                 departureTimeCalculator = departureTimeCalculator,
                 now = now.toLocalTime(),
                 recommendedDepartureAtEpochMillis = displaySchedule?.triggerAtEpochMillis,
+                targetArrivalAtEpochMillis = displaySchedule?.targetArrivalAtEpochMillis,
                 displayedDepartureTime = displaySchedule?.recommendedDepartureTime,
                 isImmediateDepartureOverride = displaySchedule?.triggerAtEpochMillis
                     ?.let { it <= now.toInstant().toEpochMilli() }
@@ -98,6 +99,7 @@ class ScheduleAwareRecommendationResolver(
                 departureTimeCalculator = departureTimeCalculator,
                 now = now.toLocalTime(),
                 recommendedDepartureAtEpochMillis = fallbackSchedule?.triggerAtEpochMillis,
+                targetArrivalAtEpochMillis = fallbackSchedule?.targetArrivalAtEpochMillis,
                 displayedDepartureTime = fallbackSchedule?.recommendedDepartureTime,
                 isImmediateDepartureOverride = fallbackSchedule?.triggerAtEpochMillis
                     ?.let { it <= now.toInstant().toEpochMilli() }

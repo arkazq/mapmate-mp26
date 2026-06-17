@@ -54,7 +54,12 @@ import com.mapmate.presentation.common.ScreenHeader
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
 import com.mapmate.presentation.common.transportModeIcon
 import com.mapmate.ui.theme.MapMateTheme
+import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 @Composable
@@ -132,6 +137,7 @@ fun HomeScreen(
         item {
             HomeDashboardHero(
                 uiState = uiState,
+                nowEpochMillis = displayNowEpochMillis,
                 onRegisterRoutineClick = onRegisterRoutineClick,
                 onEditRoutineClick = onEditRoutineClick,
                 onPredictionClick = onPredictionClick,
@@ -140,11 +146,13 @@ fun HomeScreen(
         }
 
         uiState.dashboardRecommendation?.let { recommendation ->
-            item {
-                CountdownProgressCard(
-                    recommendation = recommendation,
-                    nowEpochMillis = displayNowEpochMillis,
-                )
+            if (recommendation.isDepartureToday(displayNowEpochMillis)) {
+                item {
+                    CountdownProgressCard(
+                        recommendation = recommendation,
+                        nowEpochMillis = displayNowEpochMillis,
+                    )
+                }
             }
             item {
                 recommendation.boardingAdvice?.let { advice ->
@@ -163,6 +171,7 @@ fun HomeScreen(
             item {
                 HomeActionButtons(
                     recommendation = recommendation,
+                    nowEpochMillis = displayNowEpochMillis,
                     onPredictionClick = onPredictionClick,
                     onStartTrackingClick = onStartTrackingClick,
                 )
@@ -306,6 +315,7 @@ private fun HomeRoutineSummaryCard(
 @Composable
 private fun HomeDashboardHero(
     uiState: HomeUiState,
+    nowEpochMillis: Long,
     onRegisterRoutineClick: () -> Unit,
     onEditRoutineClick: (Routine) -> Unit,
     onPredictionClick: (Routine) -> Unit,
@@ -331,7 +341,11 @@ private fun HomeDashboardHero(
         }
 
         recommendation != null -> {
-            CompactHomeHeroCard(recommendation = recommendation)
+            CompactHomeHeroCard(
+                recommendation = recommendation,
+                nowEpochMillis = nowEpochMillis,
+                hasCompletedTodayCommute = uiState.hasCompletedTodayCommute,
+            )
         }
 
         else -> {
@@ -348,7 +362,11 @@ private fun HomeDashboardHero(
 @Composable
 private fun CompactHomeHeroCard(
     recommendation: RoutineRecommendationUiModel,
+    nowEpochMillis: Long,
+    hasCompletedTodayCommute: Boolean,
 ) {
+    val isAfterToday = recommendation.isDepartureAfterToday(nowEpochMillis)
+    val showCompletedState = hasCompletedTodayCommute && isAfterToday
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -364,7 +382,11 @@ private fun CompactHomeHeroCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = "오늘은",
+                    text = when {
+                        showCompletedState -> "오늘 이동 완료"
+                        isAfterToday -> "다음 출발"
+                        else -> "오늘은"
+                    },
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
                     fontWeight = FontWeight.Bold,
@@ -383,13 +405,21 @@ private fun CompactHomeHeroCard(
                 }
             }
             Text(
-                text = recommendation.recommendedDepartureDisplayText,
+                text = if (showCompletedState) {
+                    "수고하셨습니다"
+                } else {
+                    recommendation.recommendedDepartureDisplayText
+                },
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onPrimary,
                 fontWeight = FontWeight.ExtraBold,
             )
             Text(
-                text = "출발하세요! · ${recommendation.routine.name}",
+                text = if (isAfterToday) {
+                    "다음 출발은 ${recommendation.departureDateTimeText(nowEpochMillis)} · ${recommendation.routine.name}"
+                } else {
+                    "출발하세요! · ${recommendation.routine.name}"
+                },
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.88f),
                 fontWeight = FontWeight.Bold,
@@ -460,6 +490,7 @@ private fun RecommendationReasonCard() {
 @Composable
 private fun HomeActionButtons(
     recommendation: RoutineRecommendationUiModel,
+    nowEpochMillis: Long,
     onPredictionClick: (Routine) -> Unit,
     onStartTrackingClick: (Routine) -> Unit,
 ) {
@@ -486,6 +517,8 @@ private fun HomeActionButtons(
                 fontWeight = FontWeight.Bold,
             )
         }
+        if (!recommendation.isDepartureToday(nowEpochMillis)) return@Column
+
         OutlinedButton(
             onClick = { onStartTrackingClick(recommendation.routine) },
             modifier = Modifier
@@ -511,6 +544,34 @@ private fun HomeActionButtons(
             )
         }
     }
+}
+
+private fun RoutineRecommendationUiModel.isDepartureToday(nowEpochMillis: Long): Boolean {
+    val departureAt = recommendedDepartureAtEpochMillis ?: return true
+    return departureAt.toLocalDate() == nowEpochMillis.toLocalDate()
+}
+
+private fun RoutineRecommendationUiModel.isDepartureAfterToday(nowEpochMillis: Long): Boolean {
+    val departureAt = recommendedDepartureAtEpochMillis ?: return false
+    return departureAt.toLocalDate().isAfter(nowEpochMillis.toLocalDate())
+}
+
+private fun RoutineRecommendationUiModel.departureDateTimeText(nowEpochMillis: Long): String {
+    val departureAt = recommendedDepartureAtEpochMillis ?: return recommendedDepartureTimeText
+    val departureDate = departureAt.toLocalDate()
+    val today = nowEpochMillis.toLocalDate()
+    val dayText = when (departureDate) {
+        today -> "오늘"
+        today.plusDays(1) -> "내일"
+        else -> departureDate.format(DateTimeFormatter.ofPattern("E요일", Locale.KOREAN))
+    }
+    return "$dayText $recommendedDepartureTimeText"
+}
+
+private fun Long.toLocalDate(): LocalDate {
+    return Instant.ofEpochMilli(this)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate()
 }
 
 @Composable

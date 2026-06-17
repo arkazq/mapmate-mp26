@@ -360,6 +360,7 @@ private fun RoutineRecommendationUiModel.toCommuteRecord(
         destinationName = routine.destination.name,
         transportMode = routine.transportMode,
         targetArrivalTime = routine.targetArrivalTime,
+        targetArrivalAtEpochMillis = targetArrivalAtEpochMillis,
         recommendedDepartureTime = recommendedDepartureTimeText.toLocalTimeOrDefault(
             defaultValue = routine.targetArrivalTime.minusMinutes(
                 (routeDurationMinutes + personalBufferMinutes + safetyMarginMinutes).toLong(),

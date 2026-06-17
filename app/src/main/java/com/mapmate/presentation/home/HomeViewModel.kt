@@ -13,6 +13,8 @@ import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.ScheduleAwareRecommendationResolver
+import com.mapmate.presentation.common.completedArrivalEventToExclude
+import com.mapmate.presentation.common.hasCompletedCommuteToday
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlinx.coroutines.delay
@@ -115,6 +117,7 @@ class HomeViewModel(
                             savedRoutines = routines,
                             dashboardRecommendation = dashboardRecommendation,
                             nowEpochMillis = now.toInstant().toEpochMilli(),
+                            hasCompletedTodayCommute = records.hasCompletedCommuteToday(now),
                             isLoading = false,
                             errorMessage = null,
                         )
@@ -188,26 +191,4 @@ class HomeViewModel(
         val records: List<CommuteRecord>,
         val now: ZonedDateTime,
     )
-}
-
-internal fun List<CommuteRecord>.completedArrivalEventToExclude(
-    routine: Routine,
-    now: ZonedDateTime,
-): Long? {
-    val routineId = routine.id ?: return null
-    return asSequence()
-        .filter { record -> record.routineId == routineId }
-        .sortedByDescending { record -> record.arrivedAtEpochMillis }
-        .map { record ->
-            val arrivalDate = java.time.Instant.ofEpochMilli(record.arrivedAtEpochMillis)
-                .atZone(now.zone)
-                .toLocalDate()
-            arrivalDate.atTime(record.targetArrivalTime)
-                .atZone(now.zone)
-        }
-        .firstOrNull { targetArrivalAt ->
-            !targetArrivalAt.isBefore(now)
-        }
-        ?.toInstant()
-        ?.toEpochMilli()
 }

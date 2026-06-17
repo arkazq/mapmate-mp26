@@ -25,6 +25,9 @@ class ScheduleAwareRecommendationResolverTest {
         val safeDepartureAt = ZonedDateTime.of(2026, 6, 17, 9, 10, 0, 0, zoneId)
             .toInstant()
             .toEpochMilli()
+        val targetArrivalAt = ZonedDateTime.of(2026, 6, 17, 10, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
         val provider = RecordingRouteEstimateProvider(
             realtimeEstimate = routeEstimate(
                 boardingAdvice = boardingAdvice(safeDepartureEpochMillis = safeDepartureAt),
@@ -39,6 +42,7 @@ class ScheduleAwareRecommendationResolverTest {
 
         assertEquals("09:10", result.recommendation.recommendedDepartureTimeText)
         assertEquals(safeDepartureAt, result.recommendation.recommendedDepartureAtEpochMillis)
+        assertEquals(targetArrivalAt, result.recommendation.targetArrivalAtEpochMillis)
         assertEquals(true, result.recommendation.isImmediateDepartureRecommended.not())
         assertNotNull(provider.scheduledDepartureCalls.drop(1).single())
         assertNotNull(provider.targetArrivalCalls.drop(1).single())

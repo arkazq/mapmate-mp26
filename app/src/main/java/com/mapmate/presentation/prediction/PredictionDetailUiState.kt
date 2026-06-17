@@ -6,6 +6,7 @@ import com.mapmate.presentation.common.RoutineRecommendationUiModel
 data class PredictionDetailUiState(
     val routine: Routine,
     val recommendation: RoutineRecommendationUiModel? = null,
+    val nowEpochMillis: Long = System.currentTimeMillis(),
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
 )
