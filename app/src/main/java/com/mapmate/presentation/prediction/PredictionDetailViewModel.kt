@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
+import com.mapmate.domain.alarm.applyBoardingSafeDeparture
 import com.mapmate.domain.calculator.DepartureTimeCalculator
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.RouteEstimateProvider
@@ -65,6 +66,7 @@ class PredictionDetailViewModel(
                     transportMode = routine.transportMode,
                     routineId = routine.id,
                     scheduledDepartureEpochMillis = baseSchedule.triggerAtEpochMillis,
+                    targetArrivalEpochMillis = baseSchedule.targetArrivalAtEpochMillis,
                 )
             } else {
                 baseRouteEstimate
@@ -78,6 +80,10 @@ class PredictionDetailViewModel(
                 adjustmentPolicy.adjust(
                     previousSchedule = baseSchedule,
                     proposedSchedule = it,
+                ).applyBoardingSafeDeparture(
+                    boardingAdvice = routeEstimate.boardingAdvice,
+                    nowEpochMillis = now.toInstant().toEpochMilli(),
+                    zoneId = now.zone,
                 )
             }
             routine.toRecommendationUiModel(

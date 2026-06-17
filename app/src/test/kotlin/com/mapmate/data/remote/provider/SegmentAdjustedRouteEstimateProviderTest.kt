@@ -148,6 +148,7 @@ class SegmentAdjustedRouteEstimateProviderTest {
             transportMode: TransportMode,
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
+            targetArrivalEpochMillis: Long?,
         ): RouteEstimate = estimate
     }
 

@@ -57,10 +57,10 @@ WorkManager 실행
 → 출발까지 30분 이내이면 각 후보의 첫 버스 구간 추출
 → 서울 버스 도착정보 또는 TAGO 버스정류소/도착정보 조회
 → 실시간 대기시간과 정류장 접근 시간을 비교해 탑승 여유 계산
-→ 총 소요시간, 놓칠 위험, 환승 수, 도보 시간, 실시간 신뢰도 기반 후보 점수화
+→ 총 소요시간, 목표 도착 가능성, 놓칠 위험, 환승 수, 도보 시간, 실시간 신뢰도 기반 후보 점수화
 → 3분 이상 이득이 있는 경우 후보 경로 전환
 → RouteRealtimeSnapshot 저장
-→ 최종 출발 시각 재계산
+→ 목표 도착 기준 출발 시각과 첫 버스 안전 탑승 출발 시각을 함께 고려해 최종 출발 시각 재계산
 → AlarmManager 알림 재예약
 ```
 
@@ -79,12 +79,26 @@ initialDepartureTime
 실시간 보정 후 출발 시각:
 
 ```text
-finalDepartureTime
+targetBasedDepartureTime
 = targetArrivalTime
 - adjustedRouteDurationMinutes
 - personalBufferMinutes
 - safetyMarginMinutes
 ```
+
+첫 버스를 타기 위해 더 일찍 나가야 하는 경우에는 실시간 버스 도착 시각에서 정류장 접근 시간과 최소 탑승 여유를 빼서 안전 탑승 출발 시각을 계산합니다.
+
+```text
+boardingSafeDepartureTime
+= realtimeFirstBusArrivalTime
+- accessMinutesToStop
+- minBoardingSlackMinutes(기본 3분)
+
+finalDepartureTime
+= min(targetBasedDepartureTime, boardingSafeDepartureTime)
+```
+
+이 비교는 `LocalTime` 문자열이 아니라 epoch millis 기준으로 처리합니다. 목표 도착 시각이 1순위이므로, 후보 점수화에서는 목표 도착을 놓칠 위험을 가장 큰 페널티로 둡니다. 다만 실시간 버스 기준으로 너무 일찍 당겨야 하는 후보에는 약한 페널티를 주어 불필요한 출발 시각 흔들림을 줄입니다.
 
 실시간 보정 결과가 이미 지난 시간이면 그대로 표시하지 않습니다.
 
@@ -139,7 +153,7 @@ enum class RealtimeStatus {
 
 서울권에서는 서울특별시 버스도착정보조회 서비스를 먼저 사용하고, 전국 지원 관점에서는 TAGO 버스 API를 fallback provider로 둡니다.
 
-현재 서울 버스 도착정보 키와 도착정보 endpoint는 정상 응답을 확인했습니다. 다만 ODsay가 제공하는 `busID/routeID`가 서울버스 `busRouteId`와 일치하지 않는 경로가 있으므로, 현 구현은 이 경우 실시간 보정을 적용하지 않고 기존 fallback 흐름을 유지합니다. 후속 v2에서는 ODsay 첫 탑승 정류장의 `startArsID`로 정류장 도착목록을 조회한 뒤 `rtNm` 또는 `busRouteAbrv`를 ODsay `busNo`와 비교하는 fallback을 추가합니다.
+현재 서울 버스 도착정보 키와 도착정보 endpoint는 정상 응답을 확인했습니다. ODsay가 제공하는 `busID/routeID`가 서울버스 `busRouteId`와 일치하지 않는 경로가 있으므로, 현 구현은 ODsay 첫 탑승 정류장의 `startArsID`가 있으면 `getStationByUid` 정류장 도착목록을 먼저 조회하고 `rtNm` 또는 `busRouteAbrv`를 ODsay `busNo`와 비교합니다. 이 방식이 실패하면 기존 `busRouteId` 기준 조회로 fallback합니다.
 
 사용 API:
 
@@ -153,15 +167,16 @@ ODsay 후보 path 최대 5개 평가
 → 출발 예정 시각이 30분 이내인지 확인
 → 후보별 첫 버스 탑승 구간 추출
 → 정류장명, 정류장 좌표, 노선번호 확보
-→ 서울 버스 도착정보 조회
-→ 서울버스 노선 ID 매칭 실패 시 후속 v2에서는 정류장 ARS 기준 도착목록 조회
+→ 서울버스 `startArsID`가 있으면 정류장 ARS 기준 도착목록 조회 후 노선명 매칭
+→ 실패하면 기존 서울버스 `busRouteId` 기준 도착정보 조회
 → 실패 시 ODsay 첫 탑승 정류장 좌표 기준으로 TAGO 근접 정류소 조회
 → cityCode, nodeId 후보 확보
 → TAGO 버스도착정보 API 호출
 → ODsay 노선정보와 TAGO 도착정보 매칭
 → 도착 예정 시간을 실시간 첫 탑승 대기시간으로 사용
 → 후보별 기본 이동 시간 보정
-→ 정류장 접근 시간 대비 탑승 여유가 부족한 후보에 페널티 적용
+→ 정류장 접근 시간 대비 탑승 여유가 부족한 후보와 목표 도착을 놓치는 후보에 페널티 적용
+→ 첫 버스를 타기 위해 더 일찍 출발해야 하면 안전 탑승 출발 시각 계산
 → 3분 이상 점수 이득이 있으면 보정 후보 선택
 ```
 
@@ -314,6 +329,7 @@ UI 문구 예:
 실시간 후보 랭킹 결과는 내부 API 응답 문자열을 그대로 노출하지 않고 사용자용 구조화 정보로 표시합니다.
 
 - `RouteEstimate.boardingAdvice`는 선택된 첫 버스 후보, 정류장 접근 시간, 실시간 도착 대기 시간, 탑승 여유 시간, 탑승 상태, 대안 후보를 담습니다.
+- 첫 버스 안전 탑승 때문에 출발 시각을 앞당겨야 하면 `RouteEstimate.boardingAdvice`에 안전 탑승 출발 epoch millis와 앞당겨야 하는 분 수를 담고, 홈/상세/알림은 같은 정책으로 표시 시각을 맞춥니다.
 - 홈 화면은 추천 버스와 탑승 여유를 짧은 요약 카드로 표시합니다.
 - 상세 예측 화면은 `탑승 판단` 섹션에서 추천 후보와 대안 후보 1~2개를 보여줍니다.
 - 루틴 등록 계산 결과는 provider의 `reason` 원문 대신 이동 시간, 개인 보정, 안전 여유, 실시간 반영 여부를 사용자용 문장으로 표시합니다.
@@ -362,12 +378,12 @@ data class CommuteHistory(
 12. `AlarmManager` 재예약
 13. 이동 기록 저장
 14. 개인보정 자동 계산
-15. 서울버스 정류장 ARS 기준 도착목록 fallback (후속 v2)
+15. 서울버스 정류장 ARS 기준 도착목록 fallback (구현 완료)
 16. 지하철 지역별 provider (서울 지하철 실시간 도착/위치 provider 구현 완료, 수도권 외 확장 필요)
 
 ## 최종 기준
 
-초기 경로 계산은 ODsay가 담당하고, 출발 30분 이내 첫 버스 실시간 보정은 서울 버스 도착정보와 TAGO 도착정보가 순차적으로 담당합니다. ODsay 후보는 최대 5개까지 비교하며, `RouteCandidateEvaluator`가 첫 버스 접근 시간과 실시간 도착 대기시간을 비교해 실제 탑승 가능성이 낮은 후보를 낮게 평가합니다. 선택 후보의 시간과 segment가 함께 `RouteEstimate`에 반영됩니다. 보정 결과는 `Routine`이 아니라 `RouteRealtimeSnapshot`에 저장하며, 마지막 성공 보정값은 유효기간과 30분 정책 안에서만 사용합니다. 실시간 보정이 없는 전체 경로 API 성공값은 별도 `RouteEstimateCache`에 6시간 저장해 실제 provider 실패 시 mock fallback 전에 재사용합니다. 실시간 정류장/노선 매칭 신뢰도가 낮거나 재조회가 지연된 경우에는 ODsay 기본 예상시간 또는 fresh cache/mock fallback으로 복구합니다. 현재 MapMate에서 중요한 것은 실시간 데이터를 무조건 믿는 것이 아니라, 매칭 신뢰도, 스냅샷/cache 유효기간, fallback을 갖춘 안정적인 보정 구조입니다.
+초기 경로 계산은 ODsay가 담당하고, 출발 30분 이내 첫 버스 실시간 보정은 서울 버스 도착정보와 TAGO 도착정보가 순차적으로 담당합니다. ODsay 후보는 최대 5개까지 비교하며, `RouteCandidateEvaluator`가 첫 버스 접근 시간과 실시간 도착 대기시간을 비교해 실제 탑승 가능성이 낮은 후보를 낮게 평가합니다. 목표 도착 시각을 놓치는 후보에는 가장 큰 페널티를 주고, 첫 버스를 타려면 더 일찍 나가야 하는 경우에는 안전 탑승 출발 시각을 별도로 계산해 홈/상세/알림 시각에 반영합니다. 선택 후보의 시간과 segment가 함께 `RouteEstimate`에 반영됩니다. 보정 결과는 `Routine`이 아니라 `RouteRealtimeSnapshot`에 저장하며, 마지막 성공 보정값은 유효기간과 30분 정책 안에서만 사용합니다. 실시간 보정이 없는 전체 경로 API 성공값은 별도 `RouteEstimateCache`에 6시간 저장해 실제 provider 실패 시 mock fallback 전에 재사용합니다. 실시간 정류장/노선 매칭 신뢰도가 낮거나 재조회가 지연된 경우에는 ODsay 기본 예상시간 또는 fresh cache/mock fallback으로 복구합니다. 현재 MapMate에서 중요한 것은 실시간 데이터를 무조건 믿는 것이 아니라, 매칭 신뢰도, 스냅샷/cache 유효기간, fallback을 갖춘 안정적인 보정 구조입니다.
 # 현재 실시간 출발 참고
 
-최신 실시간 출발 동작은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 로직은 출발 전 ODsay 후보 경로를 다시 조회하고, ODsay가 제공한 첫 버스 후보를 탑승 가능성 기준으로 랭킹합니다. ODsay 경로 밖의 주변 버스 직접 탐색, 서울버스 정류장 ARS 기준 도착목록 fallback, 알림 화면의 상세 대안 UI는 별도 후속 작업입니다.
+최신 실시간 출발 동작은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 로직은 출발 전 ODsay 후보 경로를 다시 조회하고, ODsay가 제공한 첫 버스 후보를 탑승 가능성과 목표 도착 가능성 기준으로 랭킹합니다. ODsay 경로 밖의 주변 버스 직접 탐색, 지하철 첫 탑승 실시간 후보 랭킹, 알림 화면의 상세 대안 UI는 별도 후속 작업입니다.

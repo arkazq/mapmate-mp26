@@ -1,6 +1,7 @@
 package com.mapmate.data.remote.provider
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -120,6 +121,149 @@ class RouteCandidateEvaluatorTest {
         assertEquals(1, selection?.selected?.boardingSlackMinutes)
     }
 
+    @Test
+    fun select_calculatesSafeDepartureWhenBusRequiresEarlierDeparture() {
+        val selection = evaluator.select(
+            listOf(
+                candidate(
+                    pathIndex = 0,
+                    adjustedTotalMinutes = 26,
+                    accessMinutes = 4,
+                    realtimeWaitMinutes = 13,
+                    scheduledDepartureEpochMillis = minutes(21),
+                    targetArrivalEpochMillis = minutes(55),
+                    nowEpochMillis = 0L,
+                ),
+            ),
+        )
+
+        assertEquals(minutes(6), selection?.selected?.safeDepartureEpochMillis)
+        assertEquals(15, selection?.selected?.earlyDepartureRequiredMinutes)
+        assertEquals(false, selection?.selected?.mayMissTargetArrival)
+    }
+
+    @Test
+    fun select_prefersCandidateThatCanStillMeetTargetArrival() {
+        val selection = evaluator.select(
+            listOf(
+                candidate(
+                    pathIndex = 0,
+                    adjustedTotalMinutes = 60,
+                    accessMinutes = 4,
+                    realtimeWaitMinutes = 13,
+                    scheduledDepartureEpochMillis = minutes(21),
+                    targetArrivalEpochMillis = minutes(55),
+                    nowEpochMillis = 0L,
+                ),
+                candidate(
+                    pathIndex = 1,
+                    adjustedTotalMinutes = 45,
+                    accessMinutes = 4,
+                    realtimeWaitMinutes = 14,
+                    scheduledDepartureEpochMillis = minutes(21),
+                    targetArrivalEpochMillis = minutes(55),
+                    nowEpochMillis = 0L,
+                ),
+            ),
+        )
+
+        assertEquals(1, selection?.selected?.input?.pathIndex)
+        assertEquals(false, selection?.selected?.mayMissTargetArrival)
+    }
+
+    @Test
+    fun select_prioritizesTargetArrivalOverSmallerEarlyDeparture() {
+        val selection = evaluator.select(
+            listOf(
+                candidate(
+                    pathIndex = 0,
+                    adjustedTotalMinutes = 35,
+                    accessMinutes = 4,
+                    realtimeWaitMinutes = 13,
+                    scheduledDepartureEpochMillis = minutes(21),
+                    targetArrivalEpochMillis = minutes(50),
+                    nowEpochMillis = 0L,
+                ),
+                candidate(
+                    pathIndex = 1,
+                    adjustedTotalMinutes = 50,
+                    accessMinutes = 4,
+                    realtimeWaitMinutes = 26,
+                    scheduledDepartureEpochMillis = minutes(21),
+                    targetArrivalEpochMillis = minutes(50),
+                    nowEpochMillis = 0L,
+                ),
+            ),
+        )
+
+        assertEquals(0, selection?.selected?.input?.pathIndex)
+        assertEquals(15, selection?.selected?.earlyDepartureRequiredMinutes)
+        assertEquals(false, selection?.selected?.mayMissTargetArrival)
+        val lessEarlyButLateCandidate = selection?.evaluations
+            ?.firstOrNull { it.input.pathIndex == 1 }
+        assertEquals(2, lessEarlyButLateCandidate?.earlyDepartureRequiredMinutes)
+        assertEquals(true, lessEarlyButLateCandidate?.mayMissTargetArrival)
+    }
+
+    @Test
+    fun select_fallsBackToTargetBasedDepartureWhenRealtimeIsUnavailableAndTargetArrivalIsReachable() {
+        val selection = evaluator.select(
+            listOf(
+                candidate(
+                    pathIndex = 0,
+                    realtimeWaitMinutes = null,
+                    scheduledDepartureEpochMillis = minutes(21),
+                    targetArrivalEpochMillis = minutes(70),
+                ),
+            ),
+        )
+
+        assertNull(selection?.selected?.safeDepartureEpochMillis)
+        assertEquals(0, selection?.selected?.earlyDepartureRequiredMinutes)
+        assertEquals(false, selection?.selected?.mayMissTargetArrival)
+        assertEquals(BoardingStatus.REALTIME_UNAVAILABLE, selection?.selected?.boardingStatus)
+    }
+
+    @Test
+    fun select_clampsSafeDepartureToNowWhenCalculatedDepartureAlreadyPassed() {
+        val selection = evaluator.select(
+            listOf(
+                candidate(
+                    pathIndex = 0,
+                    accessMinutes = 4,
+                    realtimeWaitMinutes = 5,
+                    scheduledDepartureEpochMillis = minutes(21),
+                    targetArrivalEpochMillis = minutes(55),
+                    nowEpochMillis = minutes(10),
+                ),
+            ),
+        )
+
+        assertEquals(minutes(10), selection?.selected?.safeDepartureEpochMillis)
+        assertEquals(11, selection?.selected?.earlyDepartureRequiredMinutes)
+        assertEquals(false, selection?.selected?.mayMissTargetArrival)
+    }
+
+    @Test
+    fun select_doesNotShowNegativeEarlyDepartureWhenScheduledDepartureAlreadyPassed() {
+        val selection = evaluator.select(
+            listOf(
+                candidate(
+                    pathIndex = 0,
+                    accessMinutes = 4,
+                    realtimeWaitMinutes = 5,
+                    scheduledDepartureEpochMillis = -minutes(1),
+                    targetArrivalEpochMillis = minutes(55),
+                    nowEpochMillis = 0L,
+                ),
+            ),
+        )
+
+        assertNull(selection?.selected?.safeDepartureEpochMillis)
+        assertEquals(0, selection?.selected?.earlyDepartureRequiredMinutes)
+        assertEquals(false, selection?.selected?.mayMissTargetArrival)
+    }
+
     private fun candidate(
         pathIndex: Int,
         adjustedTotalMinutes: Int = 40,
@@ -130,6 +274,7 @@ class RouteCandidateEvaluatorTest {
         accessMinutes: Int = 5,
         realtimeWaitMinutes: Int? = 8,
         scheduledDepartureEpochMillis: Long? = 0L,
+        targetArrivalEpochMillis: Long? = null,
         nowEpochMillis: Long = 0L,
     ): RouteCandidateEvaluationInput {
         return RouteCandidateEvaluationInput(
@@ -138,6 +283,9 @@ class RouteCandidateEvaluatorTest {
             transferCount = transferCount,
             walkingMinutes = walkingMinutes,
             realtimeStatusRank = realtimeStatusRank,
+            scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+            targetArrivalEpochMillis = targetArrivalEpochMillis,
+            nowEpochMillis = nowEpochMillis,
             firstBusBoarding = RouteCandidateBoardingInput(
                 routeName = routeName,
                 stationName = "Start stop",
@@ -148,4 +296,6 @@ class RouteCandidateEvaluatorTest {
             ),
         )
     }
+
+    private fun minutes(value: Int): Long = value * 60_000L
 }

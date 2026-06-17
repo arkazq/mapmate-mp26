@@ -19,6 +19,9 @@ import androidx.compose.ui.unit.dp
 import com.mapmate.domain.model.RouteBoardingAdvice
 import com.mapmate.domain.model.RouteBoardingAlternative
 import com.mapmate.domain.model.RouteBoardingStatus
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun BoardingAdviceSummaryCard(
@@ -64,6 +67,22 @@ fun BoardingAdviceSummaryCard(
                 color = advice.status.contentColor(),
                 fontWeight = FontWeight.Bold,
             )
+            advice.safeDepartureMessage()?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            advice.targetArrivalWarningText()?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }
@@ -140,6 +159,22 @@ private fun BoardingAdviceSelectedRow(
             status = advice.status,
             estimatedTotalMinutes = advice.estimatedTotalMinutes,
         )
+        advice.safeDepartureMessage()?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        advice.targetArrivalWarningText()?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                fontWeight = FontWeight.Bold,
+            )
+        }
     }
 }
 
@@ -211,6 +246,20 @@ private fun RouteBoardingAdvice.summaryDetailText(): String {
 
 private fun RouteBoardingAdvice.statusLabel(): String = status.statusLabel()
 
+private fun RouteBoardingAdvice.safeDepartureMessage(): String? {
+    val safeDepartureText = safeDepartureEpochMillis.toTimeText() ?: return null
+    val earlyMinutes = earlyDepartureRequiredMinutes?.takeIf { it > 0 } ?: return null
+    return "${safeDepartureText}까지 출발해야 여유 있게 탑승 가능 · ${earlyMinutes}분 앞당김"
+}
+
+private fun RouteBoardingAdvice.targetArrivalWarningText(): String? {
+    return if (mayMissTargetArrival) {
+        "지금 출발해도 목표 시각보다 늦을 수 있어요."
+    } else {
+        null
+    }
+}
+
 private fun RouteBoardingAlternative.compactStatusText(): String {
     return slackMinutes.slackText() ?: status.statusLabel()
 }
@@ -254,6 +303,14 @@ private fun Int?.slackText(): String? {
     }
 }
 
+private fun Long?.toTimeText(): String? {
+    val epochMillis = this ?: return null
+    return Instant.ofEpochMilli(epochMillis)
+        .atZone(ZoneId.systemDefault())
+        .toLocalTime()
+        .format(timeFormatter)
+}
+
 private fun String?.busRouteLabel(): String {
     val routeName = this?.trim().orEmpty()
     if (routeName.isBlank()) return "첫 버스"
@@ -261,3 +318,5 @@ private fun String?.busRouteLabel(): String {
     if (routeName.endsWith("번")) return "$routeName 버스"
     return "${routeName}번 버스"
 }
+
+private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")

@@ -18,6 +18,7 @@ class SegmentAdjustedRouteEstimateProvider(
         transportMode: TransportMode,
         routineId: Long?,
         scheduledDepartureEpochMillis: Long?,
+        targetArrivalEpochMillis: Long?,
     ): RouteEstimate {
         val estimate = delegate.getRouteEstimate(
             origin = origin,
@@ -25,6 +26,7 @@ class SegmentAdjustedRouteEstimateProvider(
             transportMode = transportMode,
             routineId = routineId,
             scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+            targetArrivalEpochMillis = targetArrivalEpochMillis,
         )
         if (routineId == null || estimate.segments.isEmpty()) return estimate
 
