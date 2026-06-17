@@ -159,6 +159,7 @@ class CachingRouteEstimateProviderTest {
             transportMode: TransportMode,
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
+            targetArrivalEpochMillis: Long?,
         ): RouteEstimate {
             error("Remote failed.")
         }
@@ -173,6 +174,7 @@ class CachingRouteEstimateProviderTest {
             transportMode: TransportMode,
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
+            targetArrivalEpochMillis: Long?,
         ): RouteEstimate {
             return routeEstimate
         }

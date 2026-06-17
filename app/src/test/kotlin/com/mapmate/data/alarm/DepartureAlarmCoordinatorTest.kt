@@ -8,6 +8,8 @@ import com.mapmate.domain.alarm.PredepartureStatusNotificationPublisher
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
+import com.mapmate.domain.model.RouteBoardingAdvice
+import com.mapmate.domain.model.RouteBoardingStatus
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
@@ -72,6 +74,54 @@ class DepartureAlarmCoordinatorTest {
         assertEquals(false, recheckScheduler.replaceExisting)
         assertEquals(listOf(previousSchedule.triggerAtEpochMillis), routeEstimateProvider.scheduledDepartureCalls)
         assertEquals(0, recheckScheduler.cancelCount)
+    }
+
+    @Test
+    fun rescheduleNextAlarm_appliesBoardingSafeDepartureFromRouteEstimate() = runTest {
+        val now = ZonedDateTime.of(2026, 6, 16, 9, 0, 0, 0, ZoneId.of("Asia/Seoul"))
+        val routine = sampleRoutine(targetArrivalTime = LocalTime.of(9, 30))
+        val previousSchedule = DepartureAlarmSchedule(
+            routineId = routine.id ?: 0L,
+            routineName = routine.name,
+            destinationName = routine.destination.name,
+            targetArrivalTime = routine.targetArrivalTime,
+            recommendedDepartureTime = LocalTime.of(9, 20),
+            routeDurationMinutes = 10,
+            triggerAtEpochMillis = epochAt(9, 20),
+            targetArrivalAtEpochMillis = epochAt(9, 30),
+        )
+        val routeEstimateProvider = FixedRouteEstimateProvider(
+            estimatedMinutes = 10,
+            boardingAdvice = RouteBoardingAdvice(
+                selectedCandidateIndex = 1,
+                candidateCount = 1,
+                routeName = "753",
+                stationName = "정류장",
+                accessMinutes = 4,
+                realtimeWaitMinutes = 12,
+                slackMinutes = -12,
+                status = RouteBoardingStatus.MISS_RISK,
+                estimatedTotalMinutes = 10,
+                safeDepartureEpochMillis = epochAt(9, 5),
+                earlyDepartureRequiredMinutes = 15,
+            ),
+        )
+        val alarmScheduler = FakeAlarmScheduler()
+        val coordinator = coordinator(
+            settings = AppSettings(notificationsEnabled = true),
+            routines = listOf(routine),
+            routeEstimateProvider = routeEstimateProvider,
+            alarmScheduler = alarmScheduler,
+            recheckScheduler = FakeRecheckScheduler(),
+            nowProvider = { now },
+        )
+
+        coordinator.rescheduleNextAlarm(previousSchedule = previousSchedule)
+
+        assertEquals(epochAt(9, 5), alarmScheduler.scheduled!!.triggerAtEpochMillis)
+        assertEquals(LocalTime.of(9, 5), alarmScheduler.scheduled!!.recommendedDepartureTime)
+        assertEquals(listOf(epochAt(9, 20)), routeEstimateProvider.scheduledDepartureCalls)
+        assertEquals(listOf(epochAt(9, 30)), routeEstimateProvider.targetArrivalCalls)
     }
 
     @Test
@@ -264,8 +314,10 @@ class DepartureAlarmCoordinatorTest {
 
     private class FixedRouteEstimateProvider(
         private val estimatedMinutes: Int,
+        private val boardingAdvice: RouteBoardingAdvice? = null,
     ) : RouteEstimateProvider {
         val scheduledDepartureCalls = mutableListOf<Long?>()
+        val targetArrivalCalls = mutableListOf<Long?>()
 
         override suspend fun getRouteEstimate(
             origin: Destination,
@@ -273,13 +325,16 @@ class DepartureAlarmCoordinatorTest {
             transportMode: TransportMode,
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
+            targetArrivalEpochMillis: Long?,
         ): RouteEstimate {
             scheduledDepartureCalls += scheduledDepartureEpochMillis
+            targetArrivalCalls += targetArrivalEpochMillis
             return RouteEstimate(
                 estimatedMinutes = estimatedMinutes,
                 summary = "fixed",
                 providerName = "fixed",
                 reason = "test",
+                boardingAdvice = boardingAdvice,
             )
         }
     }
@@ -291,6 +346,7 @@ class DepartureAlarmCoordinatorTest {
             transportMode: TransportMode,
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
+            targetArrivalEpochMillis: Long?,
         ): RouteEstimate {
             error("Route provider failed")
         }
@@ -333,6 +389,12 @@ class DepartureAlarmCoordinatorTest {
                 routeDurationMinutes = 42,
                 triggerAtEpochMillis = Long.MAX_VALUE,
             )
+        }
+
+        fun epochAt(hour: Int, minute: Int): Long {
+            return ZonedDateTime.of(2026, 6, 16, hour, minute, 0, 0, ZoneId.of("Asia/Seoul"))
+                .toInstant()
+                .toEpochMilli()
         }
     }
 }

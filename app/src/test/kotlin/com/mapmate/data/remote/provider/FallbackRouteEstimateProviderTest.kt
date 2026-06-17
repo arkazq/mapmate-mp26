@@ -73,6 +73,7 @@ class FallbackRouteEstimateProviderTest {
             transportMode: TransportMode,
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
+            targetArrivalEpochMillis: Long?,
         ): RouteEstimate {
             error("Remote failed.")
         }
@@ -87,6 +88,7 @@ class FallbackRouteEstimateProviderTest {
             transportMode: TransportMode,
             routineId: Long?,
             scheduledDepartureEpochMillis: Long?,
+            targetArrivalEpochMillis: Long?,
         ): RouteEstimate {
             return routeEstimate
         }
