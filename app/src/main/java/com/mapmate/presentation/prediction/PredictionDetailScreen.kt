@@ -35,6 +35,7 @@ import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.presentation.common.BoardingAdviceDetailCard
 import com.mapmate.presentation.common.DetailTopBar
 import com.mapmate.presentation.common.IconBadge
@@ -51,13 +52,16 @@ import com.mapmate.presentation.common.toFallbackRecommendationUiModel
 import com.mapmate.presentation.common.toKoreanDescription
 import com.mapmate.presentation.common.transportModeIcon
 import com.mapmate.ui.theme.MapMateTheme
+import java.time.Instant
 import java.time.LocalTime
+import java.time.ZoneId
 
 @Composable
 fun PredictionDetailRoute(
     contentPadding: PaddingValues,
     routine: Routine,
     routeEstimateProvider: RouteEstimateProvider,
+    commuteRecordRepository: CommuteRecordRepository,
     onBackClick: () -> Unit,
     onStartTrackingClick: (Routine) -> Unit,
     onEditRoutineClick: (Routine) -> Unit,
@@ -67,6 +71,7 @@ fun PredictionDetailRoute(
         factory = PredictionDetailViewModel.factory(
             routine = routine,
             routeEstimateProvider = routeEstimateProvider,
+            commuteRecordRepository = commuteRecordRepository,
         ),
     )
     val uiState by viewModel.uiState.collectAsState()
@@ -137,6 +142,8 @@ fun PredictionDetailScreen(
 
                 item {
                     PredictionActionButtons(
+                        recommendation = recommendation,
+                        nowEpochMillis = uiState.nowEpochMillis,
                         onStartTrackingClick = onStartTrackingClick,
                         onEditRoutineClick = onEditRoutineClick,
                     )
@@ -255,31 +262,36 @@ private fun FormulaToken(
 
 @Composable
 private fun PredictionActionButtons(
+    recommendation: RoutineRecommendationUiModel,
+    nowEpochMillis: Long,
     onStartTrackingClick: () -> Unit,
     onEditRoutineClick: () -> Unit,
 ) {
+    val canStartTracking = recommendation.isDepartureToday(nowEpochMillis)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Button(
-            onClick = onStartTrackingClick,
-            modifier = Modifier
-                .weight(1f)
-                .height(46.dp),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            MapMateIcon(
-                icon = MapMateIconType.Play,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onPrimary,
-            )
-            Text(
-                text = "이동 기록 시작",
-                modifier = Modifier.padding(start = 6.dp),
-                style = MaterialTheme.typography.titleSmall,
-            )
+        if (canStartTracking) {
+            Button(
+                onClick = onStartTrackingClick,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                MapMateIcon(
+                    icon = MapMateIconType.Play,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+                Text(
+                    text = "이동 기록 시작",
+                    modifier = Modifier.padding(start = 6.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
         }
         OutlinedButton(
             onClick = onEditRoutineClick,
@@ -301,6 +313,17 @@ private fun PredictionActionButtons(
             )
         }
     }
+}
+
+private fun RoutineRecommendationUiModel.isDepartureToday(nowEpochMillis: Long): Boolean {
+    val departureAt = recommendedDepartureAtEpochMillis ?: return true
+    val today = Instant.ofEpochMilli(nowEpochMillis)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate()
+    val departureDate = Instant.ofEpochMilli(departureAt)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate()
+    return departureDate == today
 }
 
 @Composable

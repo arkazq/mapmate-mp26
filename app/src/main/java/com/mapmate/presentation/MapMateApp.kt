@@ -178,6 +178,7 @@ fun MapMateApp(
                 contentPadding = innerPadding,
                 routine = currentScreen.routine,
                 routeEstimateProvider = routeEstimateProvider,
+                commuteRecordRepository = commuteRecordRepository,
                 onBackClick = { openMain(currentScreen.returnDestination) },
                 onStartTrackingClick = {
                     screen = MapMateScreen.Tracking(
