@@ -94,6 +94,11 @@ fun Routine.toRecommendationUiModel(
         now = now,
     )
     val recommendedDepartureTime = displayedDepartureTime ?: departureRecommendation.recommendedDepartureTime
+    val isImmediateDepartureRecommended = isImmediateDepartureOverride ||
+        (
+            recommendedDepartureAtEpochMillis == null &&
+                departureRecommendation.isImmediateDepartureRecommended
+            )
 
     return RoutineRecommendationUiModel(
         routine = this,
@@ -112,8 +117,7 @@ fun Routine.toRecommendationUiModel(
         },
         isFallbackEstimate = routeEstimate.isFallbackEstimate,
         routeStatusMessage = routeEstimate.statusMessage,
-        isImmediateDepartureRecommended = isImmediateDepartureOverride ||
-            departureRecommendation.isImmediateDepartureRecommended,
+        isImmediateDepartureRecommended = isImmediateDepartureRecommended,
         routeSegments = routeEstimate.segments,
         boardingAdvice = routeEstimate.boardingAdvice,
     )

@@ -84,6 +84,7 @@ fun MapMateApp(
             MapMateScreen.Home -> HomeRoute(
                 contentPadding = innerPadding,
                 routineRepository = routineRepository,
+                commuteRecordRepository = commuteRecordRepository,
                 routeEstimateProvider = routeEstimateProvider,
                 onRegisterRoutineClick = {
                     openRoutineRegistration(
@@ -244,10 +245,7 @@ fun MapMateApp(
                 },
                 onSaveCompleted = { updatedRecord ->
                     if (currentScreen.returnToCompletion) {
-                        screen = MapMateScreen.TrackingComplete(
-                            record = updatedRecord,
-                            returnDestination = currentScreen.returnDestination,
-                        )
+                        openMain(MapMateBottomDestination.Home)
                     } else {
                         openMain(currentScreen.returnDestination)
                     }

@@ -94,7 +94,7 @@ ODsay 대중교통 길찾기 API의 `totalTime`은 대중교통 경로의 기본
 13. 실시간 보정 또는 snapshot fallback이 적용된 `RouteEstimate.hasRealtimeAdjustment`는 `true`이며, 일반 6시간 `RouteEstimateCache`에는 저장하지 않습니다.
 14. 출발 시각이 이미 지난 시간으로 재계산되면 `지금 출발 권장` 상태로 처리합니다.
 15. 현재 AlarmManager 출발 알림은 앱 실행/설정 변경/루틴 변경/부팅 후 다음 권장 출발 시각을 예약합니다.
-16. WorkManager는 출발 전 `T-60/T-30/T-15/T-5` 재조회 작업을 예약하고, 긴 이동은 `T-90/T-120`도 추가합니다. 재조회 시 기존 출발 예정 시각을 provider에 전달해 30분 정책 안에서 실시간 보정이 반영됩니다.
+16. WorkManager는 출발 전 `T-60/T-30/T-15/T-10/T-5` 재조회 작업을 예약하고, 긴 이동은 `T-90/T-120`도 추가합니다. 재조회 시 기존 출발 예정 시각을 provider에 전달해 30분 정책 안에서 실시간 보정이 반영됩니다.
 17. 이동 기록 저장 시 목표 대비 도착 오차를 개인 보정값에 반영합니다. 현재는 한 번의 기록이 보정값을 과도하게 흔들지 않도록 최대 ±5분 범위에서 조정합니다.
 18. 자동차 모드는 Google Routes `TRAFFIC_AWARE` 옵션을 provider 정책으로 적용합니다.
 19. 실시간 보정이 없는 실제 ODsay/Google provider 성공값은 전체 경로 예상값으로 6시간 Room cache에 저장하고, 이후 API 실패 시 mock fallback 전에 재사용합니다.
