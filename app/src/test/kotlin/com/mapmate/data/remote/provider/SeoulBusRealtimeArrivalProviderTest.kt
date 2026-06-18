@@ -140,6 +140,77 @@ class SeoulBusRealtimeArrivalProviderTest {
         assertEquals(listOf("100100118"), api.routeAllCalls)
     }
 
+    @Test
+    fun getArrivalEstimate_keepsOnlyValidArrivalCandidatesWhenSecondArrivalIsUnavailable() = runTest {
+        val api = FakeSeoulBusArrivalApi(
+            stationUidXml = """
+                <ServiceResult>
+                    <msgBody>
+                        <itemList>
+                            <arsId>20170</arsId>
+                            <stNm>Start stop</stNm>
+                            <rtNm>753</rtNm>
+                            <busRouteAbrv>753</busRouteAbrv>
+                            <arrmsg1>5 minutes</arrmsg1>
+                            <arrmsg2>운행종료</arrmsg2>
+                            <traTime1>300</traTime1>
+                        </itemList>
+                    </msgBody>
+                </ServiceResult>
+            """.trimIndent(),
+            routeAllXml = emptyResponseXml,
+        )
+        val provider = SeoulBusRealtimeArrivalProvider(api = api, config = configWithSeoulBusKey)
+
+        val estimate = provider.getArrivalEstimate(
+            TransitArrivalQuery.Bus(
+                stationName = "Start stop",
+                stationId = null,
+                stationArsId = "20170",
+                busRouteId = null,
+                routeName = "753",
+            ),
+        )
+
+        assertEquals(5, estimate?.waitMinutes)
+        assertEquals(listOf(5), estimate?.waitCandidateMinutes)
+    }
+
+    @Test
+    fun getArrivalEstimate_includesFirstAndSecondArrivalCandidates() = runTest {
+        val api = FakeSeoulBusArrivalApi(
+            stationUidXml = """
+                <ServiceResult>
+                    <msgBody>
+                        <itemList>
+                            <arsId>20170</arsId>
+                            <stNm>Start stop</stNm>
+                            <rtNm>753</rtNm>
+                            <busRouteAbrv>753</busRouteAbrv>
+                            <traTime1>180</traTime1>
+                            <traTime2>1740</traTime2>
+                        </itemList>
+                    </msgBody>
+                </ServiceResult>
+            """.trimIndent(),
+            routeAllXml = emptyResponseXml,
+        )
+        val provider = SeoulBusRealtimeArrivalProvider(api = api, config = configWithSeoulBusKey)
+
+        val estimate = provider.getArrivalEstimate(
+            TransitArrivalQuery.Bus(
+                stationName = "Start stop",
+                stationId = null,
+                stationArsId = "20170",
+                busRouteId = null,
+                routeName = "753",
+            ),
+        )
+
+        assertEquals(3, estimate?.waitMinutes)
+        assertEquals(listOf(3, 29), estimate?.waitCandidateMinutes)
+    }
+
     private class FakeSeoulBusArrivalApi(
         private val stationUidXml: String,
         private val routeAllXml: String,

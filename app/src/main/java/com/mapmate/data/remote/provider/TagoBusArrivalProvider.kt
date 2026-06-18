@@ -42,19 +42,26 @@ class TagoBusArrivalProvider(
                     nodeId = candidate.nodeid.orEmpty(),
                 ).response?.body?.items?.item.orEmpty()
 
-                arrivals.bestMatch(busQuery)?.let { arrival ->
-                    candidate to arrival
+                arrivals.bestMatches(busQuery).takeIf { it.isNotEmpty() }?.let { arrivals ->
+                    candidate to arrivals
                 }
             } ?: return null
 
-        val arrival = station.second
+        val arrivalCandidates = station.second
+        val arrival = arrivalCandidates.first()
         val waitSeconds = arrival.arrtime?.takeIf { it >= 0 } ?: return null
         val waitMinutes = ceil(waitSeconds / SECONDS_PER_MINUTE).toInt()
+        val waitCandidateMinutes = arrivalCandidates
+            .mapNotNull { it.arrtime?.takeIf { waitSeconds -> waitSeconds >= 0 } }
+            .map { ceil(it / SECONDS_PER_MINUTE).toInt() }
+            .distinct()
+            .sorted()
         val stationName = arrival.nodenm ?: station.first.nodenm ?: busQuery.stationName.orEmpty()
         val routeName = arrival.routeno ?: busQuery.routeName.orEmpty()
 
         return TransitArrivalEstimate(
             waitMinutes = waitMinutes,
+            waitCandidateMinutes = waitCandidateMinutes.ifEmpty { listOf(waitMinutes) },
             summary = "${stationName} ${routeName}번 버스 ${waitMinutes}분 후 도착 예정",
             providerName = "TAGO Bus Arrival",
             reason = listOfNotNull(
@@ -67,16 +74,16 @@ class TagoBusArrivalProvider(
         )
     }
 
-    private fun List<TagoBusArrivalItem>.bestMatch(
+    private fun List<TagoBusArrivalItem>.bestMatches(
         query: TransitArrivalQuery.Bus,
-    ): TagoBusArrivalItem? {
+    ): List<TagoBusArrivalItem> {
         val routeName = query.routeName.normalizedRouteName()
-        return if (routeName.isBlank()) {
-            minByOrNull { it.arrtime ?: Int.MAX_VALUE }
+        val matches = if (routeName.isBlank()) {
+            this
         } else {
             filter { it.routeno.normalizedRouteName() == routeName }
-                .minByOrNull { it.arrtime ?: Int.MAX_VALUE }
         }
+        return matches.sortedBy { it.arrtime ?: Int.MAX_VALUE }
     }
 
     private fun TagoBusStationItem.matchScore(

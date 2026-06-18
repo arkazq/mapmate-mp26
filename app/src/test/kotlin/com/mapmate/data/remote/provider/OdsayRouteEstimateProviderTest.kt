@@ -45,7 +45,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+            scheduledDepartureEpochMillis = 0L,
         )
 
         assertEquals(49, result.estimatedMinutes)
@@ -149,7 +149,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
+            scheduledDepartureEpochMillis = 1_000L,
         )
 
         val snapshot = snapshotRepository.savedSnapshots.single()
@@ -179,7 +179,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
+            scheduledDepartureEpochMillis = 1_000L,
         )
         transitArrivalProvider.result = null
         now = 5_000L
@@ -188,7 +188,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 1_000L + 20 * 60 * 1000L,
+            scheduledDepartureEpochMillis = 1_000L,
         )
 
         assertEquals(49, result.estimatedMinutes)
@@ -240,8 +240,8 @@ class OdsayRouteEstimateProviderTest {
             config = remoteApiConfig,
             transitArrivalProvider = RouteNameTransitArrivalProvider(
                 waitMinutesByRouteName = mapOf(
-                    "740" to 15,
-                    "741" to 5,
+                    "740" to 10,
+                    "741" to 3,
                 ),
             ),
             nowEpochMillis = { 0L },
@@ -251,10 +251,10 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+            scheduledDepartureEpochMillis = 0L,
         )
 
-        assertEquals(50, result.estimatedMinutes)
+        assertEquals(45, result.estimatedMinutes)
         assertTrue(result.reason.contains("Selected ODsay candidate 1/2"))
     }
 
@@ -322,6 +322,146 @@ class OdsayRouteEstimateProviderTest {
         assertEquals(2, result.boardingAdvice?.alternatives?.size)
     }
 
+    @Test
+    fun getRouteEstimate_usesNextArrivalWhenItIsBoardableAtScheduledDeparture() = runTest {
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(busRouteResponse),
+            config = remoteApiConfig,
+            transitArrivalProvider = RouteNameTransitArrivalProvider(
+                waitCandidatesByRouteName = mapOf(
+                    "740" to listOf(3, 29),
+                ),
+            ),
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+            targetArrivalEpochMillis = 100 * 60 * 1000L,
+        )
+
+        assertEquals(66, result.estimatedMinutes)
+        assertEquals(29, result.boardingAdvice?.realtimeWaitMinutes)
+        assertEquals(4, result.boardingAdvice?.slackMinutes)
+        assertNull(result.boardingAdvice?.earlyDepartureRequiredMinutes)
+        assertEquals(RouteBoardingStatus.BOARDABLE, result.boardingAdvice?.status)
+    }
+
+    @Test
+    fun getRouteEstimate_ignoresArrivalsThatRequireExcessiveEarlyDeparture() = runTest {
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(busRouteResponse),
+            config = remoteApiConfig,
+            transitArrivalProvider = RouteNameTransitArrivalProvider(
+                waitCandidatesByRouteName = mapOf(
+                    "740" to listOf(3, 12),
+                ),
+            ),
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+            targetArrivalEpochMillis = 100 * 60 * 1000L,
+        )
+
+        assertEquals(42, result.estimatedMinutes)
+        assertEquals("ODsay", result.providerName)
+        assertEquals(false, result.hasRealtimeAdjustment)
+        assertEquals(null, result.boardingAdvice?.realtimeWaitMinutes)
+        assertNull(result.boardingAdvice?.earlyDepartureRequiredMinutes)
+        assertEquals(RouteBoardingStatus.REALTIME_UNAVAILABLE, result.boardingAdvice?.status)
+    }
+
+    @Test
+    fun getRouteEstimate_pullsEarlierArrivalWhenNextArrivalWouldMissTarget() = runTest {
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(busRouteResponse),
+            config = remoteApiConfig,
+            transitArrivalProvider = RouteNameTransitArrivalProvider(
+                waitCandidatesByRouteName = mapOf(
+                    "740" to listOf(20, 60),
+                ),
+            ),
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+            targetArrivalEpochMillis = 80 * 60 * 1000L,
+        )
+
+        assertEquals(57, result.estimatedMinutes)
+        assertEquals(20, result.boardingAdvice?.realtimeWaitMinutes)
+        assertEquals(8, result.boardingAdvice?.earlyDepartureRequiredMinutes)
+        assertEquals(false, result.boardingAdvice?.mayMissTargetArrival)
+    }
+
+    @Test
+    fun getRouteEstimate_allowsTenMinuteEarlyPullAtBoundary() = runTest {
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(busRouteResponse),
+            config = remoteApiConfig,
+            transitArrivalProvider = RouteNameTransitArrivalProvider(
+                waitCandidatesByRouteName = mapOf(
+                    "740" to listOf(18),
+                ),
+            ),
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+            targetArrivalEpochMillis = 70 * 60 * 1000L,
+        )
+
+        assertEquals(55, result.estimatedMinutes)
+        assertEquals(18, result.boardingAdvice?.realtimeWaitMinutes)
+        assertEquals(10, result.boardingAdvice?.earlyDepartureRequiredMinutes)
+        assertEquals(false, result.boardingAdvice?.mayMissTargetArrival)
+    }
+
+    @Test
+    fun getRouteEstimate_allowsLargeEarlyPullOnlyWhenTargetWouldBeMissedOtherwise() = runTest {
+        // Complements RouteCandidateEvaluatorTest target-arrival invariant:
+        // this verifies the ODsay provider's multi-arrival selection before evaluator scoring.
+        val provider = OdsayRouteEstimateProvider(
+            api = FakeOdsayApi(busRouteResponse),
+            config = remoteApiConfig,
+            transitArrivalProvider = RouteNameTransitArrivalProvider(
+                waitCandidatesByRouteName = mapOf(
+                    "740" to listOf(13),
+                ),
+            ),
+            nowEpochMillis = { 0L },
+        )
+
+        val result = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L,
+            targetArrivalEpochMillis = 60 * 60 * 1000L,
+        )
+
+        assertEquals(50, result.estimatedMinutes)
+        assertEquals(13, result.boardingAdvice?.realtimeWaitMinutes)
+        assertEquals(15, result.boardingAdvice?.earlyDepartureRequiredMinutes)
+        assertEquals(false, result.boardingAdvice?.mayMissTargetArrival)
+    }
+
     private class FakeOdsayApi(
         private val response: OdsayRouteResponse,
     ) : OdsayApi {
@@ -357,16 +497,24 @@ class OdsayRouteEstimateProviderTest {
     }
 
     private class RouteNameTransitArrivalProvider(
-        private val waitMinutesByRouteName: Map<String, Int>,
+        private val waitMinutesByRouteName: Map<String, Int> = emptyMap(),
+        private val waitCandidatesByRouteName: Map<String, List<Int>> = emptyMap(),
     ) : TransitArrivalProvider {
         override suspend fun getArrivalEstimate(query: TransitArrivalQuery): TransitArrivalEstimate? {
             val routeName = (query as? TransitArrivalQuery.Bus)?.routeName ?: return null
-            val waitMinutes = waitMinutesByRouteName[routeName] ?: return null
+            val waitCandidates = waitCandidatesByRouteName[routeName]
+                ?.filter { it >= 0 }
+                ?.distinct()
+                ?.sorted()
+            val waitMinutes = waitCandidates?.firstOrNull()
+                ?: waitMinutesByRouteName[routeName]
+                ?: return null
             return TransitArrivalEstimate(
                 waitMinutes = waitMinutes,
                 summary = "$routeName bus in $waitMinutes min",
                 providerName = "Realtime",
                 reason = "test",
+                waitCandidateMinutes = waitCandidates ?: listOf(waitMinutes),
             )
         }
     }
