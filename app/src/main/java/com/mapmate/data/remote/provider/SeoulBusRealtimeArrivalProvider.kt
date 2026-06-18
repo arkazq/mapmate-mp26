@@ -34,11 +34,13 @@ class SeoulBusRealtimeArrivalProvider(
         val item = SeoulBusArrivalXmlParser.parse(responseXml)
             .firstRouteMatchOrNull(routeName)
             ?: return null
-        val waitMinutes = item.firstWaitMinutes() ?: return null
+        val waitCandidateMinutes = item.waitCandidateMinutes()
+        val waitMinutes = waitCandidateMinutes.firstOrNull() ?: return null
 
         return item.toEstimate(
             busQuery = busQuery,
             waitMinutes = waitMinutes,
+            waitCandidateMinutes = waitCandidateMinutes,
             reasonSuffix = "ARS ${stationArsId} 정류장 기준",
         )
     }
@@ -55,11 +57,13 @@ class SeoulBusRealtimeArrivalProvider(
         val item = SeoulBusArrivalXmlParser.parse(responseXml)
             .firstOrNull { it.matches(busQuery) }
             ?: return null
-        val waitMinutes = item.firstWaitMinutes() ?: return null
+        val waitCandidateMinutes = item.waitCandidateMinutes()
+        val waitMinutes = waitCandidateMinutes.firstOrNull() ?: return null
 
         return item.toEstimate(
             busQuery = busQuery,
             waitMinutes = waitMinutes,
+            waitCandidateMinutes = waitCandidateMinutes,
             reasonSuffix = "busRouteId ${busRouteId} 기준",
         )
     }
@@ -67,10 +71,12 @@ class SeoulBusRealtimeArrivalProvider(
     private fun SeoulBusArrivalItem.toEstimate(
         busQuery: TransitArrivalQuery.Bus,
         waitMinutes: Int,
+        waitCandidateMinutes: List<Int>,
         reasonSuffix: String,
     ): TransitArrivalEstimate {
         return TransitArrivalEstimate(
             waitMinutes = waitMinutes,
+            waitCandidateMinutes = waitCandidateMinutes,
             summary = "${stationName ?: busQuery.stationName.orEmpty()} ${displayRouteName(busQuery.routeName)} 버스 ${waitMinutes}분 후 도착 예정",
             providerName = "Seoul Bus Realtime",
             reason = listOfNotNull(
@@ -98,24 +104,25 @@ class SeoulBusRealtimeArrivalProvider(
         if (normalizedRouteName.isBlank()) return null
         return filter { item ->
             item.routeNames().any { it.normalizedRouteName() == normalizedRouteName }
-        }.minByOrNull { it.firstWaitMinutes() ?: Int.MAX_VALUE }
+        }.minByOrNull { it.waitCandidateMinutes().firstOrNull() ?: Int.MAX_VALUE }
     }
 
     private fun SeoulBusArrivalItem.routeNames(): List<String> {
         return listOfNotNull(routeName, routeShortName)
     }
 
-    private fun SeoulBusArrivalItem.firstWaitMinutes(): Int? {
-        val waitSeconds = listOfNotNull(arrivalSeconds1, arrivalSeconds2)
+    private fun SeoulBusArrivalItem.waitCandidateMinutes(): List<Int> {
+        val waitSecondsMinutes = listOfNotNull(arrivalSeconds1, arrivalSeconds2)
             .filter { it >= 0 }
-            .minOrNull()
-        if (waitSeconds != null) {
-            return ceil(waitSeconds / SECONDS_PER_MINUTE).toInt()
-        }
+            .map { ceil(it / SECONDS_PER_MINUTE).toInt() }
 
-        return listOfNotNull(arrivalMessage1, arrivalMessage2)
+        val waitMessageMinutes = listOfNotNull(arrivalMessage1, arrivalMessage2)
             .mapNotNull { it.toWaitMinutesFromMessage() }
-            .minOrNull()
+
+        return (waitSecondsMinutes + waitMessageMinutes)
+            .filter { it >= 0 }
+            .distinct()
+            .sorted()
     }
 
     private fun String?.toWaitMinutesFromMessage(): Int? {

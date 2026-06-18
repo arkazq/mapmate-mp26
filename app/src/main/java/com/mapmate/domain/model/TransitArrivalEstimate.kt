@@ -5,4 +5,5 @@ data class TransitArrivalEstimate(
     val summary: String,
     val providerName: String,
     val reason: String,
+    val waitCandidateMinutes: List<Int> = listOf(waitMinutes),
 )

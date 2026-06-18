@@ -95,6 +95,8 @@ class OdsayRouteEstimateProvider(
                     applyRealtimeArrival = applyRealtimeArrival,
                     skippedRealtimeStatus = skippedRealtimeStatus,
                     nowEpochMillis = now,
+                    scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+                    targetArrivalEpochMillis = targetArrivalEpochMillis,
                 )
             }
         val selection = routeCandidateEvaluator.select(
@@ -155,6 +157,8 @@ class OdsayRouteEstimateProvider(
         applyRealtimeArrival: Boolean,
         skippedRealtimeStatus: RealtimeStatus,
         nowEpochMillis: Long,
+        scheduledDepartureEpochMillis: Long?,
+        targetArrivalEpochMillis: Long?,
     ): RouteCandidateEstimate? {
         val pathInfo = path.info ?: return null
         val totalTime = pathInfo.totalTime?.takeIf { it > 0 } ?: return null
@@ -195,7 +199,18 @@ class OdsayRouteEstimateProvider(
         val realtimeResult = runCatching {
             transitArrivalProvider?.getArrivalEstimate(busQuery)
         }
-        val realtimeArrival = realtimeResult.getOrNull()
+        val rawRealtimeArrival = realtimeResult.getOrNull()
+        val realtimeArrival = rawRealtimeArrival
+            ?.selectUsableArrival(
+                scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
+                targetArrivalEpochMillis = targetArrivalEpochMillis,
+                nowEpochMillis = nowEpochMillis,
+                accessMinutes = firstTransitInfo.accessMinutes,
+                baseRouteDurationMinutes = totalTime,
+            )
+        if (rawRealtimeArrival != null && realtimeArrival == null) {
+            return baseCandidate.copy(realtimeStatus = RealtimeStatus.UNAVAILABLE)
+        }
         if (realtimeArrival != null) {
             val realtimeDelayMinutes = realtimeArrival.extraDelayMinutes()
             val adjustedTotalMinutes = totalTime + realtimeDelayMinutes
@@ -474,6 +489,87 @@ class OdsayRouteEstimateProvider(
         return (waitMinutes - PLANNED_WAIT_BASELINE_MINUTES).coerceAtLeast(0)
     }
 
+    private fun TransitArrivalEstimate.selectUsableArrival(
+        scheduledDepartureEpochMillis: Long?,
+        targetArrivalEpochMillis: Long?,
+        nowEpochMillis: Long,
+        accessMinutes: Int,
+        baseRouteDurationMinutes: Int,
+    ): TransitArrivalEstimate? {
+        val arrivalCandidates = waitCandidateMinutes
+            .ifEmpty { listOf(waitMinutes) }
+            .filter { it >= 0 }
+            .distinct()
+            .sorted()
+        if (arrivalCandidates.isEmpty()) return null
+
+        val plannedDepartureEpochMillis = maxOf(
+            scheduledDepartureEpochMillis ?: nowEpochMillis,
+            nowEpochMillis,
+        )
+        val plannedRequiredWaitMinutes = ceilMinutes(
+            plannedDepartureEpochMillis - nowEpochMillis +
+                (accessMinutes + MIN_BOARDING_SLACK_MINUTES) * MILLIS_PER_MINUTE,
+        )
+        val plannedBaseArrivalMissesTarget = targetArrivalEpochMillis
+            ?.let { targetArrival ->
+                plannedDepartureEpochMillis +
+                    baseRouteDurationMinutes * MILLIS_PER_MINUTE > targetArrival
+            }
+            ?: false
+
+        val evaluatedCandidates = arrivalCandidates.map { candidateWaitMinutes ->
+            val boardingSafeDepartureEpochMillis = nowEpochMillis +
+                candidateWaitMinutes * MILLIS_PER_MINUTE -
+                (accessMinutes + MIN_BOARDING_SLACK_MINUTES) * MILLIS_PER_MINUTE
+            val departureEpochMillis = maxOf(
+                minOf(plannedDepartureEpochMillis, boardingSafeDepartureEpochMillis),
+                nowEpochMillis,
+            )
+            val earlyPullMinutes = ceilMinutes(plannedDepartureEpochMillis - departureEpochMillis)
+            val adjustedTotalMinutes = baseRouteDurationMinutes +
+                (candidateWaitMinutes - PLANNED_WAIT_BASELINE_MINUTES).coerceAtLeast(0)
+            val arrivalEpochMillis = departureEpochMillis +
+                adjustedTotalMinutes * MILLIS_PER_MINUTE
+            EvaluatedArrivalCandidate(
+                waitMinutes = candidateWaitMinutes,
+                earlyPullMinutes = earlyPullMinutes,
+                canBoardAtPlannedDeparture = candidateWaitMinutes >= plannedRequiredWaitMinutes,
+                canMeetTargetArrival = targetArrivalEpochMillis == null ||
+                    arrivalEpochMillis <= targetArrivalEpochMillis,
+            )
+        }
+
+        val selectedWaitMinutes = evaluatedCandidates
+            .firstOrNull { it.canBoardAtPlannedDeparture && it.canMeetTargetArrival }
+            ?.waitMinutes
+            ?: evaluatedCandidates
+                .lastOrNull {
+                    it.canMeetTargetArrival &&
+                        it.earlyPullMinutes in 0..MAX_REALTIME_EARLY_PULL_MINUTES
+                }
+                ?.waitMinutes
+            ?: evaluatedCandidates
+                .firstOrNull { it.canMeetTargetArrival }
+                ?.takeIf { plannedBaseArrivalMissesTarget }
+                ?.waitMinutes
+            ?: return null
+
+        return copy(waitMinutes = selectedWaitMinutes)
+    }
+
+    private data class EvaluatedArrivalCandidate(
+        val waitMinutes: Int,
+        val earlyPullMinutes: Int,
+        val canBoardAtPlannedDeparture: Boolean,
+        val canMeetTargetArrival: Boolean,
+    )
+
+    private fun ceilMinutes(durationMillis: Long): Int {
+        if (durationMillis <= 0L) return 0
+        return ((durationMillis + MILLIS_PER_MINUTE - 1) / MILLIS_PER_MINUTE).toInt()
+    }
+
     private fun RouteCandidateEstimate.toEvaluationInput(
         scheduledDepartureEpochMillis: Long?,
         targetArrivalEpochMillis: Long?,
@@ -610,6 +706,8 @@ class OdsayRouteEstimateProvider(
         const val TRAFFIC_TYPE_BUS = 2
         const val TRAFFIC_TYPE_WALK = 3
         const val PLANNED_WAIT_BASELINE_MINUTES = 5
+        const val MIN_BOARDING_SLACK_MINUTES = 3
+        const val MAX_REALTIME_EARLY_PULL_MINUTES = 10
         const val DEFAULT_SNAPSHOT_TTL_MILLIS = 20 * 60 * 1000L
         const val MAX_CANDIDATE_PATH_COUNT = 5
         const val MAX_BOARDING_ALTERNATIVES = 2
