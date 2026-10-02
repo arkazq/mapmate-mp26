@@ -9,9 +9,11 @@ data class HomeUiState(
     val nowEpochMillis: Long = System.currentTimeMillis(),
     val hasCompletedTodayCommute: Boolean = false,
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val deletingRoutineId: Long? = null,
     val errorMessage: String? = null,
     val successMessage: String? = null,
+    val pendingTrackingRoutines: List<Routine> = emptyList(),
 ) {
     val hasSavedRoutines: Boolean
         get() = savedRoutines.isNotEmpty()

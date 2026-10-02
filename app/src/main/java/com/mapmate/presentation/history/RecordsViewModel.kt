@@ -9,24 +9,28 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.catch
 
 class RecordsViewModel(
     private val commuteRecordRepository: CommuteRecordRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(RecordsUiState())
     val uiState: StateFlow<RecordsUiState> = _uiState.asStateFlow()
+    private var observationJob: Job? = null
 
     init {
         observeRecords()
     }
 
     fun selectRoutineFilter(routineId: Long?) {
+        val selectedId = routineId?.takeIf { id -> _uiState.value.records.any { it.routineId == id } }
         _uiState.update {
             it.copy(
-                selectedRoutineId = routineId,
+                selectedRoutineId = selectedId,
                 stats = RecordsStats.from(
-                    routineId?.let { selectedId ->
-                        it.records.filter { record -> record.routineId == selectedId }
+                    selectedId?.let { id ->
+                        it.records.filter { record -> record.routineId == id }
                     } ?: it.records,
                 ),
             )
@@ -34,8 +38,11 @@ class RecordsViewModel(
     }
 
     private fun observeRecords() {
-        viewModelScope.launch {
-            commuteRecordRepository.observeRecords().collect { records ->
+        observationJob?.cancel()
+        observationJob = viewModelScope.launch {
+            commuteRecordRepository.observeRecords().catch {
+                _uiState.update { it.copy(isLoading = false, errorMessage = "이동 기록을 불러오지 못했습니다. 다시 시도해 주세요.") }
+            }.collect { records ->
                 _uiState.update {
                     val selectedRoutineId = it.selectedRoutineId
                         ?.takeIf { routineId -> records.any { record -> record.routineId == routineId } }
@@ -46,11 +53,17 @@ class RecordsViewModel(
                         records = records,
                         selectedRoutineId = selectedRoutineId,
                         isLoading = false,
+                        errorMessage = null,
                         stats = RecordsStats.from(filteredRecords),
                     )
                 }
             }
         }
+    }
+
+    fun retry() {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        observeRecords()
     }
 
     companion object {

@@ -1,4 +1,4 @@
-package com.mapmate.presentation.common
+package com.mapmate.domain.alarm
 
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Routine
@@ -6,7 +6,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZonedDateTime
 
-internal fun List<CommuteRecord>.completedArrivalEventToExclude(
+fun List<CommuteRecord>.completedArrivalEventToExclude(
     routine: Routine,
     now: ZonedDateTime,
 ): Long? {
@@ -22,7 +22,7 @@ internal fun List<CommuteRecord>.completedArrivalEventToExclude(
         ?.toEpochMilli()
 }
 
-internal fun List<CommuteRecord>.hasCompletedCommuteToday(
+fun List<CommuteRecord>.hasCompletedCommuteToday(
     now: ZonedDateTime,
 ): Boolean {
     val today = now.toLocalDate()
@@ -30,6 +30,19 @@ internal fun List<CommuteRecord>.hasCompletedCommuteToday(
         record.completedTargetArrivalAt(now)
             .toLocalDate() == today
     }
+}
+
+fun List<CommuteRecord>.completedArrivalEventsToExclude(
+    routine: Routine,
+    now: ZonedDateTime,
+): Set<Long> {
+    val routineId = routine.id ?: return emptySet()
+    return asSequence()
+        .filter { it.routineId == routineId }
+        .map { it.completedTargetArrivalAt(now) }
+        .filter { !it.isBefore(now) }
+        .map { it.toInstant().toEpochMilli() }
+        .toSet()
 }
 
 private fun CommuteRecord.completedTargetArrivalAt(now: ZonedDateTime): ZonedDateTime {

@@ -42,6 +42,14 @@ class RecordsStatsTest {
     }
 
     @Test
+    fun recentAverageUsesLatestArrivalDatesEvenWhenRepositoryOrderIsDifferent() {
+        val records = (1L..6L).map { arrivedAt ->
+            record(delta = if (arrivedAt == 1L) 100 else 2, mode = TransportMode.TRANSIT, arrivedAt = arrivedAt)
+        }
+        assertEquals(2, RecordsStats.from(records).recentAverageDeltaMinutes)
+    }
+
+    @Test
     fun uiState_filtersRecordsAndStatsBySelectedRoutine() {
         val schoolRecord = record(
             routineId = 1L,

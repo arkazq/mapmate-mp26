@@ -1,49 +1,52 @@
 package com.mapmate.presentation.home
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.mapmate.domain.model.Destination
-import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
-import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.provider.ScheduledRouteProvider
+import com.mapmate.domain.repository.TrackingSessionStore
 import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.presentation.common.BoardingAdviceSummaryCard
 import com.mapmate.presentation.common.EmptyStateCard
-import com.mapmate.presentation.common.MapMateElevation
+import com.mapmate.presentation.common.IconCircleButton
 import com.mapmate.presentation.common.MapMateIcon
 import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
@@ -51,12 +54,13 @@ import com.mapmate.presentation.common.NotificationCircle
 import com.mapmate.presentation.common.RouteEstimateStatusMessage
 import com.mapmate.presentation.common.RoutineRecommendationUiModel
 import com.mapmate.presentation.common.ScreenHeader
-import com.mapmate.presentation.common.toFallbackRecommendationUiModel
+import com.mapmate.presentation.common.ScreenLifecycleEffect
 import com.mapmate.presentation.common.transportModeIcon
+import com.mapmate.presentation.common.RouteEndpoints
+import com.mapmate.presentation.common.JourneyOverview
 import com.mapmate.ui.theme.MapMateTheme
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -73,16 +77,15 @@ fun HomeRoute(
     onPredictionClick: (Routine) -> Unit,
     onStartTrackingClick: (Routine) -> Unit,
     onRoutinesClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    scheduledRouteProvider: ScheduledRouteProvider? = null,
+    trackingSessionStore: TrackingSessionStore? = null,
 ) {
     val viewModel: HomeViewModel = viewModel(
-        factory = HomeViewModel.factory(
-            routineRepository = routineRepository,
-            commuteRecordRepository = commuteRecordRepository,
-            routeEstimateProvider = routeEstimateProvider,
-        ),
+        factory = HomeViewModel.factory(routineRepository, commuteRecordRepository, routeEstimateProvider, scheduledRouteProvider, trackingSessionStore),
     )
-    val uiState by viewModel.uiState.collectAsState()
-
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    ScreenLifecycleEffect(viewModel::setActive)
     HomeScreen(
         uiState = uiState,
         onRegisterRoutineClick = onRegisterRoutineClick,
@@ -90,6 +93,8 @@ fun HomeRoute(
         onPredictionClick = onPredictionClick,
         onStartTrackingClick = onStartTrackingClick,
         onRoutinesClick = onRoutinesClick,
+        onSettingsClick = onSettingsClick,
+        onRefreshClick = viewModel::refresh,
         modifier = Modifier.padding(contentPadding),
     )
 }
@@ -102,578 +107,246 @@ fun HomeScreen(
     onPredictionClick: (Routine) -> Unit,
     onStartTrackingClick: (Routine) -> Unit,
     onRoutinesClick: () -> Unit,
+    onSettingsClick: () -> Unit = {},
+    onRefreshClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    // 카운트다운/진행바 표시는 1초마다 갱신해 부드럽게 움직이게 한다.
-    // 경로 재계산(getRouteEstimate, 60초)과 분리되어 추가 API 호출은 없다.
-    var displayNowEpochMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
+    var displayNowEpochMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var isActive by remember { androidx.compose.runtime.mutableStateOf(false) }
+    ScreenLifecycleEffect { isActive = it }
+    LaunchedEffect(isActive) {
+        if (isActive) while (true) {
             displayNowEpochMillis = System.currentTimeMillis()
             delay(1_000L)
         }
     }
+    val recommendation = uiState.dashboardRecommendation
+    val largeFont = LocalDensity.current.fontScale > 1.3f
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            horizontal = MapMateSpacing.ScreenHorizontal,
-            vertical = MapMateSpacing.ScreenTop,
-        ),
-        verticalArrangement = Arrangement.spacedBy(MapMateSpacing.Section),
-    ) {
-        item {
-            ScreenHeader(
-                title = "오늘의 출발 준비",
-                subtitle = if (uiState.hasSavedRoutines) {
-                    "저장된 루틴을 기준으로 오늘 언제 출발할지 확인합니다."
-                } else {
-                    "저장된 루틴을 기준으로 오늘 언제 출발할지 확인합니다."
-                },
-                trailingContent = { NotificationCircle() },
-            )
-        }
-
-        item {
-            HomeDashboardHero(
-                uiState = uiState,
-                nowEpochMillis = displayNowEpochMillis,
-                onRegisterRoutineClick = onRegisterRoutineClick,
-                onEditRoutineClick = onEditRoutineClick,
-                onPredictionClick = onPredictionClick,
-                onStartTrackingClick = onStartTrackingClick,
-            )
-        }
-
-        uiState.dashboardRecommendation?.let { recommendation ->
-            if (recommendation.isDepartureToday(displayNowEpochMillis)) {
+    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 item {
-                    CountdownProgressCard(
-                        recommendation = recommendation,
-                        nowEpochMillis = displayNowEpochMillis,
-                    )
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(start = 20.dp, end = 12.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        val dateText = displayNowEpochMillis.toLocalDate().format(DateTimeFormatter.ofPattern("M.d E요일", Locale.KOREAN))
+                        Column(Modifier.weight(1f)) {
+                            Text("MapMate", style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            if (largeFont) Text(dateText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (!largeFont) Text(dateText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        NotificationCircle(onClick = onSettingsClick)
+                    }
+                }
+                uiState.errorMessage?.let { message ->
+                    item {
+                        Column(Modifier.padding(horizontal = 20.dp)) {
+                            RouteEstimateStatusMessage(message)
+                            TextButton(onClick = onRefreshClick) { Text("다시 시도") }
+                        }
+                    }
+                }
+                items(uiState.pendingTrackingRoutines, key = { "pending-${it.id}" }) { routine ->
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        MapMateIcon(MapMateIconType.Walk, null)
+                        Column(Modifier.weight(1f)) {
+                            Text("측정 중", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary)
+                            Text(routine.name, style = MaterialTheme.typography.titleSmall)
+                        }
+                        TextButton(onClick = { onStartTrackingClick(routine) },
+                            modifier = Modifier.heightIn(min = 48.dp)) { Text("측정 이어하기") }
+                    }
+                }
+                when {
+                    uiState.isLoading -> item {
+                        Row(Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                            Text("다음 출발을 확인하고 있어요")
+                        }
+                    }
+                    recommendation != null -> {
+                        item {
+                            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    RouteEndpoints(recommendation.routine, Modifier.weight(1f))
+                                    IconCircleButton(MapMateIconType.Edit, "${recommendation.routine.name} 경로 수정",
+                                        { onEditRoutineClick(recommendation.routine) })
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                DepartureOverview(recommendation, displayNowEpochMillis, uiState.hasCompletedTodayCommute)
+                            }
+                        }
+                        item {
+                            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                JourneyOverview(recommendation)
+                                recommendation.boardingAdvice?.let { BoardingAdviceSummaryCard(it) }
+                                recommendation.routeStatusMessage?.let { RouteEstimateStatusMessage(it) }
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (uiState.isRefreshing) "경로 확인 중" else "${uiState.nowEpochMillis.toLocalTimeText()} 조회 기준",
+                                        Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    TextButton(onClick = onRefreshClick, enabled = !uiState.isRefreshing) { Text("새로고침") }
+                                }
+                            }
+                        }
+                    }
+                    uiState.errorMessage == null -> item {
+                        EmptyStateCard(
+                            title = if (uiState.savedRoutines.isEmpty()) "등록된 루틴이 없어요" else "출발 예정인 루틴이 없어요",
+                            message = if (uiState.savedRoutines.isEmpty()) "출발지와 도착 목표를 설정해 주세요." else "반복 요일이 설정된 루틴이 없습니다.",
+                            actionLabel = if (uiState.savedRoutines.isEmpty()) "루틴 등록" else "루틴 관리",
+                            onActionClick = if (uiState.savedRoutines.isEmpty()) onRegisterRoutineClick else onRoutinesClick,
+                        )
+                    }
+                }
+                if (uiState.savedRoutines.isNotEmpty()) {
+                    item {
+                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("내 루틴 ${uiState.savedRoutines.size}", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                            TextButton(onClick = onRoutinesClick) { Text("전체 보기") }
+                            IconCircleButton(MapMateIconType.Add, "루틴 추가", onRegisterRoutineClick)
+                        }
+                    }
+                    items(uiState.savedRoutines, key = { it.id ?: it.name }) { routine ->
+                        Box(Modifier.padding(horizontal = 20.dp)) {
+                            HomeRoutineItem(routine, { onPredictionClick(routine) }, { onEditRoutineClick(routine) })
+                        }
+                    }
+                }
+                uiState.successMessage?.let { message -> item { Text(message) } }
+            }
+            if (recommendation != null && !uiState.isLoading) {
+                Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 4.dp) {
+                    Box(Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
+                        HomeActions(recommendation, displayNowEpochMillis, { onPredictionClick(recommendation.routine) },
+                            { onStartTrackingClick(recommendation.routine) },
+                            uiState.pendingTrackingRoutines.any { it.id == recommendation.routine.id })
+                    }
                 }
             }
-            item {
-                recommendation.boardingAdvice?.let { advice ->
-                    BoardingAdviceSummaryCard(advice = advice)
-                } ?: RecommendationReasonCard()
-            }
-            item {
-                RouteEstimateStatusMessage(message = recommendation.routeStatusMessage)
-            }
-            item {
-                RouteEstimateStatusMessage(message = recommendation.departureStatusMessage)
-            }
-            item {
-                CompactMetricCards(recommendation = recommendation)
-            }
-            item {
-                HomeActionButtons(
-                    recommendation = recommendation,
-                    nowEpochMillis = displayNowEpochMillis,
-                    onPredictionClick = onPredictionClick,
-                    onStartTrackingClick = onStartTrackingClick,
-                )
-            }
-        }
-
-        if (uiState.savedRoutines.isNotEmpty()) {
-            item {
-                HomeRoutineListHeader(
-                    routineCount = uiState.savedRoutines.size,
-                    onManageClick = onRoutinesClick,
-                )
-            }
-            items(
-                items = uiState.savedRoutines,
-                key = { it.id ?: it.name },
-            ) { routine ->
-                HomeRoutineSummaryCard(
-                    routine = routine,
-                    onDetailClick = { onPredictionClick(routine) },
-                    onEditClick = { onEditRoutineClick(routine) },
-                )
-            }
-        }
-
-        uiState.successMessage?.let { message ->
-            item {
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-private fun HomeRoutineListHeader(
-    routineCount: Int,
-    onManageClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "저장된 루틴",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.ExtraBold,
-            )
-            Text(
-                text = "${routineCount}개 루틴을 관리 중입니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+private fun DepartureOverview(recommendation: RoutineRecommendationUiModel, now: Long, completedToday: Boolean) {
+    val nextDay = !recommendation.isDepartureToday(now)
+    val finished = completedToday && nextDay
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            if (finished) "오늘 이동 완료" else "${recommendation.routine.name} · ${if (nextDay) "다음 출발" else "권장 출발"}",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (finished) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (finished) Text("수고하셨습니다", style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+        else {
+            val largeFont = LocalDensity.current.fontScale > 1.3f
+            if (largeFont) {
+                DepartureClock(recommendation)
+                Text("${recommendation.arrivalRelativeToTodayText(now)} 도착 목표", style = MaterialTheme.typography.bodyMedium)
+            } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { DepartureClock(recommendation) }
+                Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
+                    Text("도착 목표", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(recommendation.arrivalRelativeToTodayText(now), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
-        OutlinedButton(
-            onClick = onManageClick,
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            Text("전체 관리")
+        Text(
+            if (nextDay) "다음 출발은 ${recommendation.departureDateTimeText(now)}" else recommendation.departureCountdownText(now),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+@Composable
+private fun DepartureClock(recommendation: RoutineRecommendationUiModel) {
+    Text(recommendation.recommendedDepartureTimeText, fontSize = 36.sp, lineHeight = 42.sp,
+        color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+}
+
+
+@Composable
+private fun HomeActions(recommendation: RoutineRecommendationUiModel, now: Long, onDetail: () -> Unit, onTracking: () -> Unit,
+    hasPendingMeasurement: Boolean) {
+    if (LocalDensity.current.fontScale > 1.3f) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (recommendation.isDepartureToday(now) && !hasPendingMeasurement) {
+                Button(onClick = onTracking, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = MaterialTheme.shapes.medium) {
+                    MapMateIcon(MapMateIconType.Play, null, Modifier.size(18.dp))
+                    Text("이동 시작", Modifier.padding(start = 8.dp))
+                }
+            }
+            OutlinedButton(onClick = onDetail, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), shape = MaterialTheme.shapes.medium) { Text("상세 경로") }
+        }
+        return
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedButton(onClick = onDetail, modifier = Modifier.weight(1f).heightIn(min = 52.dp), shape = MaterialTheme.shapes.medium) { Text("상세 경로") }
+        if (recommendation.isDepartureToday(now) && !hasPendingMeasurement) {
+            Button(onClick = onTracking, modifier = Modifier.weight(1f).heightIn(min = 52.dp), shape = MaterialTheme.shapes.medium) {
+                MapMateIcon(MapMateIconType.Play, null, Modifier.size(18.dp))
+                Text("이동 시작", Modifier.padding(start = 6.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun HomeRoutineSummaryCard(
-    routine: Routine,
-    onDetailClick: () -> Unit,
-    onEditClick: () -> Unit,
-) {
+private fun HomeRoutineItem(routine: Routine, onDetail: () -> Unit, onEdit: () -> Unit) {
     Surface(
+        onClick = onDetail,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-            ) {
-                MapMateIcon(
-                    icon = transportModeIcon(routine.transportMode),
-                    contentDescription = null,
-                    modifier = Modifier.padding(9.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
+        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            MapMateIcon(transportModeIcon(routine.transportMode), null, Modifier.size(24.dp), MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(routine.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
-                    text = routine.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "${routine.targetArrivalTime} 도착 목표 · ${routine.destination.name}",
+                    "${routine.targetArrivalTime} 도착 · ${routine.destination.name}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            OutlinedButton(
-                onClick = onEditClick,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Text("수정")
-            }
-            Button(
-                onClick = onDetailClick,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Text("예측")
-            }
+            IconCircleButton(MapMateIconType.Edit, "${routine.name} 수정", onEdit)
         }
     }
 }
 
-@Composable
-private fun HomeDashboardHero(
-    uiState: HomeUiState,
-    nowEpochMillis: Long,
-    onRegisterRoutineClick: () -> Unit,
-    onEditRoutineClick: (Routine) -> Unit,
-    onPredictionClick: (Routine) -> Unit,
-    onStartTrackingClick: (Routine) -> Unit,
-) {
-    val recommendation = uiState.dashboardRecommendation
+private fun RoutineRecommendationUiModel.isDepartureToday(now: Long): Boolean =
+    recommendedDepartureAtEpochMillis?.toLocalDate()?.let { it == now.toLocalDate() } ?: false
 
-    when {
-        uiState.isLoading -> {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surface,
-                shape = MaterialTheme.shapes.large,
-            ) {
-                Column(
-                    modifier = Modifier.padding(MapMateSpacing.CardInner),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    CircularProgressIndicator()
-                    Text("오늘의 루틴을 불러오는 중입니다.")
-                }
-            }
-        }
-
-        recommendation != null -> {
-            CompactHomeHeroCard(
-                recommendation = recommendation,
-                nowEpochMillis = nowEpochMillis,
-                hasCompletedTodayCommute = uiState.hasCompletedTodayCommute,
-            )
-        }
-
-        else -> {
-            EmptyStateCard(
-                title = "저장된 루틴이 없습니다",
-                message = "등교/출근 루틴을 등록하면 권장 출발 시각을 계산할 수 있어요.",
-                actionLabel = "루틴 등록하기",
-                onActionClick = onRegisterRoutineClick,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CompactHomeHeroCard(
-    recommendation: RoutineRecommendationUiModel,
-    nowEpochMillis: Long,
-    hasCompletedTodayCommute: Boolean,
-) {
-    val isAfterToday = recommendation.isDepartureAfterToday(nowEpochMillis)
-    val showCompletedState = hasCompletedTodayCommute && isAfterToday
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.primary,
-        shadowElevation = MapMateElevation.Hero,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = when {
-                        showCompletedState -> "오늘 이동 완료"
-                        isAfterToday -> "다음 출발"
-                        else -> "오늘은"
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
-                    fontWeight = FontWeight.Bold,
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.14f),
-                ) {
-                    Text(
-                        text = "${recommendation.targetArrivalTimeText} 도착 목표",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-            Text(
-                text = if (showCompletedState) {
-                    "수고하셨습니다"
-                } else {
-                    recommendation.recommendedDepartureDisplayText
-                },
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onPrimary,
-                fontWeight = FontWeight.ExtraBold,
-            )
-            Text(
-                text = if (isAfterToday) {
-                    "다음 출발은 ${recommendation.departureDateTimeText(nowEpochMillis)} · ${recommendation.routine.name}"
-                } else {
-                    "출발하세요! · ${recommendation.routine.name}"
-                },
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.88f),
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CountdownProgressCard(
-    recommendation: RoutineRecommendationUiModel,
-    nowEpochMillis: Long,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            Text(
-                text = recommendation.departureCountdownText(nowEpochMillis),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-            LinearProgressIndicator(
-                progress = { recommendation.departureProgress(nowEpochMillis) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecommendationReasonCard() {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            Text(
-                text = "최근 기록과 실시간 정보를 반영했어요",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "최근 7일 평균 오차 +2분",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun HomeActionButtons(
-    recommendation: RoutineRecommendationUiModel,
-    nowEpochMillis: Long,
-    onPredictionClick: (Routine) -> Unit,
-    onStartTrackingClick: (Routine) -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Button(
-            onClick = { onPredictionClick(recommendation.routine) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(46.dp),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            MapMateIcon(
-                icon = MapMateIconType.Records,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
-            )
-            Text(
-                text = "상세 예측 보기",
-                modifier = Modifier.padding(start = 8.dp),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        if (!recommendation.isDepartureToday(nowEpochMillis)) return@Column
-
-        OutlinedButton(
-            onClick = { onStartTrackingClick(recommendation.routine) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(46.dp),
-            shape = MaterialTheme.shapes.medium,
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.primary,
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
-            MapMateIcon(
-                icon = MapMateIconType.Play,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = "이동 기록 시작",
-                modifier = Modifier.padding(start = 8.dp),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
-private fun RoutineRecommendationUiModel.isDepartureToday(nowEpochMillis: Long): Boolean {
-    val departureAt = recommendedDepartureAtEpochMillis ?: return true
-    return departureAt.toLocalDate() == nowEpochMillis.toLocalDate()
-}
-
-private fun RoutineRecommendationUiModel.isDepartureAfterToday(nowEpochMillis: Long): Boolean {
-    val departureAt = recommendedDepartureAtEpochMillis ?: return false
-    return departureAt.toLocalDate().isAfter(nowEpochMillis.toLocalDate())
-}
-
-private fun RoutineRecommendationUiModel.departureDateTimeText(nowEpochMillis: Long): String {
-    val departureAt = recommendedDepartureAtEpochMillis ?: return recommendedDepartureTimeText
-    val departureDate = departureAt.toLocalDate()
-    val today = nowEpochMillis.toLocalDate()
-    val dayText = when (departureDate) {
+private fun RoutineRecommendationUiModel.departureDateTimeText(now: Long): String {
+    val date = recommendedDepartureAtEpochMillis?.toLocalDate() ?: return recommendedDepartureTimeText
+    val today = now.toLocalDate()
+    val label = when (date) {
         today -> "오늘"
         today.plusDays(1) -> "내일"
-        else -> departureDate.format(DateTimeFormatter.ofPattern("E요일", Locale.KOREAN))
+        else -> date.format(DateTimeFormatter.ofPattern("M/d E요일", Locale.KOREAN))
     }
-    return "$dayText $recommendedDepartureTimeText"
+    return "$label $recommendedDepartureTimeText"
 }
 
-private fun Long.toLocalDate(): LocalDate {
-    return Instant.ofEpochMilli(this)
-        .atZone(ZoneId.systemDefault())
-        .toLocalDate()
-}
-
-@Composable
-private fun CompactMetricCards(
-    recommendation: RoutineRecommendationUiModel,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        HomeMetricCard(
-            label = "예상 이동 시간",
-            value = "${recommendation.routeDurationMinutes}분",
-            modifier = Modifier.weight(1f),
-        )
-        HomeMetricCard(
-            label = "개인 보정",
-            value = "+${recommendation.personalBufferMinutes}분",
-            modifier = Modifier.weight(1f),
-        )
-        HomeMetricCard(
-            label = "안전 여유",
-            value = "${recommendation.safetyMarginMinutes}분",
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun HomeMetricCard(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.ExtraBold,
-            )
-        }
-    }
-}
+private fun Long.toLocalDate(): LocalDate = Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault()).toLocalDate()
+private fun Long.toLocalTimeText(): String = Instant.ofEpochMilli(this).atZone(ZoneId.systemDefault())
+    .format(DateTimeFormatter.ofPattern("HH:mm"))
 
 @Preview(showBackground = true)
 @Composable
 private fun HomeScreenPreview() {
-    MapMateTheme {
-        HomeScreen(
-            uiState = HomeUiState(
-                savedRoutines = listOf(sampleRoutine),
-                dashboardRecommendation = sampleRoutine.toFallbackRecommendationUiModel(),
-                isLoading = false,
-            ),
-            onRegisterRoutineClick = {},
-            onEditRoutineClick = {},
-            onPredictionClick = {},
-            onStartTrackingClick = {},
-            onRoutinesClick = {},
-        )
-    }
+    MapMateTheme { HomeScreen(HomeUiState(isLoading = false), {}, {}, {}, {}, {}) }
 }
-
-private val sampleRoutine = Routine(
-    name = "going school",
-    origin = Destination(
-        name = "서울역",
-        address = "서울특별시 중구",
-        latitude = 37.5547,
-        longitude = 126.9706,
-    ),
-    destination = Destination(
-        name = "숭실대학교",
-        address = "서울 동작구 상도로 369",
-        latitude = 37.4963,
-        longitude = 126.9574,
-    ),
-    targetArrivalTime = LocalTime.of(9, 0),
-    repeatDays = setOf(
-        RepeatDay.MONDAY,
-        RepeatDay.TUESDAY,
-        RepeatDay.WEDNESDAY,
-        RepeatDay.THURSDAY,
-        RepeatDay.FRIDAY,
-    ),
-    transportMode = TransportMode.TRANSIT,
-    personalBufferMinutes = 6,
-    safetyMarginMinutes = 5,
-)

@@ -19,7 +19,7 @@ class SeoulBusOperationStatusProvider(
             api.getBusPositionsByRoute(
                 serviceKey = config.seoulBusServiceKey,
                 busRouteId = busRouteId,
-            ).string(),
+            ).readSeoulBusXml(),
         )
         if (positions.isEmpty()) return null
 

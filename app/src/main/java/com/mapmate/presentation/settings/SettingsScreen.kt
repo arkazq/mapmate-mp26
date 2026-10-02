@@ -1,8 +1,6 @@
 package com.mapmate.presentation.settings
 
 import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,12 +24,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -38,12 +43,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.repository.SettingsRepository
-import com.mapmate.presentation.common.MapMateIcon
-import com.mapmate.presentation.common.MapMateIconType
+import com.mapmate.domain.model.AlarmAccessState
+import com.mapmate.domain.provider.AlarmAccessProvider
+import com.mapmate.domain.provider.AlarmSettingsDestination
 import com.mapmate.presentation.common.MapMateSpacing
-import com.mapmate.presentation.common.NotificationCircle
 import com.mapmate.presentation.common.ScreenHeader
-import com.mapmate.presentation.common.SettingSectionCard
 import com.mapmate.presentation.common.TransportModeSelector
 import com.mapmate.ui.theme.MapMateTheme
 
@@ -51,15 +55,18 @@ import com.mapmate.ui.theme.MapMateTheme
 fun SettingsRoute(
     contentPadding: PaddingValues,
     settingsRepository: SettingsRepository,
+    alarmAccessProvider: AlarmAccessProvider,
 ) {
     val viewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.factory(settingsRepository),
     )
-    val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var alarmAccess by remember { mutableStateOf(alarmAccessProvider.read()) }
+    var systemSettingsError by remember { mutableStateOf<String?>(null) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        alarmAccess = alarmAccessProvider.read()
         viewModel.onEvent(
             if (granted) {
                 SettingsEvent.NotificationsEnabledChanged(true)
@@ -69,16 +76,20 @@ fun SettingsRoute(
         )
     }
 
-    LaunchedEffect(uiState.notificationsEnabled) {
-        if (uiState.notificationsEnabled && !context.canPostNotifications()) {
-            viewModel.onEvent(SettingsEvent.NotificationPermissionDenied)
-        }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        alarmAccess = alarmAccessProvider.read()
+    }
+
+    fun openSystemSettings(destination: AlarmSettingsDestination) {
+        systemSettingsError = if (alarmAccessProvider.openSettings(destination)) null
+            else "이 기기에서 시스템 설정을 열지 못했습니다."
     }
 
     fun handleSettingsEvent(event: SettingsEvent) {
-        if (event is SettingsEvent.NotificationsEnabledChanged &&
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            event is SettingsEvent.NotificationsEnabledChanged &&
             event.enabled &&
-            !context.canPostNotifications()
+            !alarmAccess.runtimeNotificationGranted
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             return
@@ -90,12 +101,12 @@ fun SettingsRoute(
         uiState = uiState,
         onEvent = { handleSettingsEvent(it) },
         modifier = Modifier.padding(contentPadding),
+        onRetry = viewModel::retry,
+        alarmAccess = alarmAccess,
+        systemSettingsError = systemSettingsError,
+        onOpenNotificationSettings = { openSystemSettings(AlarmSettingsDestination.NOTIFICATIONS) },
+        onOpenExactAlarmSettings = { openSystemSettings(AlarmSettingsDestination.EXACT_ALARM) },
     )
-}
-
-private fun Context.canPostNotifications(): Boolean {
-    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 }
 
 @Composable
@@ -103,7 +114,21 @@ fun SettingsScreen(
     uiState: SettingsUiState,
     onEvent: (SettingsEvent) -> Unit,
     modifier: Modifier = Modifier,
+    onRetry: () -> Unit = {},
+    alarmAccess: AlarmAccessState = AlarmAccessState(),
+    systemSettingsError: String? = null,
+    onOpenNotificationSettings: () -> Unit = {},
+    onOpenExactAlarmSettings: () -> Unit = {},
 ) {
+    if (!uiState.isSettingsAvailable) {
+        Column(modifier.fillMaxSize().padding(MapMateSpacing.ScreenHorizontal), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("설정", style = MaterialTheme.typography.headlineSmall)
+            if (uiState.isLoading) CircularProgressIndicator()
+            uiState.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (!uiState.isLoading) TextButton(onClick = onRetry) { Text("다시 시도") }
+        }
+        return
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -115,8 +140,7 @@ fun SettingsScreen(
         item {
             ScreenHeader(
                 title = "설정",
-                subtitle = "루틴 설정과 알림, 데이터 관리를 관리하세요.",
-                trailingContent = { NotificationCircle() },
+                subtitle = "",
             )
         }
 
@@ -127,10 +151,7 @@ fun SettingsScreen(
         }
 
         item {
-            SettingSectionCard(
-                title = "기본 보정",
-                leadingIcon = MapMateIconType.Person,
-            ) {
+            SettingsSection(title = "기본 보정") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = uiState.personalBufferMinutes,
@@ -140,6 +161,7 @@ fun SettingsScreen(
                         suffix = { Text("분") },
                         shape = MaterialTheme.shapes.medium,
                         singleLine = true,
+                        enabled = !uiState.isSavingBufferDefaults,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                     OutlinedTextField(
@@ -150,17 +172,20 @@ fun SettingsScreen(
                         suffix = { Text("분") },
                         shape = MaterialTheme.shapes.medium,
                         singleLine = true,
+                        enabled = !uiState.isSavingBufferDefaults,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                 }
+                Button(
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    onClick = { onEvent(SettingsEvent.SaveBufferDefaultsClicked) },
+                    enabled = uiState.hasUnsavedBufferDefaults && !uiState.isSavingBufferDefaults,
+                ) { Text(if (uiState.isSavingBufferDefaults) "저장 중" else "기본 보정 저장") }
             }
         }
 
         item {
-            SettingSectionCard(
-                title = "기본 이동수단",
-                leadingIcon = MapMateIconType.Bus,
-            ) {
+            SettingsSection(title = "기본 이동수단") {
                 TransportModeSelector(
                     selectedTransportMode = uiState.defaultTransportMode,
                     onTransportModeSelected = {
@@ -171,13 +196,10 @@ fun SettingsScreen(
         }
 
         item {
-            SettingSectionCard(
-                title = "알림",
-                leadingIcon = MapMateIconType.Notifications,
-            ) {
+            SettingsSection(title = "알림") {
                 SettingsSwitchRow(
                     title = "출발 알림",
-                    description = "설정한 시간에 출발 알림을 받습니다.",
+                    description = if (alarmAccess.canPostDeparture) "Android 알림 허용됨" else "Android에서 출발 알림이 차단되어 있습니다.",
                     checked = uiState.notificationsEnabled,
                     enabled = true,
                     onCheckedChange = {
@@ -186,7 +208,7 @@ fun SettingsScreen(
                 )
                 SettingsSwitchRow(
                     title = "출발 전 상태 알림",
-                    description = "출발 30분 전부터 권장 출발 시각을 알림창에 표시합니다.",
+                    description = if (alarmAccess.canPostStatus) "출발 30분 전부터 표시" else "Android에서 상태 알림이 차단되어 있습니다.",
                     checked = uiState.notificationsEnabled &&
                         uiState.predepartureStatusNotificationEnabled,
                     enabled = uiState.notificationsEnabled,
@@ -194,26 +216,20 @@ fun SettingsScreen(
                         onEvent(SettingsEvent.PredepartureStatusNotificationEnabledChanged(it))
                     },
                 )
-            }
-        }
-
-        item {
-            SettingSectionCard(
-                title = "데이터 및 기록",
-                leadingIcon = MapMateIconType.Records,
-            ) {
-                DisabledSettingsItem(
-                    title = "기록 보기",
-                    description = "이동 기록과 루틴 통계를 확인합니다.",
+                TextButton(onClick = onOpenNotificationSettings, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("시스템 알림 설정")
+                }
+                Text(
+                    if (alarmAccess.exactAlarmAllowed) "정확한 출발 알림 허용됨" else "정확한 알람 권한이 없어 출발 알림이 늦어질 수 있습니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                DisabledSettingsItem(
-                    title = "루틴 초기화",
-                    description = "모든 루틴 설정을 초기 상태로 되돌립니다.",
-                )
-                DisabledSettingsItem(
-                    title = "앱 정보",
-                    description = "버전 정보 및 서비스 정책을 확인합니다.",
-                )
+                if (!alarmAccess.exactAlarmAllowed) {
+                    TextButton(onClick = onOpenExactAlarmSettings, modifier = Modifier.heightIn(min = 48.dp)) {
+                        Text("정확한 알람 허용")
+                    }
+                }
+                systemSettingsError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         }
 
@@ -282,33 +298,14 @@ private fun SettingsSwitchRow(
 }
 
 @Composable
-private fun DisabledSettingsItem(
+private fun SettingsSection(
     title: String,
-    description: String,
+    content: @Composable () -> Unit,
 ) {
-    ListItem(
-        headlineContent = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-        },
-        supportingContent = {
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        trailingContent = {
-            MapMateIcon(
-                icon = MapMateIconType.Route,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-            )
-        },
-    )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        content()
+    }
 }
 
 @Preview(showBackground = true)

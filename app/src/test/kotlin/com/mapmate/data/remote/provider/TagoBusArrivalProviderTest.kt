@@ -21,6 +21,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TagoBusArrivalProviderTest {
+    @Test fun invalidArrivalDoesNotHideLaterValidBusesAndOtherRoutesAreExcluded() = runTest {
+        val provider = TagoBusArrivalProvider(FakeStationApi(listOf(
+            TagoBusStationItem(citycode = "25", nodeid = "node", nodenm = "Stop", gpslati = 37.0, gpslong = 127.0))),
+            FakeArrivalApi(listOf(
+                TagoBusArrivalItem(routeno = "753", arrtime = -1),
+                TagoBusArrivalItem(routeno = "753", arrtime = null),
+                TagoBusArrivalItem(routeno = "740", arrtime = 60),
+                TagoBusArrivalItem(routeno = "753", arrtime = 300),
+                TagoBusArrivalItem(routeno = "753", arrtime = 900))), configWithTagoKey)
+        val estimate = provider.getArrivalEstimate(TransitArrivalQuery.Bus(stationName = "Stop", stationId = null,
+            stationArsId = null, busRouteId = null, routeName = "753", stationLatitude = 37.0, stationLongitude = 127.0))
+        assertEquals(5, estimate?.waitMinutes)
+        assertEquals(listOf(5, 15), estimate?.waitCandidateMinutes)
+    }
+
+    @Test fun missingRouteOrInvalidCoordinatesDoNotQueryUnrelatedBusArrivals() = runTest {
+        var stationCalls = 0
+        val stationApi = object : TagoBusStationApi {
+            override suspend fun getNearbyStations(serviceKey: String, latitude: Double, longitude: Double,
+                pageNo: Int, numOfRows: Int, type: String): TagoBusStationResponse {
+                stationCalls++
+                error("must not query")
+            }
+        }
+        val provider = TagoBusArrivalProvider(stationApi, FakeArrivalApi(emptyList()), configWithTagoKey)
+        val query = TransitArrivalQuery.Bus(stationName = "Stop", stationId = null, stationArsId = null,
+            busRouteId = null, routeName = "753", stationLatitude = 37.0, stationLongitude = 127.0)
+        for (invalid in listOf(query.copy(routeName = null), query.copy(routeName = ""),
+            query.copy(stationLatitude = Double.NaN), query.copy(stationLongitude = 181.0))) {
+            assertNull(provider.getArrivalEstimate(invalid))
+        }
+        assertEquals(0, stationCalls)
+    }
+
     @Test
     fun getArrivalEstimate_returnsRouteMatchedArrival() = runTest {
         val provider = TagoBusArrivalProvider(

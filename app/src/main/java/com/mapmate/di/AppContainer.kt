@@ -6,9 +6,15 @@ import com.mapmate.data.alarm.AndroidDepartureAlarmScheduler
 import com.mapmate.data.alarm.AndroidDepartureRecheckScheduler
 import com.mapmate.data.alarm.AndroidPredepartureStatusNotificationPublisher
 import com.mapmate.data.alarm.DepartureAlarmCoordinator
+import com.mapmate.data.alarm.AndroidAlarmAccessProvider
+import com.mapmate.domain.provider.AlarmAccessProvider
 import com.mapmate.data.location.AndroidCurrentLocationProvider
 import com.mapmate.data.local.MapMateDatabase
 import com.mapmate.data.preferences.DataStoreSettingsRepository
+import com.mapmate.data.preferences.DataStoreDepartureScheduleStore
+import com.mapmate.data.preferences.DataStoreTrackingSessionStore
+import com.mapmate.domain.repository.TrackingSessionStore
+import kotlinx.coroutines.sync.Mutex
 import com.mapmate.data.remote.api.GoogleRoutesApi
 import com.mapmate.data.remote.api.KakaoLocalApi
 import com.mapmate.data.remote.api.MapMateRetrofitFactory
@@ -51,7 +57,7 @@ import com.mapmate.domain.repository.RouteRealtimeSnapshotRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 
-class AppContainer(
+class AppContainer private constructor(
     context: Context,
 ) {
     private val applicationContext = context.applicationContext
@@ -66,10 +72,12 @@ class AppContainer(
 
     val commuteRecordRepository: CommuteRecordRepository by lazy {
         RoomCommuteRecordRepository(
-            commuteRecordDao = database.commuteRecordDao(),
-            routeSegmentDao = database.routeSegmentDao(),
-            segmentTimeAdjustmentDao = database.segmentTimeAdjustmentDao(),
+            database = database,
         )
+    }
+
+    val trackingSessionStore: TrackingSessionStore by lazy {
+        DataStoreTrackingSessionStore(applicationContext)
     }
 
     private val routeRealtimeSnapshotRepository: RouteRealtimeSnapshotRepository by lazy {
@@ -87,6 +95,8 @@ class AppContainer(
     val settingsRepository: SettingsRepository by lazy {
         DataStoreSettingsRepository(applicationContext)
     }
+
+    val alarmAccessProvider: AlarmAccessProvider by lazy { AndroidAlarmAccessProvider(applicationContext) }
 
     val currentLocationProvider: CurrentLocationProvider by lazy {
         AndroidCurrentLocationProvider(
@@ -211,6 +221,9 @@ class AppContainer(
         DepartureAlarmCoordinator(
             settingsRepository = settingsRepository,
             routineRepository = routineRepository,
+            commuteRecordRepository = commuteRecordRepository,
+            scheduleStore = DataStoreDepartureScheduleStore(applicationContext),
+            schedulingMutex = departureSchedulingMutex,
             routeEstimateProvider = routeEstimateProvider,
             alarmScheduler = AndroidDepartureAlarmScheduler(applicationContext),
             recheckScheduler = AndroidDepartureRecheckScheduler(applicationContext),
@@ -230,13 +243,18 @@ class AppContainer(
         )
     }
 
-    private companion object {
-        const val KAKAO_BASE_URL = "https://dapi.kakao.com/"
-        const val ODSAY_BASE_URL = "https://api.odsay.com/"
-        const val GOOGLE_ROUTES_BASE_URL = "https://routes.googleapis.com/"
-        const val SEOUL_SUBWAY_BASE_URL = "http://swopenapi.seoul.go.kr/"
-        const val SEOUL_BUS_BASE_URL = "http://ws.bus.go.kr/"
-        const val TAGO_BUS_STATION_BASE_URL = "http://apis.data.go.kr/1613000/BusSttnInfoInqireService/"
-        const val TAGO_BUS_ARRIVAL_BASE_URL = "http://apis.data.go.kr/1613000/ArvlInfoInqireService/"
+    companion object {
+        @Volatile private var instance: AppContainer? = null
+        fun getInstance(context: Context): AppContainer = instance ?: synchronized(this) {
+            instance ?: AppContainer(context.applicationContext).also { instance = it }
+        }
+        private val departureSchedulingMutex = Mutex()
+        private const val KAKAO_BASE_URL = "https://dapi.kakao.com/"
+        private const val ODSAY_BASE_URL = "https://api.odsay.com/"
+        private const val GOOGLE_ROUTES_BASE_URL = "https://routes.googleapis.com/"
+        private const val SEOUL_SUBWAY_BASE_URL = "http://swopenapi.seoul.go.kr/"
+        private const val SEOUL_BUS_BASE_URL = "http://ws.bus.go.kr/"
+        private const val TAGO_BUS_STATION_BASE_URL = "https://apis.data.go.kr/1613000/BusSttnInfoInqireService/"
+        private const val TAGO_BUS_ARRIVAL_BASE_URL = "https://apis.data.go.kr/1613000/ArvlInfoInqireService/"
     }
 }

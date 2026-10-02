@@ -10,4 +10,5 @@ sealed interface SettingsEvent {
     data object NotificationPermissionDenied : SettingsEvent
     data class DefaultTransportModeSelected(val transportMode: TransportMode) : SettingsEvent
     data object MessageCleared : SettingsEvent
+    data object SaveBufferDefaultsClicked : SettingsEvent
 }

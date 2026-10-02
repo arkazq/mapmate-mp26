@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -14,8 +16,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mapmate.domain.model.RouteBoardingAdvice
 import com.mapmate.domain.model.RouteBoardingAlternative
 import com.mapmate.domain.model.RouteBoardingStatus
@@ -23,19 +27,25 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BoardingAdviceSummaryCard(
     advice: RouteBoardingAdvice,
     modifier: Modifier = Modifier,
 ) {
+    if (advice.status == RouteBoardingStatus.NO_FIRST_BUS) {
+        Text("실시간 탑승 정보 없음", modifier, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        color = advice.status.containerColor().copy(alpha = 0.58f),
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -44,29 +54,43 @@ fun BoardingAdviceSummaryCard(
                 IconBadge(
                     icon = MapMateIconType.Bus,
                     modifier = Modifier.size(28.dp),
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = advice.status.contentColor(),
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        text = "추천: ${advice.routeName.busRouteLabel()}",
-                        style = MaterialTheme.typography.labelLarge,
+                        text = advice.routeName.busRouteLabel(),
+                        style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = advice.summaryDetailText(),
+                        text = advice.stationName.orEmpty().ifBlank { "첫 탑승 정류장" },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            Text(
-                text = advice.statusLabel(),
-                style = MaterialTheme.typography.labelMedium,
-                color = advice.status.contentColor(),
-                fontWeight = FontWeight.Bold,
-            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column {
+                    Text("버스 도착", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(advice.realtimeWaitMinutes?.let { "${it}분 후" } ?: "정보 없음", fontSize = 24.sp, lineHeight = 32.sp,
+                        fontWeight = FontWeight.Bold, color = if (advice.realtimeWaitMinutes != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                advice.accessMinutes?.let {
+                    Column {
+                        Text("정류장까지", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("도보 ${it}분", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Column {
+                    Text("탑승 여유", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(advice.slackMinutes.slackText() ?: "확인 전", style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold, color = advice.status.contentColor())
+                }
+            }
+            Text(advice.statusLabel(), style = MaterialTheme.typography.labelMedium,
+                color = advice.status.contentColor(), fontWeight = FontWeight.Bold)
             advice.safeDepartureMessage()?.let { message ->
                 Text(
                     text = message,
@@ -92,13 +116,9 @@ fun BoardingAdviceDetailCard(
     advice: RouteBoardingAdvice,
     modifier: Modifier = Modifier,
 ) {
-    SectionCard(
-        title = "탑승 판단",
-        subtitle = "ODsay 후보 중 첫 버스를 실제로 탈 수 있는지 기준으로 비교했습니다.",
-        leadingIcon = MapMateIconType.Bus,
-        modifier = modifier,
-    ) {
-        BoardingAdviceSelectedRow(advice = advice)
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("첫 탑승", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        BoardingAdviceSummaryCard(advice)
         if (advice.alternatives.isNotEmpty()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
             Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -116,84 +136,23 @@ fun BoardingAdviceDetailCard(
     }
 }
 
-@Composable
-private fun BoardingAdviceSelectedRow(
-    advice: RouteBoardingAdvice,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Text(
-                    text = advice.routeName.busRouteLabel(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.ExtraBold,
-                )
-                Text(
-                    text = advice.stationName.orEmpty().ifBlank { "첫 탑승 정류장" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                text = "후보 ${advice.selectedCandidateIndex}/${advice.candidateCount}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        BoardingMetricRow(
-            accessMinutes = advice.accessMinutes,
-            realtimeWaitMinutes = advice.realtimeWaitMinutes,
-            slackMinutes = advice.slackMinutes,
-            status = advice.status,
-            estimatedTotalMinutes = advice.estimatedTotalMinutes,
-        )
-        advice.safeDepartureMessage()?.let { message ->
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        advice.targetArrivalWarningText()?.let { message ->
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BoardingAlternativeRow(
     alternative: RouteBoardingAlternative,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Text(
-            text = alternative.routeName.busRouteLabel(),
-            modifier = Modifier.weight(1f),
+            text = if (alternative.status == RouteBoardingStatus.NO_FIRST_BUS) "다른 이동 경로" else alternative.routeName.busRouteLabel(),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
         )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = alternative.compactStatusText(),
             style = MaterialTheme.typography.bodySmall,
@@ -205,51 +164,19 @@ private fun BoardingAlternativeRow(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        }
     }
 }
 
-@Composable
-private fun BoardingMetricRow(
-    accessMinutes: Int?,
-    realtimeWaitMinutes: Int?,
-    slackMinutes: Int?,
-    status: RouteBoardingStatus,
-    estimatedTotalMinutes: Int,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(
-            text = listOfNotNull(
-                accessMinutes?.let { "정류장까지 ${it}분" },
-                realtimeWaitMinutes?.let { "버스 ${it}분 후 도착" } ?: "실시간 도착정보 없음",
-                slackMinutes.slackText(),
-            ).joinToString(" · "),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "${status.statusLabel()} · 예상 ${estimatedTotalMinutes}분",
-            style = MaterialTheme.typography.labelLarge,
-            color = status.contentColor(),
-            fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-private fun RouteBoardingAdvice.summaryDetailText(): String {
-    return listOfNotNull(
-        stationName?.takeIf(String::isNotBlank),
-        accessMinutes?.let { "정류장까지 ${it}분" },
-        realtimeWaitMinutes?.let { "버스 ${it}분 후 도착" },
-        slackMinutes.slackText(),
-    ).joinToString(" · ")
-}
 
 private fun RouteBoardingAdvice.statusLabel(): String = status.statusLabel()
 
-private fun RouteBoardingAdvice.safeDepartureMessage(): String? {
+internal fun RouteBoardingAdvice.safeDepartureMessage(): String? {
+    if (realtimeWaitMinutes == null || status in setOf(RouteBoardingStatus.REALTIME_UNAVAILABLE, RouteBoardingStatus.NO_FIRST_BUS)) return null
+    if (status == RouteBoardingStatus.MISS_RISK) return "지금 출발해도 첫 버스를 놓칠 수 있어요."
     val safeDepartureText = safeDepartureEpochMillis.toTimeText() ?: return null
     val earlyMinutes = earlyDepartureRequiredMinutes?.takeIf { it > 0 } ?: return null
-    return "${safeDepartureText}까지 출발해야 여유 있게 탑승 가능 · ${earlyMinutes}분 앞당김"
+    return "${safeDepartureText} 출발 권장 · ${earlyMinutes}분 앞당김"
 }
 
 private fun RouteBoardingAdvice.targetArrivalWarningText(): String? {
@@ -274,21 +201,13 @@ private fun RouteBoardingStatus.statusLabel(): String {
     }
 }
 
-@Composable
-private fun RouteBoardingStatus.containerColor(): Color {
-    return when (this) {
-        RouteBoardingStatus.MISS_RISK -> MaterialTheme.colorScheme.errorContainer
-        RouteBoardingStatus.TIGHT -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.secondaryContainer
-    }
-}
 
 @Composable
 private fun RouteBoardingStatus.contentColor(): Color {
     return when (this) {
         RouteBoardingStatus.MISS_RISK -> MaterialTheme.colorScheme.error
-        RouteBoardingStatus.TIGHT -> MaterialTheme.colorScheme.primary
-        RouteBoardingStatus.BOARDABLE -> MaterialTheme.colorScheme.primary
+        RouteBoardingStatus.TIGHT -> if (MaterialTheme.colorScheme.onSurface.luminance() > 0.5f) Color(0xFFF2C46F) else Color(0xFF996100)
+        RouteBoardingStatus.BOARDABLE -> MaterialTheme.colorScheme.tertiary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }

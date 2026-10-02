@@ -8,9 +8,84 @@ import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
+import java.util.concurrent.CancellationException
 
 class SeoulBusRealtimeArrivalProviderTest {
+    @Test fun endedWaitingAndUnknownZeroSecondArrivalsAreNotImmediateCandidates() = runTest {
+        for (message in listOf("운행종료", "운행 종료", "출발대기", "도착 정보가 없습니다", "", "3번째 전")) {
+            val api = FakeSeoulBusArrivalApi(stationUidXml = stationXml("""
+                <traTime1>300</traTime1><arrmsg1>5분 후 도착</arrmsg1>
+                <exps2>0</exps2><traTime2>0</traTime2><arrmsg2>$message</arrmsg2>
+            """), routeAllXml = emptyResponseXml)
+            val result = SeoulBusRealtimeArrivalProvider(api, configWithSeoulBusKey).getArrivalEstimate(stationQuery())
+            assertEquals(message, listOf(5), result?.waitCandidateMinutes)
+        }
+    }
+
+    @Test fun endedMessageOverridesStalePositiveSecondsAndRealSoonArrivalRemainsValid() = runTest {
+        val api = FakeSeoulBusArrivalApi(stationXml("""
+            <traTime1>300</traTime1><arrmsg1>운행종료</arrmsg1>
+            <traTime2>0</traTime2><arrmsg2>곧 도착[1번째 전]</arrmsg2>
+        """), emptyResponseXml)
+        val result = SeoulBusRealtimeArrivalProvider(api, configWithSeoulBusKey).getArrivalEstimate(stationQuery())
+        assertEquals(listOf(0), result?.waitCandidateMinutes)
+    }
+
+    @Test fun zeroExponentialFieldDoesNotHidePositiveTravelTimeOrInventDuplicateVehicles() = runTest {
+        val api = FakeSeoulBusArrivalApi(stationXml("""
+            <exps1>0</exps1><traTime1>300</traTime1><arrmsg1>4분 후 도착</arrmsg1>
+            <exps2>0</exps2><traTime2>900</traTime2><arrmsg2>14분 후 도착</arrmsg2>
+        """), emptyResponseXml)
+        val result = SeoulBusRealtimeArrivalProvider(api, configWithSeoulBusKey).getArrivalEstimate(stationQuery())
+        assertEquals(listOf(5, 15), result?.waitCandidateMinutes)
+    }
+
+    @Test fun malformedStationXmlStillUsesTheExistingRouteFallback() = runTest {
+        val api = FakeSeoulBusArrivalApi("<broken>", stationXml("<traTime1>300</traTime1>"))
+        val result = SeoulBusRealtimeArrivalProvider(api, configWithSeoulBusKey).getArrivalEstimate(stationQuery().copy(busRouteId = "route"))
+        assertEquals(5, result?.waitMinutes)
+        assertEquals(listOf("route"), api.routeAllCalls)
+    }
+
+    @Test fun mismatchedRouteFallbackDoesNotReportAnotherBusAtTheSameStation() = runTest {
+        val wrongRoute = stationXml("<traTime1>300</traTime1>").replace("<rtNm>753</rtNm>", "<rtNm>740</rtNm>")
+        val api = FakeSeoulBusArrivalApi(emptyResponseXml, wrongRoute)
+        val result = SeoulBusRealtimeArrivalProvider(api, configWithSeoulBusKey).getArrivalEstimate(stationQuery().copy(busRouteId = "wrong-route"))
+        assertNull(result)
+    }
+
+    private fun stationXml(fields: String) = """
+        <ServiceResult><msgBody><itemList><arsId>20170</arsId><stNm>Stop</stNm><rtNm>753</rtNm>
+        $fields</itemList></msgBody></ServiceResult>
+    """.trimIndent()
+
+    private fun stationQuery() = TransitArrivalQuery.Bus(stationName = "Stop", stationId = null,
+        stationArsId = "20170", busRouteId = null, routeName = "753")
+
+    @Test
+    fun stationQueryCancellationDoesNotTriggerRouteFallback() = runTest {
+        var fallbackCalls = 0
+        val api = object : SeoulBusArrivalApi {
+            override suspend fun getArrivalsByStationUid(serviceKey: String, stationArsId: String): ResponseBody =
+                throw CancellationException("screen closed")
+            override suspend fun getArrivalsByRouteAll(serviceKey: String, busRouteId: String): ResponseBody {
+                fallbackCalls++
+                return emptyResponseXml.toResponseBody()
+            }
+        }
+        val provider = SeoulBusRealtimeArrivalProvider(api, configWithSeoulBusKey)
+        val result = runCatching {
+            provider.getArrivalEstimate(TransitArrivalQuery.Bus(
+                stationName = "Stop", stationId = null, stationArsId = "20170",
+                busRouteId = "route", routeName = "753",
+            ))
+        }
+        assertTrue(result.exceptionOrNull() is CancellationException)
+        assertEquals(0, fallbackCalls)
+    }
+
     @Test
     fun getArrivalEstimate_usesStationArsIdAndRouteNameBeforeRouteId() = runTest {
         val api = FakeSeoulBusArrivalApi(

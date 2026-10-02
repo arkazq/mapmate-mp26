@@ -45,15 +45,7 @@ abstract class MapMateDatabase : RoomDatabase() {
                     MapMateDatabase::class.java,
                     DATABASE_NAME,
                 )
-                    .addMigrations(
-                        MIGRATION_1_2,
-                        MIGRATION_2_3,
-                        MIGRATION_3_4,
-                        MIGRATION_4_5,
-                        MIGRATION_5_6,
-                        MIGRATION_6_7,
-                        MIGRATION_7_8,
-                    )
+                    .addMigrations(*MIGRATIONS)
                     .build()
                     .also { instance = it }
             }
@@ -218,25 +210,48 @@ abstract class MapMateDatabase : RoomDatabase() {
 
         private val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    "ALTER TABLE segment_time_adjustments " +
-                        "ADD COLUMN averageActualDurationMinutes INTEGER NOT NULL DEFAULT 0",
-                )
-                db.execSQL(
-                    "ALTER TABLE segment_time_adjustments " +
-                        "ADD COLUMN minActualDurationMinutes INTEGER NOT NULL DEFAULT 0",
-                )
-                db.execSQL(
-                    "ALTER TABLE segment_time_adjustments " +
-                        "ADD COLUMN maxActualDurationMinutes INTEGER NOT NULL DEFAULT 0",
-                )
+                listOf(
+                    "averageActualDurationMinutes",
+                    "minActualDurationMinutes",
+                    "maxActualDurationMinutes",
+                ).forEach { column ->
+                    addColumnIfMissing(db, "segment_time_adjustments", column, "INTEGER NOT NULL DEFAULT 0")
+                }
             }
         }
 
         internal val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE commute_records ADD COLUMN targetArrivalAtEpochMillis INTEGER")
+                addColumnIfMissing(db, "commute_records", "targetArrivalAtEpochMillis", "INTEGER")
             }
         }
+
+        private fun addColumnIfMissing(
+            db: SupportSQLiteDatabase,
+            table: String,
+            column: String,
+            definition: String,
+        ) {
+            // Some older migration paths already created the later-version columns.
+            val exists = db.query("PRAGMA table_info($table)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                var found = false
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(nameIndex) == column) found = true
+                }
+                found
+            }
+            if (!exists) db.execSQL("ALTER TABLE $table ADD COLUMN $column $definition")
+        }
+
+        internal val MIGRATIONS = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+        )
     }
 }

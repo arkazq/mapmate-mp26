@@ -6,6 +6,7 @@ import com.mapmate.domain.alarm.DepartureAlarmScheduler
 import com.mapmate.domain.alarm.DepartureRecheckScheduler
 import com.mapmate.domain.alarm.PredepartureStatusNotificationPublisher
 import com.mapmate.domain.model.AppSettings
+import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.RouteBoardingAdvice
@@ -22,13 +23,109 @@ import java.time.ZonedDateTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import com.mapmate.testing.TestCommuteRecordRepository
+import com.mapmate.testing.TestDepartureScheduleStore
+import com.mapmate.domain.repository.CommuteRecordRepository
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DepartureAlarmCoordinatorTest {
     private val routine = sampleRoutine()
+
+    @Test
+    fun rescheduleNextAlarm_skipsCompletedEventAndSchedulesNextRoutine() = runTest {
+        val completedRoutine = sampleRoutine(LocalTime.of(9, 0))
+        val nextRoutine = sampleRoutine(LocalTime.of(10, 0)).copy(id = 8L)
+        val alarmScheduler = FakeAlarmScheduler()
+        val coordinator = coordinator(
+            settings = AppSettings(notificationsEnabled = true),
+            routines = listOf(completedRoutine, nextRoutine),
+            routeEstimateProvider = FixedRouteEstimateProvider(10),
+            alarmScheduler = alarmScheduler,
+            recheckScheduler = FakeRecheckScheduler(),
+            nowProvider = { at(8, 45) },
+            commuteRecordRepository = TestCommuteRecordRepository(
+                listOf(completedRecord(completedRoutine, epochAt(9, 0))),
+            ),
+        )
+
+        coordinator.rescheduleNextAlarm()
+
+        assertEquals(8L, alarmScheduler.scheduled!!.routineId)
+        assertEquals(epochAt(10, 0), alarmScheduler.scheduled!!.targetArrivalAtEpochMillis)
+    }
+
+    @Test
+    fun rescheduleNextAlarm_skipsCompletedNextDayArrivalAcrossMidnight() = runTest {
+        val overnight = sampleRoutine(LocalTime.of(0, 30))
+        val targetArrival = at(0, 30).plusDays(1).toInstant().toEpochMilli()
+        val alarmScheduler = FakeAlarmScheduler()
+        val coordinator = coordinator(
+            settings = AppSettings(notificationsEnabled = true),
+            routines = listOf(overnight),
+            routeEstimateProvider = FixedRouteEstimateProvider(60),
+            alarmScheduler = alarmScheduler,
+            recheckScheduler = FakeRecheckScheduler(),
+            nowProvider = { at(23, 35) },
+            commuteRecordRepository = TestCommuteRecordRepository(
+                listOf(completedRecord(overnight, targetArrival)),
+            ),
+        )
+
+        coordinator.rescheduleNextAlarm()
+
+        assertEquals(at(0, 30).plusDays(2).toInstant().toEpochMilli(),
+            alarmScheduler.scheduled!!.targetArrivalAtEpochMillis)
+    }
+
+    @Test
+    fun keepAlarmsInSync_completionReschedulesWithoutSettingsOrRoutineChange() = runTest {
+        val targetRoutine = sampleRoutine(LocalTime.of(9, 0))
+        val records = TestCommuteRecordRepository()
+        val alarmScheduler = FakeAlarmScheduler()
+        val coordinator = coordinator(
+            settings = AppSettings(notificationsEnabled = true),
+            routines = listOf(targetRoutine),
+            routeEstimateProvider = FixedRouteEstimateProvider(10),
+            alarmScheduler = alarmScheduler,
+            recheckScheduler = FakeRecheckScheduler(),
+            nowProvider = { at(8, 45) },
+            commuteRecordRepository = records,
+        )
+        backgroundScope.launch { coordinator.keepAlarmsInSync() }
+        runCurrent()
+        assertEquals(epochAt(9, 0), alarmScheduler.scheduled!!.targetArrivalAtEpochMillis)
+
+        records.records.value = listOf(completedRecord(targetRoutine, epochAt(9, 0)))
+        runCurrent()
+
+        assertEquals(at(9, 0).plusDays(1).toInstant().toEpochMilli(),
+            alarmScheduler.scheduled!!.targetArrivalAtEpochMillis)
+    }
+
+    @Test
+    fun rescheduleNextAlarm_doesNotQueryRoutesWithoutRepeatDaysOrPersistedId() = runTest {
+        val provider = FixedRouteEstimateProvider(10)
+        val alarmScheduler = FakeAlarmScheduler()
+        val coordinator = coordinator(
+            settings = AppSettings(notificationsEnabled = true),
+            routines = listOf(routine.copy(repeatDays = emptySet()), routine.copy(id = null)),
+            routeEstimateProvider = provider,
+            alarmScheduler = alarmScheduler,
+            recheckScheduler = FakeRecheckScheduler(),
+        )
+
+        coordinator.rescheduleNextAlarm()
+
+        assertEquals(emptyList<Long?>(), provider.scheduledDepartureCalls)
+        assertNull(alarmScheduler.scheduled)
+        assertEquals(1, alarmScheduler.cancelCount)
+    }
 
     @Test
     fun rescheduleNextAlarm_schedulesAlarmAndRecheckWhenNotificationsAreEnabled() = runTest {
@@ -259,10 +356,13 @@ class DepartureAlarmCoordinatorTest {
         predepartureStatusNotificationPublisher: PredepartureStatusNotificationPublisher =
             PredepartureStatusNotificationPublisher.NoOp,
         nowProvider: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.of("Asia/Seoul")) },
+        commuteRecordRepository: CommuteRecordRepository = TestCommuteRecordRepository(),
     ): DepartureAlarmCoordinator {
         return DepartureAlarmCoordinator(
             settingsRepository = FakeSettingsRepository(settings),
             routineRepository = FakeRoutineRepository(routines),
+            commuteRecordRepository = commuteRecordRepository,
+            scheduleStore = TestDepartureScheduleStore(),
             routeEstimateProvider = routeEstimateProvider,
             alarmScheduler = alarmScheduler,
             recheckScheduler = recheckScheduler,
@@ -330,6 +430,8 @@ class DepartureAlarmCoordinatorTest {
 
         override suspend fun deleteRoutine(id: Long) = Unit
 
+        override suspend fun updatePersonalBufferMinutes(expectedRoutine: Routine, minutes: Int) = false
+
         override fun observeRoutines(): Flow<List<Routine>> = flowOf(routines)
     }
 
@@ -345,6 +447,8 @@ class DepartureAlarmCoordinatorTest {
         }
 
         override suspend fun updateSafetyMarginMinutes(minutes: Int) = Unit
+
+        override suspend fun updateBufferDefaults(personalBufferMinutes: Int, safetyMarginMinutes: Int) = Unit
 
         override suspend fun updateNotificationsEnabled(enabled: Boolean) = Unit
 
@@ -394,6 +498,26 @@ class DepartureAlarmCoordinatorTest {
     }
 
     private companion object {
+        fun at(hour: Int, minute: Int): ZonedDateTime =
+            ZonedDateTime.of(2026, 6, 16, hour, minute, 0, 0, ZoneId.of("Asia/Seoul"))
+
+        fun completedRecord(routine: Routine, targetArrivalEpochMillis: Long) = CommuteRecord(
+            id = 1L,
+            routineId = routine.id,
+            routineName = routine.name,
+            originName = routine.origin.name,
+            destinationName = routine.destination.name,
+            transportMode = routine.transportMode,
+            targetArrivalTime = routine.targetArrivalTime,
+            targetArrivalAtEpochMillis = targetArrivalEpochMillis,
+            recommendedDepartureTime = routine.targetArrivalTime.minusMinutes(10),
+            routeDurationMinutes = 10,
+            routeSummary = "test",
+            startedAtEpochMillis = targetArrivalEpochMillis - 20 * 60_000,
+            arrivedAtEpochMillis = targetArrivalEpochMillis - 10 * 60_000,
+            arrivalDeltaMinutes = -10,
+        )
+
         fun sampleRoutine(
             targetArrivalTime: LocalTime = LocalTime.of(23, 59),
         ): Routine {

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -17,8 +18,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +36,6 @@ import com.mapmate.presentation.common.IconBadge
 import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
 import com.mapmate.presentation.common.MetricRow
-import com.mapmate.presentation.common.NotificationCircle
 import com.mapmate.presentation.common.ScreenHeader
 import com.mapmate.presentation.common.SectionCard
 import com.mapmate.presentation.common.toKoreanLabel
@@ -55,7 +56,7 @@ fun RecordsRoute(
     val viewModel: RecordsViewModel = viewModel(
         factory = RecordsViewModel.factory(commuteRecordRepository),
     )
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     RecordsScreen(
         uiState = uiState,
@@ -63,6 +64,7 @@ fun RecordsRoute(
         onRegisterRoutineClick = onRegisterRoutineClick,
         onEditSegmentsClick = onEditSegmentsClick,
         onRoutineFilterSelected = viewModel::selectRoutineFilter,
+        onRetry = viewModel::retry,
     )
 }
 
@@ -73,6 +75,7 @@ fun RecordsScreen(
     onRegisterRoutineClick: () -> Unit,
     onEditSegmentsClick: (CommuteRecord) -> Unit,
     onRoutineFilterSelected: (Long?) -> Unit,
+    onRetry: () -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -87,10 +90,14 @@ fun RecordsScreen(
         item {
             ScreenHeader(
                 title = "이동 기록",
-                subtitle = "완료한 이동 기록을 확인하고 추천 정확도를 점검합니다.",
-                trailingContent = { NotificationCircle() },
+                subtitle = "${uiState.records.size}회",
             )
         }
+
+        uiState.errorMessage?.let { message -> item {
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onRetry) { Text("다시 시도") }
+        } }
 
         when {
             uiState.isLoading -> {
@@ -106,7 +113,7 @@ fun RecordsScreen(
                 }
             }
 
-            uiState.records.isEmpty() -> {
+            uiState.records.isEmpty() && uiState.errorMessage == null -> {
                 item {
                     EmptyStateCard(
                         title = "아직 저장된 이동 기록이 없습니다",
@@ -117,7 +124,7 @@ fun RecordsScreen(
                 }
             }
 
-            else -> {
+            uiState.records.isNotEmpty() -> {
                 item {
                     RecordsRoutineFilterRow(
                         filters = uiState.routineFilters,
@@ -181,16 +188,8 @@ private fun RecordsStatsCard(
     stats: RecordsStats,
     scopeLabel: String,
 ) {
-    SectionCard(
-        title = "기록 분석",
-        subtitle = "${scopeLabel} 기록을 기준으로 추천 정확도를 요약합니다.",
-        leadingIcon = MapMateIconType.Records,
-    ) {
-        MetricRow(
-            icon = MapMateIconType.Check,
-            label = "전체 기록",
-            value = "${stats.totalRecords}회",
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(scopeLabel, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         MetricRow(
             icon = MapMateIconType.Time,
             label = "평균 도착 오차",
@@ -211,11 +210,6 @@ private fun RecordsStatsCard(
             } else {
                 MaterialTheme.colorScheme.primary
             },
-        )
-        MetricRow(
-            icon = stats.mostUsedTransportMode?.let(::transportModeIcon) ?: MapMateIconType.Route,
-            label = "자주 쓴 이동수단",
-            value = stats.mostUsedTransportMode?.toKoreanLabel() ?: "기록 없음",
         )
         MetricRow(
             icon = MapMateIconType.Route,
@@ -246,7 +240,7 @@ private fun CommuteRecordCard(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             )
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     text = "${record.originName} → ${record.destinationName}",
                     style = MaterialTheme.typography.titleMedium,
@@ -261,15 +255,13 @@ private fun CommuteRecordCard(
             }
         }
 
-        MetricRow(
-            icon = MapMateIconType.Time,
-            label = "추천 출발",
-            value = record.recommendedDepartureTime.toDisplayText(),
-        )
+        MetricRow(label = "실제 출발", value = record.startedAtEpochMillis.toDateTimeText())
+        MetricRow(label = "실제 도착", value = record.arrivedAtEpochMillis.toDateTimeText())
+        MetricRow(label = "이동 시간", value = "${java.time.Duration.ofMillis(record.arrivedAtEpochMillis - record.startedAtEpochMillis).toMinutes().coerceAtLeast(0)}분")
         MetricRow(
             icon = MapMateIconType.Flag,
             label = "목표 도착",
-            value = record.targetArrivalTime.toDisplayText(),
+            value = record.targetArrivalAtEpochMillis?.takeIf { it > 0 }?.toDateTimeText() ?: record.targetArrivalTime.toDisplayText(),
         )
         MetricRow(
             icon = MapMateIconType.Check,
@@ -286,7 +278,7 @@ private fun CommuteRecordCard(
                 onClick = { onEditSegmentsClick(record) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(42.dp),
+                    .heightIn(min = 48.dp),
                 shape = MaterialTheme.shapes.medium,
             ) {
                 Text("구간별 시간 수정")
@@ -298,7 +290,7 @@ private fun CommuteRecordCard(
 private fun Long.toDateTimeText(): String {
     return Instant.ofEpochMilli(this)
         .atZone(ZoneId.systemDefault())
-        .format(DateTimeFormatter.ofPattern("M월 d일 HH:mm"))
+        .format(DateTimeFormatter.ofPattern("yyyy.MM.dd HH:mm"))
 }
 
 private fun LocalTime.toDisplayText(): String {

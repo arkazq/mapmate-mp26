@@ -3,30 +3,26 @@ package com.mapmate.data.alarm
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.mapmate.di.AppContainer
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import android.app.AlarmManager
+import android.os.Build
 
 class DepartureAlarmBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action !in RESCHEDULE_ACTIONS) return
+        val exactAlarmAccessChanged = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            intent.action == AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
+        if (intent.action !in RESCHEDULE_ACTIONS && !exactAlarmAccessChanged) return
+        if (exactAlarmAccessChanged && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()) return
 
-        val pendingResult = goAsync()
-        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            try {
-                AppContainer(context).departureAlarmCoordinator.rescheduleNextAlarm()
-            } finally {
-                pendingResult.finish()
-            }
-        }
+        DepartureRecheckWorker.enqueueReschedule(context)
     }
 
     private companion object {
         val RESCHEDULE_ACTIONS = setOf(
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
         )
     }
 }

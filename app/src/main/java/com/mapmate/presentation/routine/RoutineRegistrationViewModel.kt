@@ -2,9 +2,10 @@ package com.mapmate.presentation.routine
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewModelScope
-import com.mapmate.data.mock.MockPlaceSearchProvider
-import com.mapmate.data.mock.MockRouteEstimateProvider
 import com.mapmate.domain.alarm.DepartureAdjustmentPolicy
 import com.mapmate.domain.alarm.DepartureAlarmPlanner
 import com.mapmate.domain.calculator.DepartureTimeCalculator
@@ -13,11 +14,14 @@ import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.domain.model.hasValidCoordinates
 import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.provider.ScheduledRouteProvider
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
+import com.mapmate.domain.util.runCatchingCancellable
 import com.mapmate.presentation.common.ScheduleAwareRecommendationResolver
 import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +29,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -33,30 +42,42 @@ import java.time.format.DateTimeParseException
 class RoutineRegistrationViewModel(
     private val routineRepository: RoutineRepository,
     private val settingsRepository: SettingsRepository,
-    private val placeSearchProvider: PlaceSearchProvider = MockPlaceSearchProvider(),
-    private val routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
+    private val placeSearchProvider: PlaceSearchProvider,
+    private val routeEstimateProvider: RouteEstimateProvider,
     private val currentLocationProvider: CurrentLocationProvider = UnavailableCurrentLocationProvider,
     private val departureTimeCalculator: DepartureTimeCalculator = DepartureTimeCalculator(),
     private val alarmPlanner: DepartureAlarmPlanner = DepartureAlarmPlanner(),
-    private val adjustmentPolicy: DepartureAdjustmentPolicy = DepartureAdjustmentPolicy(),
+    private val adjustmentPolicy: DepartureAdjustmentPolicy? = null,
     private val nowProvider: () -> ZonedDateTime = { ZonedDateTime.now(ZoneId.systemDefault()) },
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    scheduledRouteProvider: ScheduledRouteProvider? = null,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(RoutineRegistrationUiState())
+    private val restoredDraft = savedStateHandle.get<String>(DRAFT_KEY)?.let {
+        runCatching { Json.decodeFromString<RoutineRegistrationDraft>(it).toUiState() }.getOrNull()
+    }
+    private val _uiState = MutableStateFlow(restoredDraft ?: RoutineRegistrationUiState())
     val uiState: StateFlow<RoutineRegistrationUiState> = _uiState.asStateFlow()
 
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private var latestSettings = AppSettings()
+    private var isInitialized = restoredDraft != null
+    private var originSearchJob: Job? = null
+    private var destinationSearchJob: Job? = null
+    private var calculationJob: Job? = null
+    private var currentLocationJob: Job? = null
+    private var hasReceivedSettings = restoredDraft != null
     private val recommendationResolver = ScheduleAwareRecommendationResolver(
         routeEstimateProvider = routeEstimateProvider,
         departureTimeCalculator = departureTimeCalculator,
         alarmPlanner = alarmPlanner,
         adjustmentPolicy = adjustmentPolicy,
+        scheduledRouteProvider = scheduledRouteProvider,
     )
 
     init {
         observeSettings()
-        searchOriginCandidates("")
-        searchDestinationCandidates("")
+        if (_uiState.value.selectedOrigin?.hasValidCoordinates() != true) searchOriginCandidates(_uiState.value.originQuery)
+        if (_uiState.value.selectedDestination?.hasValidCoordinates() != true) searchDestinationCandidates(_uiState.value.destinationQuery)
         refreshSaveEnabled()
     }
 
@@ -80,15 +101,29 @@ class RoutineRegistrationViewModel(
         }
     }
 
+    fun initialize(routine: Routine?) {
+        if (isInitialized) return
+        isInitialized = true
+        if (routine == null) startNewRoutine() else loadRoutineForEditing(routine)
+    }
+
     fun loadRoutineForEditing(routine: Routine) {
+        originSearchJob?.cancel()
+        destinationSearchJob?.cancel()
         _uiState.update {
             it.copy(
                 editingRoutineId = routine.id,
                 routineName = routine.name,
                 originQuery = routine.origin.name,
                 selectedOrigin = routine.origin,
+                originCandidates = emptyList(),
+                isSearchingOrigin = false,
+                originSearchError = null,
                 destinationQuery = routine.destination.name,
                 selectedDestination = routine.destination,
+                destinationCandidates = emptyList(),
+                isSearchingDestination = false,
+                destinationSearchError = null,
                 targetArrivalTimeText = routine.targetArrivalTime.format(timeFormatter),
                 selectedRepeatDays = routine.repeatDays,
                 selectedTransportMode = routine.transportMode,
@@ -101,8 +136,9 @@ class RoutineRegistrationViewModel(
                 isSaveCompleted = false,
             ).withSaveEnabled()
         }
-        searchOriginCandidates(routine.origin.name)
-        searchDestinationCandidates(routine.destination.name)
+        if (!routine.origin.hasValidCoordinates()) searchOriginCandidates(routine.origin.name)
+        if (!routine.destination.hasValidCoordinates()) searchDestinationCandidates(routine.destination.name)
+        persistDraft()
     }
 
     fun startNewRoutine() {
@@ -114,6 +150,7 @@ class RoutineRegistrationViewModel(
         searchOriginCandidates("")
         searchDestinationCandidates("")
         refreshSaveEnabled()
+        persistDraft()
     }
 
     private fun onRoutineNameChanged(name: String) {
@@ -129,11 +166,15 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onOriginQueryChanged(query: String) {
+        currentLocationJob?.cancel()
         val safeQuery = query.toSafeSingleLineInput(maxLength = PLACE_QUERY_MAX_LENGTH)
         updateState {
             copy(
                 originQuery = safeQuery,
                 selectedOrigin = null,
+                isGettingCurrentLocation = false,
+                originCandidates = emptyList(),
+                originSearchError = null,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
                 successMessage = null,
@@ -144,10 +185,16 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onOriginSelected(origin: Destination) {
+        currentLocationJob?.cancel()
+        originSearchJob?.cancel()
         updateState {
             copy(
                 originQuery = origin.name,
                 selectedOrigin = origin,
+                isGettingCurrentLocation = false,
+                originCandidates = emptyList(),
+                isSearchingOrigin = false,
+                originSearchError = null,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
                 successMessage = null,
@@ -162,6 +209,8 @@ class RoutineRegistrationViewModel(
             copy(
                 destinationQuery = safeQuery,
                 selectedDestination = null,
+                destinationCandidates = emptyList(),
+                destinationSearchError = null,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
                 successMessage = null,
@@ -172,10 +221,14 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onDestinationSelected(destination: Destination) {
+        destinationSearchJob?.cancel()
         updateState {
             copy(
                 destinationQuery = destination.name,
                 selectedDestination = destination,
+                destinationCandidates = emptyList(),
+                isSearchingDestination = false,
+                destinationSearchError = null,
                 routeEstimate = null,
                 recommendedDepartureTimeText = "",
                 successMessage = null,
@@ -222,7 +275,6 @@ class RoutineRegistrationViewModel(
                 errorMessage = null,
             )
         }
-        saveDefaultTransportMode(transportMode)
     }
 
     private fun onPersonalBufferChanged(minutesText: String) {
@@ -236,7 +288,6 @@ class RoutineRegistrationViewModel(
                 errorMessage = null,
             )
         }
-        filteredMinutesText.toValidBufferMinutesOrNull()?.let(::savePersonalBufferSetting)
     }
 
     private fun onSafetyMarginChanged(minutesText: String) {
@@ -250,18 +301,18 @@ class RoutineRegistrationViewModel(
                 errorMessage = null,
             )
         }
-        filteredMinutesText.toValidBufferMinutesOrNull()?.let(::saveSafetyMarginSetting)
     }
 
     private fun onCalculateClicked() {
+        if (_uiState.value.isCalculating) return
         val validatedInput = validateInput(_uiState.value) ?: return
+        val inputRoutine = validatedInput.toRoutine(id = _uiState.value.editingRoutineId)
+        _uiState.update { it.copy(isCalculating = true, errorMessage = null, successMessage = null) }
+        calculationJob = viewModelScope.launch {
 
-        viewModelScope.launch {
-            _uiState.update { it.copy(isCalculating = true, errorMessage = null, successMessage = null) }
-
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 recommendationResolver.resolve(
-                    routine = validatedInput.toRoutine(id = _uiState.value.editingRoutineId),
+                    routine = inputRoutine,
                     now = nowProvider(),
                 )
             }
@@ -281,7 +332,7 @@ class RoutineRegistrationViewModel(
                     onFailure = {
                         state.copy(
                             isCalculating = false,
-                            errorMessage = "寃쎈줈 怨꾩궛???ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄??二쇱꽭??",
+                            errorMessage = "경로를 계산하지 못했어요. 연결 상태를 확인한 뒤 다시 시도해 주세요.",
                         )
                     },
                 )
@@ -291,6 +342,7 @@ class RoutineRegistrationViewModel(
     }
 
     private fun onSaveClicked() {
+        if (_uiState.value.isSaving || _uiState.value.isSaveCompleted) return
         val validatedInput = validateInput(_uiState.value) ?: return
 
         val routine = Routine(
@@ -305,8 +357,7 @@ class RoutineRegistrationViewModel(
             safetyMarginMinutes = validatedInput.safetyMarginMinutes,
         )
 
-        viewModelScope.launch {
-            _uiState.update {
+        _uiState.update {
                 it.copy(
                     isSaving = true,
                     isSaveEnabled = false,
@@ -314,9 +365,9 @@ class RoutineRegistrationViewModel(
                     errorMessage = null,
                     isSaveCompleted = false,
                 )
-            }
-
-            val result = runCatching {
+        }
+        viewModelScope.launch {
+            val result = runCatchingCancellable {
                 routineRepository.saveRoutine(routine)
             }
 
@@ -342,27 +393,51 @@ class RoutineRegistrationViewModel(
                 }
             }
             refreshSaveEnabled()
+            if (result.isSuccess) {
+                _uiState.update { it.copy(hasUnsavedChanges = false) }
+                savedStateHandle.remove<String>(DRAFT_KEY)
+            }
         }
     }
 
     private fun searchDestinationCandidates(query: String) {
-        viewModelScope.launch {
-            val candidates = placeSearchProvider.search(query)
-            _uiState.update { it.copy(destinationCandidates = candidates) }
+        destinationSearchJob?.cancel()
+        _uiState.update { it.copy(isSearchingDestination = true, destinationSearchError = null) }
+        destinationSearchJob = viewModelScope.launch {
+            if (query.isNotBlank()) delay(350L)
+            val result = runCatchingCancellable { placeSearchProvider.search(query) }
+            _uiState.update {
+                if (it.destinationQuery == query) it.copy(
+                    destinationCandidates = result.getOrDefault(emptyList()),
+                    isSearchingDestination = false,
+                    destinationSearchError = result.exceptionOrNull()?.let { "장소 검색에 실패했습니다. 다시 시도해 주세요." },
+                ) else it
+            }
             refreshSaveEnabled()
         }
     }
 
     private fun searchOriginCandidates(query: String) {
-        viewModelScope.launch {
-            val candidates = placeSearchProvider.search(query)
-            _uiState.update { it.copy(originCandidates = candidates) }
+        originSearchJob?.cancel()
+        _uiState.update { it.copy(isSearchingOrigin = true, originSearchError = null) }
+        originSearchJob = viewModelScope.launch {
+            if (query.isNotBlank()) delay(350L)
+            val result = runCatchingCancellable { placeSearchProvider.search(query) }
+            _uiState.update {
+                if (it.originQuery == query) it.copy(
+                    originCandidates = result.getOrDefault(emptyList()),
+                    isSearchingOrigin = false,
+                    originSearchError = result.exceptionOrNull()?.let { "장소 검색에 실패했습니다. 다시 시도해 주세요." },
+                ) else it
+            }
             refreshSaveEnabled()
         }
     }
 
     private fun onCurrentLocationClicked() {
-        viewModelScope.launch {
+        if (_uiState.value.isGettingCurrentLocation) return
+        _uiState.update { it.copy(isGettingCurrentLocation = true) }
+        currentLocationJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isGettingCurrentLocation = true,
@@ -371,7 +446,7 @@ class RoutineRegistrationViewModel(
                 )
             }
 
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 currentLocationProvider.getCurrentLocation()
             }
 
@@ -382,6 +457,8 @@ class RoutineRegistrationViewModel(
                             originQuery = origin.name,
                             selectedOrigin = origin,
                             originCandidates = emptyList(),
+                            isSearchingOrigin = false,
+                            originSearchError = null,
                             routeEstimate = null,
                             recommendedDepartureTimeText = "",
                             isGettingCurrentLocation = false,
@@ -399,6 +476,10 @@ class RoutineRegistrationViewModel(
                 )
             }
             refreshSaveEnabled()
+            if (result.isSuccess) {
+                _uiState.update { it.copy(hasUnsavedChanges = true) }
+                persistDraft()
+            }
         }
     }
 
@@ -415,10 +496,14 @@ class RoutineRegistrationViewModel(
 
     private fun observeSettings() {
         viewModelScope.launch {
-            settingsRepository.settings.collect { settings ->
+            settingsRepository.settings.catch {
+                showSettingsPersistenceError()
+            }.collect { settings ->
                 latestSettings = settings
+                if (hasReceivedSettings) return@collect
+                hasReceivedSettings = true
                 _uiState.update {
-                    if (it.isEditing) return@update it.withSaveEnabled()
+                    if (it.isEditing || it.hasUnsavedChanges) return@update it.withSaveEnabled()
 
                     it.copy(
                         personalBufferMinutes = settings.personalBufferMinutes.toString(),
@@ -439,27 +524,13 @@ class RoutineRegistrationViewModel(
             return null
         }
 
-        val destination = state.selectedDestination ?: state.destinationQuery.trim().takeIf { it.isNotBlank() }?.let {
-            Destination(
-                name = it,
-                address = "직접 입력한 목적지",
-                latitude = null,
-                longitude = null,
-            )
-        }
+        val destination = state.selectedDestination?.takeIf { it.hasValidCoordinates() }
         if (destination == null) {
-            showValidationError("목적지를 입력하거나 선택해 주세요.")
+            showValidationError("검색 결과에서 목적지를 선택해 주세요.")
             return null
         }
 
-        val origin = state.selectedOrigin ?: state.originQuery.trim().takeIf { it.isNotBlank() }?.let {
-            Destination(
-                name = it,
-                address = "직접 입력한 출발지",
-                latitude = null,
-                longitude = null,
-            )
-        }
+        val origin = state.selectedOrigin?.takeIf { it.hasValidCoordinates() }
         if (origin == null) {
             showValidationError("출발지를 검색해 선택하거나 현재 위치를 사용해 주세요.")
             return null
@@ -532,39 +603,6 @@ class RoutineRegistrationViewModel(
         }
     }
 
-    private fun savePersonalBufferSetting(minutes: Int) {
-        viewModelScope.launch {
-            val result = runCatching {
-                settingsRepository.updatePersonalBufferMinutes(minutes)
-            }
-            if (result.isFailure) {
-                showSettingsPersistenceError()
-            }
-        }
-    }
-
-    private fun saveSafetyMarginSetting(minutes: Int) {
-        viewModelScope.launch {
-            val result = runCatching {
-                settingsRepository.updateSafetyMarginMinutes(minutes)
-            }
-            if (result.isFailure) {
-                showSettingsPersistenceError()
-            }
-        }
-    }
-
-    private fun saveDefaultTransportMode(transportMode: TransportMode) {
-        viewModelScope.launch {
-            val result = runCatching {
-                settingsRepository.updateDefaultTransportMode(transportMode)
-            }
-            if (result.isFailure) {
-                showSettingsPersistenceError()
-            }
-        }
-    }
-
     private fun showSettingsPersistenceError() {
         _uiState.update {
             it.copy(
@@ -576,7 +614,16 @@ class RoutineRegistrationViewModel(
     }
 
     private fun updateState(reducer: RoutineRegistrationUiState.() -> RoutineRegistrationUiState) {
-        _uiState.update { state -> state.reducer().withSaveEnabled() }
+        calculationJob?.cancel()
+        _uiState.update { state ->
+            val next = state.reducer().copy(isCalculating = false)
+            next.copy(hasUnsavedChanges = state.hasUnsavedChanges || next.toDraft() != state.toDraft()).withSaveEnabled()
+        }
+        persistDraft()
+    }
+
+    private fun persistDraft() {
+        savedStateHandle[DRAFT_KEY] = Json.encodeToString(_uiState.value.toDraft())
     }
 
     private fun refreshSaveEnabled() {
@@ -587,8 +634,8 @@ class RoutineRegistrationViewModel(
         return copy(
             isSaveEnabled = !isSaving &&
                 routineName.isNotBlank() &&
-                (selectedOrigin != null || originQuery.isNotBlank()) &&
-                (selectedDestination != null || destinationQuery.isNotBlank()) &&
+                selectedOrigin?.hasValidCoordinates() == true &&
+                selectedDestination?.hasValidCoordinates() == true &&
                 parseArrivalTime(targetArrivalTimeText) != null &&
                 selectedRepeatDays.isNotEmpty() &&
                 personalBufferMinutes.toValidBufferMinutesOrNull() != null &&
@@ -642,6 +689,7 @@ class RoutineRegistrationViewModel(
     companion object {
         private const val ROUTINE_NAME_MAX_LENGTH = 30
         private const val PLACE_QUERY_MAX_LENGTH = 80
+        private const val DRAFT_KEY = "registration_draft_v1"
 
         private object UnavailableCurrentLocationProvider : CurrentLocationProvider {
             override suspend fun getCurrentLocation(): Destination {
@@ -652,13 +700,23 @@ class RoutineRegistrationViewModel(
         fun factory(
             routineRepository: RoutineRepository,
             settingsRepository: SettingsRepository,
-            placeSearchProvider: PlaceSearchProvider = MockPlaceSearchProvider(),
-            routeEstimateProvider: RouteEstimateProvider = MockRouteEstimateProvider(),
+            placeSearchProvider: PlaceSearchProvider,
+            routeEstimateProvider: RouteEstimateProvider,
             currentLocationProvider: CurrentLocationProvider = UnavailableCurrentLocationProvider,
+            scheduledRouteProvider: ScheduledRouteProvider? = null,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    return createRegistrationModel(modelClass, SavedStateHandle())
+                }
+
+                override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+                    return createRegistrationModel(modelClass, extras.createSavedStateHandle())
+                }
+
+                @Suppress("UNCHECKED_CAST")
+                private fun <T : ViewModel> createRegistrationModel(modelClass: Class<T>, handle: SavedStateHandle): T {
                     if (modelClass.isAssignableFrom(RoutineRegistrationViewModel::class.java)) {
                         return RoutineRegistrationViewModel(
                             routineRepository = routineRepository,
@@ -666,6 +724,8 @@ class RoutineRegistrationViewModel(
                             placeSearchProvider = placeSearchProvider,
                             routeEstimateProvider = routeEstimateProvider,
                             currentLocationProvider = currentLocationProvider,
+                            savedStateHandle = handle,
+                            scheduledRouteProvider = scheduledRouteProvider,
                         ) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

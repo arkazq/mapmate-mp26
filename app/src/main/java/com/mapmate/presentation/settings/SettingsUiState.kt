@@ -11,4 +11,8 @@ data class SettingsUiState(
         AppSettings.DEFAULT_PREDEPARTURE_STATUS_NOTIFICATION_ENABLED,
     val defaultTransportMode: TransportMode = AppSettings.DEFAULT_TRANSPORT_MODE,
     val errorMessage: String? = null,
+    val hasUnsavedBufferDefaults: Boolean = false,
+    val isSavingBufferDefaults: Boolean = false,
+    val isLoading: Boolean = false,
+    val isSettingsAvailable: Boolean = true,
 )

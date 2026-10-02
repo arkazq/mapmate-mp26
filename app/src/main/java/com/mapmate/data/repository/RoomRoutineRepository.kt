@@ -4,6 +4,7 @@ import com.mapmate.data.local.RoutineDao
 import com.mapmate.data.local.toDomain
 import com.mapmate.data.local.toEntity
 import com.mapmate.domain.model.Routine
+import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.repository.RoutineRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -17,6 +18,11 @@ class RoomRoutineRepository(
 
     override suspend fun deleteRoutine(id: Long) {
         routineDao.deleteRoutineById(id)
+    }
+
+    override suspend fun updatePersonalBufferMinutes(expectedRoutine: Routine, minutes: Int): Boolean {
+        require(AppSettings.isValidBufferMinutes(minutes))
+        return routineDao.updatePersonalBufferIfUnchanged(expectedRoutine, minutes)
     }
 
     override fun observeRoutines(): Flow<List<Routine>> {

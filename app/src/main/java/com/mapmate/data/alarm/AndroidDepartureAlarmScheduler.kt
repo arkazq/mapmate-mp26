@@ -1,11 +1,9 @@
 package com.mapmate.data.alarm
 
-import android.Manifest
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import com.mapmate.domain.alarm.DepartureAlarmSchedule
 import com.mapmate.domain.alarm.DepartureAlarmScheduler
@@ -17,16 +15,14 @@ class AndroidDepartureAlarmScheduler(
     private val alarmManager = applicationContext.getSystemService(AlarmManager::class.java)
 
     override fun canPostDepartureNotifications(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            applicationContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
+        return AndroidAlarmAccess.read(applicationContext).canPostDeparture
     }
 
     override fun schedule(schedule: DepartureAlarmSchedule) {
         val operation = departureAlarmPendingIntent(schedule)
         val triggerAtMillis = schedule.triggerAtEpochMillis
 
-        val canScheduleExactAlarm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        val canScheduleExactAlarm = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             runCatching { alarmManager.canScheduleExactAlarms() }.getOrDefault(false)
 
         if (canScheduleExactAlarm) {
@@ -73,6 +69,7 @@ class AndroidDepartureAlarmScheduler(
                 schedule.targetArrivalTime.toString(),
             )
             .putExtra(DepartureAlarmReceiver.EXTRA_ROUTE_DURATION_MINUTES, schedule.routeDurationMinutes)
+            .putExtra(DepartureAlarmReceiver.EXTRA_TRIGGER_AT_EPOCH_MILLIS, schedule.triggerAtEpochMillis)
             .apply {
                 schedule.targetArrivalAtEpochMillis?.let {
                     putExtra(DepartureAlarmReceiver.EXTRA_TARGET_ARRIVAL_AT_EPOCH_MILLIS, it)

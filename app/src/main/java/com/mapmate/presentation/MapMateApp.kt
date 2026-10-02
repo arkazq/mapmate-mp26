@@ -1,24 +1,44 @@
 package com.mapmate.presentation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.provider.ScheduledRouteProvider
+import com.mapmate.domain.provider.AlarmAccessProvider
 import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
+import com.mapmate.domain.repository.TrackingSessionStore
 import com.mapmate.presentation.common.MapMateBottomDestination
 import com.mapmate.presentation.common.MapMateScaffold
+import com.mapmate.presentation.common.NavigationDataViewModel
+import com.mapmate.presentation.common.StoredRecordViewModel
 import com.mapmate.presentation.history.RecordsRoute
 import com.mapmate.presentation.home.HomeRoute
 import com.mapmate.presentation.prediction.PredictionDetailRoute
@@ -38,285 +58,282 @@ fun MapMateApp(
     placeSearchProvider: PlaceSearchProvider,
     routeEstimateProvider: RouteEstimateProvider,
     currentLocationProvider: CurrentLocationProvider,
+    trackingSessionStore: TrackingSessionStore,
+    alarmAccessProvider: AlarmAccessProvider,
+    scheduledRouteProvider: ScheduledRouteProvider? = null,
 ) {
-    var selectedMainDestinationName by rememberSaveable {
-        mutableStateOf(MapMateBottomDestination.Home.name)
-    }
-    var screen by remember {
-        mutableStateOf<MapMateScreen>(MapMateScreen.Home)
+    val navController = rememberNavController()
+    val entry by navController.currentBackStackEntryAsState()
+    val route = entry?.destination?.route ?: MapMateBottomDestination.Home.name
+    val mainDestination = MapMateBottomDestination.entries.firstOrNull { it.name == route }
+    val navigationViewModel: NavigationDataViewModel = viewModel(factory = NavigationDataViewModel.factory(routineRepository))
+    val navigationData by navigationViewModel.uiState.collectAsStateWithLifecycle()
+    val routines = navigationData.routines.orEmpty()
+
+    @Composable
+    fun routineUnavailable() {
+        if (navigationData.routines == null && navigationData.errorMessage == null) {
+            LoadingDestination(contentPadding)
+        } else {
+            UnavailableDestination(
+                message = navigationData.errorMessage ?: "루틴이 삭제되었거나 더 이상 사용할 수 없어요.",
+                contentPadding = contentPadding,
+                onBackClick = { navController.popBackStack() },
+                onRetryClick = navigationData.errorMessage?.let { { navigationViewModel.retry() } },
+            )
+        }
     }
 
-    fun openMain(destination: MapMateBottomDestination) {
-        selectedMainDestinationName = destination.name
-        screen = destination.toScreen()
+    fun openRegistration(routine: Routine? = null) {
+        navController.navigate("registration/${routine?.id ?: 0L}") { launchSingleTop = true }
     }
 
-    fun openRoutineRegistration(
-        editingRoutine: Routine?,
-        returnDestination: MapMateBottomDestination = MapMateBottomDestination.Routines,
-    ) {
-        screen = MapMateScreen.RoutineRegistration(
-            editingRoutine = editingRoutine,
-            returnDestination = returnDestination,
-        )
+    fun openPrediction(routine: Routine) {
+        routine.id?.let { navController.navigate("prediction/$it") { launchSingleTop = true } }
     }
 
-    fun openPrediction(
-        routine: Routine,
-        returnDestination: MapMateBottomDestination,
-    ) {
-        screen = MapMateScreen.PredictionDetail(
-            routine = routine,
-            returnDestination = returnDestination,
-        )
+    fun openTracking(routine: Routine) {
+        routine.id?.let { navController.navigate("tracking/$it") { launchSingleTop = true } }
     }
-
-    val selectedMainDestination = MapMateBottomDestination.valueOf(selectedMainDestinationName)
-    val currentMainDestination = screen.mainDestination ?: selectedMainDestination
 
     MapMateScaffold(
         modifier = Modifier.padding(contentPadding),
-        selectedDestination = currentMainDestination,
-        showBottomBar = screen.mainDestination != null,
-        onDestinationSelected = ::openMain,
+        selectedDestination = mainDestination,
+        showBottomBar = mainDestination != null,
+        onDestinationSelected = navController::openMain,
     ) { innerPadding ->
-        when (val currentScreen = screen) {
-            MapMateScreen.Home -> HomeRoute(
-                contentPadding = innerPadding,
-                routineRepository = routineRepository,
-                commuteRecordRepository = commuteRecordRepository,
-                routeEstimateProvider = routeEstimateProvider,
-                onRegisterRoutineClick = {
-                    openRoutineRegistration(
-                        editingRoutine = null,
-                        returnDestination = MapMateBottomDestination.Home,
+        NavHost(
+            navController = navController,
+            startDestination = MapMateBottomDestination.Home.name,
+        ) {
+            composable(MapMateBottomDestination.Home.name) {
+                HomeRoute(
+                    contentPadding = innerPadding,
+                    routineRepository = routineRepository,
+                    commuteRecordRepository = commuteRecordRepository,
+                    routeEstimateProvider = routeEstimateProvider,
+                    onRegisterRoutineClick = { openRegistration() },
+                    onEditRoutineClick = ::openRegistration,
+                    onPredictionClick = ::openPrediction,
+                    onStartTrackingClick = ::openTracking,
+                    onRoutinesClick = { navController.openMain(MapMateBottomDestination.Routines) },
+                    onSettingsClick = { navController.openMain(MapMateBottomDestination.Settings) },
+                    scheduledRouteProvider = scheduledRouteProvider,
+                    trackingSessionStore = trackingSessionStore,
+                )
+            }
+            composable(MapMateBottomDestination.Routines.name) {
+                RoutinesRoute(
+                    contentPadding = innerPadding,
+                    routineRepository = routineRepository,
+                    routeEstimateProvider = routeEstimateProvider,
+                    commuteRecordRepository = commuteRecordRepository,
+                    trackingSessionStore = trackingSessionStore,
+                    scheduledRouteProvider = scheduledRouteProvider,
+                    onRegisterRoutineClick = { openRegistration() },
+                    onEditRoutineClick = ::openRegistration,
+                    onPredictionClick = ::openPrediction,
+                )
+            }
+            composable(MapMateBottomDestination.Records.name) {
+                RecordsRoute(
+                    contentPadding = innerPadding,
+                    commuteRecordRepository = commuteRecordRepository,
+                    onRegisterRoutineClick = { openRegistration() },
+                    onEditSegmentsClick = { record ->
+                        record.id?.let {
+                            navController.navigate("segmentEdit/$it") { launchSingleTop = true }
+                        }
+                    },
+                )
+            }
+            composable(MapMateBottomDestination.Settings.name) {
+                SettingsRoute(contentPadding = innerPadding, settingsRepository = settingsRepository,
+                    alarmAccessProvider = alarmAccessProvider)
+            }
+            composable(
+                route = "registration/{routineId}",
+                arguments = listOf(navArgument("routineId") { type = NavType.LongType }),
+            ) { backStackEntry ->
+                val routineId = backStackEntry.arguments?.getLong("routineId") ?: 0L
+                val routine = routines.firstOrNull { it.id == routineId }
+                if (routineId == 0L || routine != null) {
+                    RoutineRegistrationRoute(
+                        contentPadding = innerPadding,
+                        routineRepository = routineRepository,
+                        settingsRepository = settingsRepository,
+                        placeSearchProvider = placeSearchProvider,
+                        routeEstimateProvider = routeEstimateProvider,
+                        currentLocationProvider = currentLocationProvider,
+                        scheduledRouteProvider = scheduledRouteProvider,
+                        editingRoutine = routine,
+                        onBackClick = { navController.popBackStack() },
+                        onSaveCompleted = { navController.finishFlow(MapMateBottomDestination.Home) },
                     )
-                },
-                onEditRoutineClick = {
-                    openRoutineRegistration(
-                        editingRoutine = it,
-                        returnDestination = MapMateBottomDestination.Home,
+                } else {
+                    routineUnavailable()
+                }
+            }
+            composable(
+                route = "prediction/{routineId}",
+                arguments = listOf(navArgument("routineId") { type = NavType.LongType }),
+            ) { backStackEntry ->
+                val routine = routines.firstOrNull {
+                    it.id == backStackEntry.arguments?.getLong("routineId")
+                }
+                if (routine != null) {
+                    PredictionDetailRoute(
+                        contentPadding = innerPadding,
+                        routine = routine,
+                        routeEstimateProvider = routeEstimateProvider,
+                        commuteRecordRepository = commuteRecordRepository,
+                        onBackClick = { navController.popBackStack() },
+                        onStartTrackingClick = ::openTracking,
+                        onEditRoutineClick = ::openRegistration,
+                        scheduledRouteProvider = scheduledRouteProvider,
                     )
-                },
-                onPredictionClick = {
-                    openPrediction(
-                        routine = it,
-                        returnDestination = MapMateBottomDestination.Home,
+                } else {
+                    routineUnavailable()
+                }
+            }
+            composable(
+                route = "tracking/{routineId}",
+                arguments = listOf(navArgument("routineId") { type = NavType.LongType }),
+            ) { backStackEntry ->
+                val routine = routines.firstOrNull {
+                    it.id == backStackEntry.arguments?.getLong("routineId")
+                }
+                if (routine != null) {
+                    TrackingRoute(
+                        contentPadding = innerPadding,
+                        routine = routine,
+                        routeEstimateProvider = routeEstimateProvider,
+                        commuteRecordRepository = commuteRecordRepository,
+                        routineRepository = routineRepository,
+                        settingsRepository = settingsRepository,
+                        trackingSessionStore = trackingSessionStore,
+                        scheduledRouteProvider = scheduledRouteProvider,
+                        onBackClick = { navController.popBackStack() },
+                        onCompleted = { record ->
+                            record.id?.let {
+                                navController.navigate("completion/$it") {
+                                    popUpTo(backStackEntry.destination.id) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
                     )
-                },
-                onStartTrackingClick = {
-                    screen = MapMateScreen.Tracking(
-                        routine = it,
-                        returnDestination = MapMateBottomDestination.Home,
-                    )
-                },
-                onRoutinesClick = {
-                    openMain(MapMateBottomDestination.Routines)
-                },
-            )
-
-            MapMateScreen.Routines -> RoutinesRoute(
-                contentPadding = innerPadding,
-                routineRepository = routineRepository,
-                routeEstimateProvider = routeEstimateProvider,
-                onRegisterRoutineClick = {
-                    openRoutineRegistration(
-                        editingRoutine = null,
-                        returnDestination = MapMateBottomDestination.Routines,
-                    )
-                },
-                onEditRoutineClick = {
-                    openRoutineRegistration(
-                        editingRoutine = it,
-                        returnDestination = MapMateBottomDestination.Routines,
-                    )
-                },
-                onPredictionClick = {
-                    openPrediction(
-                        routine = it,
-                        returnDestination = MapMateBottomDestination.Routines,
-                    )
-                },
-            )
-
-            MapMateScreen.Records -> RecordsRoute(
-                contentPadding = innerPadding,
-                commuteRecordRepository = commuteRecordRepository,
-                onRegisterRoutineClick = {
-                    openRoutineRegistration(
-                        editingRoutine = null,
-                        returnDestination = MapMateBottomDestination.Records,
-                    )
-                },
-                onEditSegmentsClick = { record ->
-                    screen = MapMateScreen.SegmentEdit(
+                } else {
+                    routineUnavailable()
+                }
+            }
+            composable(
+                route = "completion/{recordId}",
+                arguments = listOf(navArgument("recordId") { type = NavType.LongType }),
+            ) { backStackEntry ->
+                BackHandler { navController.finishFlow(MapMateBottomDestination.Home) }
+                StoredRecordDestination(
+                    recordId = backStackEntry.arguments?.getLong("recordId") ?: 0L,
+                    repository = commuteRecordRepository,
+                    contentPadding = innerPadding,
+                    onBackClick = { navController.finishFlow(MapMateBottomDestination.Home) },
+                ) { record ->
+                    TrackingCompletionScreen(
+                        contentPadding = innerPadding,
                         record = record,
-                        returnDestination = MapMateBottomDestination.Records,
-                        returnToCompletion = false,
+                        onBackClick = { navController.finishFlow(MapMateBottomDestination.Home) },
+                        onEditSegmentsClick = {
+                            navController.navigate("segmentEdit/${record.id}") { launchSingleTop = true }
+                        },
+                        onRecordsClick = { navController.finishFlow(MapMateBottomDestination.Records) },
+                        onHomeClick = { navController.finishFlow(MapMateBottomDestination.Home) },
                     )
-                },
-            )
-
-            MapMateScreen.Settings -> SettingsRoute(
-                contentPadding = innerPadding,
-                settingsRepository = settingsRepository,
-            )
-
-            is MapMateScreen.RoutineRegistration -> RoutineRegistrationRoute(
-                contentPadding = innerPadding,
-                routineRepository = routineRepository,
-                settingsRepository = settingsRepository,
-                placeSearchProvider = placeSearchProvider,
-                routeEstimateProvider = routeEstimateProvider,
-                currentLocationProvider = currentLocationProvider,
-                editingRoutine = currentScreen.editingRoutine,
-                onBackClick = { openMain(currentScreen.returnDestination) },
-                onSaveCompleted = { openMain(MapMateBottomDestination.Home) },
-            )
-
-            is MapMateScreen.PredictionDetail -> PredictionDetailRoute(
-                contentPadding = innerPadding,
-                routine = currentScreen.routine,
-                routeEstimateProvider = routeEstimateProvider,
-                commuteRecordRepository = commuteRecordRepository,
-                onBackClick = { openMain(currentScreen.returnDestination) },
-                onStartTrackingClick = {
-                    screen = MapMateScreen.Tracking(
-                        routine = it,
-                        returnDestination = currentScreen.returnDestination,
-                    )
-                },
-                onEditRoutineClick = {
-                    openRoutineRegistration(
-                        editingRoutine = it,
-                        returnDestination = currentScreen.returnDestination,
-                    )
-                },
-            )
-
-            is MapMateScreen.Tracking -> TrackingRoute(
-                contentPadding = innerPadding,
-                routine = currentScreen.routine,
-                routeEstimateProvider = routeEstimateProvider,
-                commuteRecordRepository = commuteRecordRepository,
-                routineRepository = routineRepository,
-                settingsRepository = settingsRepository,
-                onBackClick = {
-                    screen = MapMateScreen.PredictionDetail(
-                        routine = currentScreen.routine,
-                        returnDestination = currentScreen.returnDestination,
-                    )
-                },
-                onCompleted = { record ->
-                    screen = MapMateScreen.TrackingComplete(
+                }
+            }
+            composable(
+                route = "segmentEdit/{recordId}",
+                arguments = listOf(navArgument("recordId") { type = NavType.LongType }),
+            ) { backStackEntry ->
+                StoredRecordDestination(
+                    recordId = backStackEntry.arguments?.getLong("recordId") ?: 0L,
+                    repository = commuteRecordRepository,
+                    contentPadding = innerPadding,
+                    onBackClick = { navController.popBackStack() },
+                ) { record ->
+                    RouteSegmentEditRoute(
+                        contentPadding = innerPadding,
                         record = record,
-                        returnDestination = currentScreen.returnDestination,
+                        commuteRecordRepository = commuteRecordRepository,
+                        onBackClick = { navController.popBackStack() },
+                        onSaveCompleted = {
+                            val previousRoute = navController.previousBackStackEntry?.destination?.route
+                            if (previousRoute == "completion/{recordId}") {
+                                navController.finishFlow(MapMateBottomDestination.Home)
+                            } else {
+                                navController.popBackStack()
+                            }
+                        },
                     )
-                },
-            )
-
-            is MapMateScreen.TrackingComplete -> TrackingCompletionScreen(
-                contentPadding = innerPadding,
-                record = currentScreen.record,
-                onBackClick = { openMain(currentScreen.returnDestination) },
-                onEditSegmentsClick = {
-                    screen = MapMateScreen.SegmentEdit(
-                        record = currentScreen.record,
-                        returnDestination = currentScreen.returnDestination,
-                        returnToCompletion = true,
-                    )
-                },
-                onRecordsClick = { openMain(MapMateBottomDestination.Records) },
-                onHomeClick = { openMain(MapMateBottomDestination.Home) },
-            )
-
-            is MapMateScreen.SegmentEdit -> RouteSegmentEditRoute(
-                contentPadding = innerPadding,
-                record = currentScreen.record,
-                commuteRecordRepository = commuteRecordRepository,
-                onBackClick = {
-                    if (currentScreen.returnToCompletion) {
-                        screen = MapMateScreen.TrackingComplete(
-                            record = currentScreen.record,
-                            returnDestination = currentScreen.returnDestination,
-                        )
-                    } else {
-                        openMain(currentScreen.returnDestination)
-                    }
-                },
-                onSaveCompleted = { updatedRecord ->
-                    if (currentScreen.returnToCompletion) {
-                        openMain(MapMateBottomDestination.Home)
-                    } else {
-                        openMain(currentScreen.returnDestination)
-                    }
-                },
-            )
+                }
+            }
         }
     }
 }
 
-private sealed interface MapMateScreen {
-    val mainDestination: MapMateBottomDestination?
-
-    data object Home : MapMateScreen {
-        override val mainDestination = MapMateBottomDestination.Home
-    }
-
-    data object Routines : MapMateScreen {
-        override val mainDestination = MapMateBottomDestination.Routines
-    }
-
-    data object Records : MapMateScreen {
-        override val mainDestination = MapMateBottomDestination.Records
-    }
-
-    data object Settings : MapMateScreen {
-        override val mainDestination = MapMateBottomDestination.Settings
-    }
-
-    data class RoutineRegistration(
-        val editingRoutine: Routine?,
-        val returnDestination: MapMateBottomDestination,
-    ) : MapMateScreen {
-        override val mainDestination: MapMateBottomDestination? = null
-    }
-
-    data class PredictionDetail(
-        val routine: Routine,
-        val returnDestination: MapMateBottomDestination,
-    ) : MapMateScreen {
-        override val mainDestination: MapMateBottomDestination? = null
-    }
-
-    data class Tracking(
-        val routine: Routine,
-        val returnDestination: MapMateBottomDestination,
-    ) : MapMateScreen {
-        override val mainDestination: MapMateBottomDestination? = null
-    }
-
-    data class TrackingComplete(
-        val record: com.mapmate.domain.model.CommuteRecord,
-        val returnDestination: MapMateBottomDestination,
-    ) : MapMateScreen {
-        override val mainDestination: MapMateBottomDestination? = null
-    }
-
-    data class SegmentEdit(
-        val record: com.mapmate.domain.model.CommuteRecord,
-        val returnDestination: MapMateBottomDestination,
-        val returnToCompletion: Boolean,
-    ) : MapMateScreen {
-        override val mainDestination: MapMateBottomDestination? = null
+private fun NavHostController.openMain(destination: MapMateBottomDestination) {
+    navigate(destination.name) {
+        popUpTo(graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 
-private fun MapMateBottomDestination.toScreen(): MapMateScreen {
-    return when (this) {
-        MapMateBottomDestination.Home -> MapMateScreen.Home
-        MapMateBottomDestination.Routines -> MapMateScreen.Routines
-        MapMateBottomDestination.Records -> MapMateScreen.Records
-        MapMateBottomDestination.Settings -> MapMateScreen.Settings
+private fun NavHostController.finishFlow(destination: MapMateBottomDestination) {
+    navigate(destination.name) {
+        popUpTo(graph.startDestinationId)
+        launchSingleTop = true
+    }
+}
+
+@Composable
+private fun StoredRecordDestination(
+    recordId: Long,
+    repository: CommuteRecordRepository,
+    contentPadding: PaddingValues,
+    onBackClick: () -> Unit,
+    content: @Composable (CommuteRecord) -> Unit,
+) {
+    val recordViewModel: StoredRecordViewModel = viewModel(factory = StoredRecordViewModel.factory(repository, recordId))
+    val recordState by recordViewModel.uiState.collectAsStateWithLifecycle()
+    val record = recordState.record
+    when {
+        recordState.isLoading -> LoadingDestination(contentPadding)
+        record != null -> content(record)
+        else -> UnavailableDestination(
+            message = recordState.errorMessage ?: "이동 기록을 찾을 수 없어요.",
+            contentPadding = contentPadding,
+            onBackClick = onBackClick,
+            onRetryClick = recordState.errorMessage?.let { { recordViewModel.retry() } },
+        )
+    }
+}
+
+@Composable
+private fun UnavailableDestination(message: String, contentPadding: PaddingValues, onBackClick: () -> Unit, onRetryClick: (() -> Unit)?) {
+    Column(
+        Modifier.fillMaxSize().padding(contentPadding).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+    ) {
+        Text(message)
+        onRetryClick?.let { TextButton(onClick = it) { Text("다시 시도") } }
+        TextButton(onClick = onBackClick) { Text("돌아가기") }
+    }
+}
+
+@Composable
+private fun LoadingDestination(contentPadding: PaddingValues) {
+    Box(Modifier.fillMaxSize().padding(contentPadding), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
     }
 }

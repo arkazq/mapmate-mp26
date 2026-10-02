@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.RouteSegment
 import com.mapmate.domain.model.RouteSegmentStatus
+import com.mapmate.domain.model.hasChronologicalMeasuredSegments
 import com.mapmate.domain.repository.CommuteRecordRepository
+import com.mapmate.domain.util.runCatchingCancellable
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -29,6 +31,7 @@ class RouteSegmentEditViewModel(
         ),
     )
     val uiState: StateFlow<RouteSegmentEditUiState> = _uiState.asStateFlow()
+    private var originalSegments = initialRecord.routeSegments.associateBy { it.editSegmentId() }
 
     init {
         loadRecordIfNeeded()
@@ -60,6 +63,26 @@ class RouteSegmentEditViewModel(
         )
     }
 
+    fun onStartDateTimeSelected(segmentId: Long, epochMillis: Long) = updateSelectedEpoch(segmentId, true, epochMillis)
+    fun onEndDateTimeSelected(segmentId: Long, epochMillis: Long) = updateSelectedEpoch(segmentId, false, epochMillis)
+
+    private fun updateSelectedEpoch(segmentId: Long, isStart: Boolean, epochMillis: Long) {
+        if (_uiState.value.isSaving) return
+        if (epochMillis < 0) {
+            _uiState.update { it.copy(errorMessage = "올바른 날짜와 시각을 선택해 주세요.") }
+            return
+        }
+        _uiState.update { state ->
+            state.copy(segments = state.segments.map { segment ->
+                if (segment.editSegmentId() != segmentId) segment else {
+                    val changed = if (isStart) segment.copy(actualStartedAtEpochMillis = epochMillis)
+                        else segment.copy(actualEndedAtEpochMillis = epochMillis)
+                    changed.withDraftDuration()
+                }
+            }, errorMessage = null)
+        }
+    }
+
     fun onSaveClick() {
         val state = _uiState.value
         if (state.isSaving) return
@@ -68,8 +91,26 @@ class RouteSegmentEditViewModel(
             _uiState.update { it.copy(errorMessage = validationError) }
             return
         }
+        if (!state.segments.hasChronologicalMeasuredSegments()) {
+            _uiState.update { it.copy(errorMessage = "구간 시간이 겹칩니다. 이전 구간 종료 후에 다음 구간이 시작해야 합니다.") }
+            return
+        }
 
-        val updatedSegments = state.segments.map { it.toSavedSegment() }
+        val updatedSegments = state.segments.filter { segment ->
+            val original = originalSegments[segment.editSegmentId()]
+            segment.actualStartedAtEpochMillis != original?.actualStartedAtEpochMillis ||
+                segment.actualEndedAtEpochMillis != original?.actualEndedAtEpochMillis
+        }.map { it.toSavedSegment() }
+        val recordId = state.record.id
+        if (updatedSegments.isEmpty()) {
+            _uiState.update { it.copy(savedRecord = state.record) }
+            return
+        }
+        if (recordId == null) {
+            _uiState.update { it.copy(errorMessage = "저장된 이동 기록이 없습니다.") }
+            return
+        }
+        _uiState.update { it.copy(isSaving = true, errorMessage = null) }
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -78,17 +119,12 @@ class RouteSegmentEditViewModel(
                 )
             }
 
-            val saveResult = runCatching {
-                updatedSegments.forEach { segment ->
-                    if (segment.id != null) {
-                        commuteRecordRepository.updateRouteSegment(segment)
-                    }
-                }
-                state.record.id?.let { commuteRecordRepository.getRecord(it) }
-                    ?: state.record.copy(routeSegments = updatedSegments)
+            val saveResult = runCatchingCancellable {
+                commuteRecordRepository.updateRouteSegments(recordId, updatedSegments)
             }
 
             saveResult.onSuccess { savedRecord ->
+                originalSegments = savedRecord.routeSegments.associateBy { it.editSegmentId() }
                 _uiState.update {
                     it.copy(
                         record = savedRecord,
@@ -113,12 +149,13 @@ class RouteSegmentEditViewModel(
         if (initialRecord.routeSegments.isNotEmpty()) return
 
         viewModelScope.launch {
-            val loadedRecord = runCatching {
+            val loadedRecord = runCatchingCancellable {
                 commuteRecordRepository.getRecord(recordId)
             }.getOrNull()
 
             _uiState.update { state ->
                 val record = loadedRecord ?: state.record
+                originalSegments = record.routeSegments.associateBy { it.editSegmentId() }
                 state.copy(
                     record = record,
                     segments = record.routeSegments.sortedBy { it.segmentIndex },
@@ -139,6 +176,11 @@ class RouteSegmentEditViewModel(
         hour: Int,
         minute: Int,
     ) {
+        if (_uiState.value.isSaving) return
+        if (hour !in 0..23 || minute !in 0..59) {
+            _uiState.update { it.copy(errorMessage = "올바른 시각을 선택해 주세요.") }
+            return
+        }
         _uiState.update { state ->
             state.copy(
                 segments = state.segments.map { segment ->
@@ -157,9 +199,9 @@ class RouteSegmentEditViewModel(
                             isStart = isStart,
                         )
                     if (isStart) {
-                        segment.copy(actualStartedAtEpochMillis = selectedEpochMillis)
+                        segment.copy(actualStartedAtEpochMillis = selectedEpochMillis).withDraftDuration()
                     } else {
-                        segment.copy(actualEndedAtEpochMillis = selectedEpochMillis)
+                        segment.copy(actualEndedAtEpochMillis = selectedEpochMillis).withDraftDuration()
                     }
                 },
                 errorMessage = null,
@@ -198,6 +240,19 @@ data class RouteSegmentEditUiState(
 ) {
     val canEdit: Boolean
         get() = segments.isNotEmpty()
+    val hasUnsavedChanges: Boolean
+        get() = segments.any { segment ->
+            val original = record.routeSegments.firstOrNull { it.editSegmentId() == segment.editSegmentId() }
+            segment.actualStartedAtEpochMillis != original?.actualStartedAtEpochMillis ||
+                segment.actualEndedAtEpochMillis != original?.actualEndedAtEpochMillis
+        }
+}
+
+private fun RouteSegment.withDraftDuration(): RouteSegment {
+    val start = actualStartedAtEpochMillis
+    val end = actualEndedAtEpochMillis
+    return copy(actualDurationMinutes = if (start != null && end != null && end >= start)
+        ((end - start) / 60_000L).toInt() else null)
 }
 
 internal fun RouteSegment.editSegmentId(): Long {

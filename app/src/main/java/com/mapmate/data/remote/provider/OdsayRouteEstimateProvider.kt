@@ -19,6 +19,8 @@ import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.provider.TransitArrivalProvider
 import com.mapmate.domain.provider.TransitOperationStatusProvider
 import com.mapmate.domain.repository.RouteRealtimeSnapshotRepository
+import com.mapmate.domain.calculator.isWithinRealtimeDepartureWindow
+import com.mapmate.domain.util.runCatchingCancellable
 import java.util.Locale
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -83,6 +85,7 @@ class OdsayRouteEstimateProvider(
             nowEpochMillis = now,
             scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
         )
+        val arrivalResults = mutableMapOf<TransitArrivalQuery.Bus, Result<TransitArrivalEstimate?>>()
         val candidates = paths
             .take(MAX_CANDIDATE_PATH_COUNT)
             .mapIndexedNotNull { index, path ->
@@ -97,6 +100,7 @@ class OdsayRouteEstimateProvider(
                     nowEpochMillis = now,
                     scheduledDepartureEpochMillis = scheduledDepartureEpochMillis,
                     targetArrivalEpochMillis = targetArrivalEpochMillis,
+                    arrivalResults = arrivalResults,
                 )
             }
         val selection = routeCandidateEvaluator.select(
@@ -112,8 +116,8 @@ class OdsayRouteEstimateProvider(
             candidates.firstOrNull { it.pathIndex == selectedPathIndex }
         }
             ?: error(response.error?.msg ?: "ODsay route estimate was empty.")
-        val operationStatus = selected.firstTransitQuery?.let { query ->
-            runCatching {
+        val operationStatus = selected.firstTransitQuery?.takeIf { applyRealtimeArrival }?.let { query ->
+            runCatchingCancellable {
                 transitOperationStatusProvider?.getOperationStatus(query)
             }.getOrNull()
         }
@@ -159,6 +163,7 @@ class OdsayRouteEstimateProvider(
         nowEpochMillis: Long,
         scheduledDepartureEpochMillis: Long?,
         targetArrivalEpochMillis: Long?,
+        arrivalResults: MutableMap<TransitArrivalQuery.Bus, Result<TransitArrivalEstimate?>>,
     ): RouteCandidateEstimate? {
         val pathInfo = path.info ?: return null
         val totalTime = pathInfo.totalTime?.takeIf { it > 0 } ?: return null
@@ -196,9 +201,9 @@ class OdsayRouteEstimateProvider(
             destination = destination,
             totalTime = totalTime,
         )
-        val realtimeResult = runCatching {
+        val realtimeResult = arrivalResults[busQuery] ?: runCatchingCancellable {
             transitArrivalProvider?.getArrivalEstimate(busQuery)
-        }
+        }.also { arrivalResults[busQuery] = it }
         val rawRealtimeArrival = realtimeResult.getOrNull()
         val realtimeArrival = rawRealtimeArrival
             ?.selectUsableArrival(
@@ -256,9 +261,7 @@ class OdsayRouteEstimateProvider(
         nowEpochMillis: Long,
         scheduledDepartureEpochMillis: Long?,
     ): Boolean {
-        val departureAt = scheduledDepartureEpochMillis ?: return false
-        val minutesUntilDeparture = (departureAt - nowEpochMillis) / MILLIS_PER_MINUTE
-        return minutesUntilDeparture in 0..REALTIME_ARRIVAL_LOOKAHEAD_MINUTES
+        return isWithinRealtimeDepartureWindow(scheduledDepartureEpochMillis, nowEpochMillis)
     }
 
     private fun skippedRealtimeStatus(
@@ -369,7 +372,7 @@ class OdsayRouteEstimateProvider(
             capturedAtEpochMillis = capturedAtEpochMillis,
             expiresAtEpochMillis = capturedAtEpochMillis + snapshotTtlMillis,
         )
-        runCatching {
+        runCatchingCancellable {
             routeRealtimeSnapshotRepository?.saveSnapshot(snapshot)
         }
     }
@@ -378,7 +381,7 @@ class OdsayRouteEstimateProvider(
         cacheKey: String,
         nowEpochMillis: Long,
     ): RouteRealtimeSnapshot? {
-        return runCatching {
+        return runCatchingCancellable {
             routeRealtimeSnapshotRepository?.findFreshSnapshot(
                 cacheKey = cacheKey,
                 nowEpochMillis = nowEpochMillis,
@@ -387,7 +390,7 @@ class OdsayRouteEstimateProvider(
     }
 
     private suspend fun cleanupExpiredSnapshots(nowEpochMillis: Long) {
-        runCatching {
+        runCatchingCancellable {
             routeRealtimeSnapshotRepository?.deleteExpiredSnapshots(nowEpochMillis)
         }
     }
@@ -711,7 +714,6 @@ class OdsayRouteEstimateProvider(
         const val DEFAULT_SNAPSHOT_TTL_MILLIS = 20 * 60 * 1000L
         const val MAX_CANDIDATE_PATH_COUNT = 5
         const val MAX_BOARDING_ALTERNATIVES = 2
-        const val REALTIME_ARRIVAL_LOOKAHEAD_MINUTES = 30
         const val MILLIS_PER_MINUTE = 60_000L
     }
 }

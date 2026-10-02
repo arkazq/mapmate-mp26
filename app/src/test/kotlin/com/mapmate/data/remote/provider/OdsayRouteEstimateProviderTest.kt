@@ -15,6 +15,8 @@ import com.mapmate.domain.model.TransitArrivalEstimate
 import com.mapmate.domain.model.TransitArrivalQuery
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.TransitArrivalProvider
+import com.mapmate.domain.provider.TransitOperationStatusProvider
+import com.mapmate.domain.model.TransitOperationStatus
 import com.mapmate.domain.repository.RouteRealtimeSnapshotRepository
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
@@ -24,6 +26,61 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OdsayRouteEstimateProviderTest {
+    @Test fun identicalFirstBusQueriesAreSharedOnlyWithinOneRouteRequest() = runTest {
+        var calls = 0
+        val arrivals = object : TransitArrivalProvider {
+            override suspend fun getArrivalEstimate(query: TransitArrivalQuery): TransitArrivalEstimate {
+                calls++
+                return realtimeArrivalEstimate
+            }
+        }
+        val path = busRouteResponse.result!!.path.single()
+        val provider = OdsayRouteEstimateProvider(FakeOdsayApi(busRouteResponse(path, path, path)), remoteApiConfig,
+            arrivals, nowEpochMillis = { 0L })
+        provider.getRouteEstimate(origin, destination, TransportMode.TRANSIT, scheduledDepartureEpochMillis = 0)
+        assertEquals(1, calls)
+        provider.getRouteEstimate(origin, destination, TransportMode.TRANSIT, scheduledDepartureEpochMillis = 0)
+        assertEquals(2, calls)
+    }
+
+    @Test fun absentAndFailedSharedArrivalAreNotRetriedForEveryEquivalentCandidate() = runTest {
+        val path = busRouteResponse.result!!.path.single()
+        for (fail in listOf(false, true)) {
+            var calls = 0
+            val arrivals = object : TransitArrivalProvider {
+                override suspend fun getArrivalEstimate(query: TransitArrivalQuery): TransitArrivalEstimate? {
+                    calls++
+                    if (fail) error("unavailable")
+                    return null
+                }
+            }
+            val provider = OdsayRouteEstimateProvider(FakeOdsayApi(busRouteResponse(path, path, path)), remoteApiConfig,
+                arrivals, nowEpochMillis = { 0L })
+            val estimate = provider.getRouteEstimate(origin, destination, TransportMode.TRANSIT, scheduledDepartureEpochMillis = 0)
+            assertEquals(1, calls)
+            assertEquals(42, estimate.estimatedMinutes)
+            assertEquals(false, estimate.hasRealtimeAdjustment)
+        }
+    }
+
+    @Test fun operationStatusAlsoRespectsTheFutureThirtyMinuteWindow() = runTest {
+        var calls = 0
+        val operation = object : TransitOperationStatusProvider {
+            override suspend fun getOperationStatus(query: TransitArrivalQuery): TransitOperationStatus? {
+                calls++
+                return null
+            }
+        }
+        val provider = OdsayRouteEstimateProvider(FakeOdsayApi(busRouteResponse), remoteApiConfig,
+            transitOperationStatusProvider = operation, nowEpochMillis = { 0L })
+        for (departure in listOf(null, -1L, 30 * 60_000L + 1)) {
+            provider.getRouteEstimate(origin, destination, TransportMode.TRANSIT, scheduledDepartureEpochMillis = departure)
+        }
+        assertEquals(0, calls)
+        provider.getRouteEstimate(origin, destination, TransportMode.TRANSIT, scheduledDepartureEpochMillis = 30 * 60_000L)
+        assertEquals(1, calls)
+    }
+
     @Test
     fun getRouteEstimate_addsRealtimeDelayForFirstBusLeg() = runTest {
         val transitArrivalProvider = RecordingTransitArrivalProvider(
@@ -97,7 +154,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 31 * 60 * 1000L,
+            scheduledDepartureEpochMillis = 30 * 60 * 1000L + 1L,
         )
 
         assertEquals(42, result.estimatedMinutes)
@@ -121,7 +178,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 19 * 60 * 1000L,
+            scheduledDepartureEpochMillis = 20 * 60 * 1000L - 1L,
         )
 
         assertEquals(42, result.estimatedMinutes)
@@ -162,7 +219,7 @@ class OdsayRouteEstimateProviderTest {
     }
 
     @Test
-    fun getRouteEstimate_reusesFreshRealtimeSnapshotWhenRealtimeArrivalIsMissing() = runTest {
+    fun getRouteEstimate_reusesFreshSnapshotWithinAllowedDepartureWindowWhenArrivalIsMissing() = runTest {
         val snapshotRepository = FakeRouteRealtimeSnapshotRepository()
         val transitArrivalProvider = MutableTransitArrivalProvider(realtimeArrivalEstimate)
         var now = 1_000L
@@ -175,11 +232,13 @@ class OdsayRouteEstimateProviderTest {
             snapshotTtlMillis = 10_000L,
         )
 
+        val scheduledDeparture = 5_000L
+
         provider.getRouteEstimate(
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 1_000L,
+            scheduledDepartureEpochMillis = scheduledDeparture,
         )
         transitArrivalProvider.result = null
         now = 5_000L
@@ -188,7 +247,7 @@ class OdsayRouteEstimateProviderTest {
             origin = origin,
             destination = destination,
             transportMode = TransportMode.TRANSIT,
-            scheduledDepartureEpochMillis = 1_000L,
+            scheduledDepartureEpochMillis = scheduledDeparture,
         )
 
         assertEquals(49, result.estimatedMinutes)
@@ -196,6 +255,17 @@ class OdsayRouteEstimateProviderTest {
         assertTrue(result.hasRealtimeAdjustment)
         assertTrue(result.reason.contains("Cached realtime snapshot added 7 min delay."))
         assertTrue(result.statusMessage.orEmpty().contains("최근 성공 보정값"))
+
+        now = scheduledDeparture + 1L
+        val pastDepartureResult = provider.getRouteEstimate(
+            origin = origin,
+            destination = destination,
+            transportMode = TransportMode.TRANSIT,
+            scheduledDepartureEpochMillis = scheduledDeparture,
+        )
+        assertEquals(42, pastDepartureResult.estimatedMinutes)
+        assertEquals(false, pastDepartureResult.hasRealtimeAdjustment)
+        assertNull(pastDepartureResult.boardingAdvice)
     }
 
     @Test

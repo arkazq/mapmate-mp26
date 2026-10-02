@@ -6,23 +6,29 @@ import androidx.lifecycle.viewModelScope
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.repository.SettingsRepository
+import com.mapmate.domain.util.runCatchingCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(SettingsUiState(isLoading = true, isSettingsAvailable = false))
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private var persistedSettings = AppSettings()
+    private var observationJob: Job? = null
 
     init {
         observeSettings()
     }
 
     fun onEvent(event: SettingsEvent) {
+        if (!_uiState.value.isSettingsAvailable) return
         when (event) {
             is SettingsEvent.PersonalBufferChanged -> onPersonalBufferChanged(event.minutesText)
             is SettingsEvent.SafetyMarginChanged -> onSafetyMarginChanged(event.minutesText)
@@ -32,37 +38,32 @@ class SettingsViewModel(
             SettingsEvent.NotificationPermissionDenied -> onNotificationPermissionDenied()
             is SettingsEvent.DefaultTransportModeSelected -> onDefaultTransportModeSelected(event.transportMode)
             SettingsEvent.MessageCleared -> clearMessage()
+            SettingsEvent.SaveBufferDefaultsClicked -> saveBufferDefaults()
         }
     }
 
     private fun onPersonalBufferChanged(minutesText: String) {
+        if (_uiState.value.isSavingBufferDefaults) return
         val filteredText = minutesText.filterAsciiDigits().take(2)
         _uiState.update {
             it.copy(
                 personalBufferMinutes = filteredText,
                 errorMessage = null,
+                hasUnsavedBufferDefaults = true,
             )
         }
-        saveBufferSetting(
-            minutesText = filteredText,
-            errorMessage = "개인 보정 시간은 0분부터 60분 사이로 입력해 주세요.",
-            save = settingsRepository::updatePersonalBufferMinutes,
-        )
     }
 
     private fun onSafetyMarginChanged(minutesText: String) {
+        if (_uiState.value.isSavingBufferDefaults) return
         val filteredText = minutesText.filterAsciiDigits().take(2)
         _uiState.update {
             it.copy(
                 safetyMarginMinutes = filteredText,
                 errorMessage = null,
+                hasUnsavedBufferDefaults = true,
             )
         }
-        saveBufferSetting(
-            minutesText = filteredText,
-            errorMessage = "안전 여유 시간은 0분부터 60분 사이로 입력해 주세요.",
-            save = settingsRepository::updateSafetyMarginMinutes,
-        )
     }
 
     private fun onNotificationsEnabledChanged(enabled: Boolean) {
@@ -73,7 +74,7 @@ class SettingsViewModel(
             )
         }
         viewModelScope.launch {
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 settingsRepository.updateNotificationsEnabled(enabled)
             }
             if (result.isFailure) {
@@ -90,7 +91,7 @@ class SettingsViewModel(
             )
         }
         viewModelScope.launch {
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 settingsRepository.updatePredepartureStatusNotificationEnabled(enabled)
             }
             if (result.isFailure) {
@@ -102,14 +103,8 @@ class SettingsViewModel(
     private fun onNotificationPermissionDenied() {
         _uiState.update {
             it.copy(
-                notificationsEnabled = false,
-                errorMessage = "알림 권한이 없어 출발 알림을 켤 수 없습니다.",
+                errorMessage = "Android 알림 권한이 꺼져 있습니다. 시스템 알림 설정을 확인해 주세요.",
             )
-        }
-        viewModelScope.launch {
-            runCatching {
-                settingsRepository.updateNotificationsEnabled(false)
-            }
         }
     }
 
@@ -121,7 +116,7 @@ class SettingsViewModel(
             )
         }
         viewModelScope.launch {
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 settingsRepository.updateDefaultTransportMode(transportMode)
             }
             if (result.isFailure) {
@@ -131,48 +126,63 @@ class SettingsViewModel(
     }
 
     private fun observeSettings() {
-        viewModelScope.launch {
-            settingsRepository.settings.collect { settings ->
+        observationJob?.cancel()
+        observationJob = viewModelScope.launch {
+            settingsRepository.settings.catch {
+                _uiState.update { it.copy(isLoading = false, isSettingsAvailable = false,
+                    errorMessage = "설정을 불러오지 못했습니다. 다시 시도해 주세요.") }
+            }.collect { settings ->
+                persistedSettings = settings
                 _uiState.update {
                     it.copy(
-                        personalBufferMinutes = settings.personalBufferMinutes.toString(),
-                        safetyMarginMinutes = settings.safetyMarginMinutes.toString(),
+                        personalBufferMinutes = if (it.hasUnsavedBufferDefaults) it.personalBufferMinutes else settings.personalBufferMinutes.toString(),
+                        safetyMarginMinutes = if (it.hasUnsavedBufferDefaults) it.safetyMarginMinutes else settings.safetyMarginMinutes.toString(),
                         notificationsEnabled = settings.notificationsEnabled,
                         predepartureStatusNotificationEnabled =
                             settings.predepartureStatusNotificationEnabled,
                         defaultTransportMode = settings.defaultTransportMode,
+                        isLoading = false,
+                        isSettingsAvailable = true,
                     )
                 }
             }
         }
     }
 
-    private fun saveBufferSetting(
-        minutesText: String,
-        errorMessage: String,
-        save: suspend (Int) -> Unit,
-    ) {
-        if (minutesText.isBlank()) return
+    fun retry() {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        observeSettings()
+    }
 
-        val minutes = minutesText.toValidBufferMinutesOrNull()
-        if (minutes == null) {
-            _uiState.update { it.copy(errorMessage = errorMessage) }
+    private fun saveBufferDefaults() {
+        val state = _uiState.value
+        if (state.isSavingBufferDefaults) return
+        val personal = state.personalBufferMinutes.toValidBufferMinutesOrNull()
+        val safety = state.safetyMarginMinutes.toValidBufferMinutesOrNull()
+        if (personal == null || safety == null) {
+            _uiState.update { it.copy(errorMessage = "보정 시간은 각각 0분부터 60분 사이로 입력해 주세요.") }
             return
         }
-
+        _uiState.update { it.copy(isSavingBufferDefaults = true, errorMessage = null) }
         viewModelScope.launch {
-            val result = runCatching {
-                save(minutes)
+            val result = runCatchingCancellable {
+                settingsRepository.updateBufferDefaults(personal, safety)
             }
-            if (result.isFailure) {
-                showPersistenceError()
+            _uiState.update {
+                it.copy(isSavingBufferDefaults = false, hasUnsavedBufferDefaults = result.isFailure,
+                    errorMessage = if (result.isFailure) "설정 저장에 실패했습니다. 다시 시도해 주세요." else null)
             }
         }
     }
 
     private fun showPersistenceError() {
         _uiState.update {
-            it.copy(errorMessage = "설정 저장에 실패했습니다. 다시 시도해 주세요.")
+            it.copy(
+                notificationsEnabled = persistedSettings.notificationsEnabled,
+                predepartureStatusNotificationEnabled = persistedSettings.predepartureStatusNotificationEnabled,
+                defaultTransportMode = persistedSettings.defaultTransportMode,
+                errorMessage = "설정 저장에 실패했습니다. 다시 시도해 주세요.",
+            )
         }
     }
 

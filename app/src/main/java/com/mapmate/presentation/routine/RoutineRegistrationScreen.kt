@@ -3,11 +3,13 @@ package com.mapmate.presentation.routine
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -37,7 +41,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -56,9 +61,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
+import com.mapmate.domain.model.hasValidCoordinates
 import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.PlaceSearchProvider
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.provider.ScheduledRouteProvider
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
 import com.mapmate.presentation.common.DayOfWeekSelector
@@ -68,7 +75,6 @@ import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
 import com.mapmate.presentation.common.MetricRow
 import com.mapmate.presentation.common.RouteEstimateStatusMessage
-import com.mapmate.presentation.common.SectionCard
 import com.mapmate.presentation.common.TransportModeSelector as CommonTransportModeSelector
 import com.mapmate.ui.theme.MapMateTheme
 
@@ -83,6 +89,7 @@ fun RoutineRegistrationRoute(
     editingRoutine: Routine? = null,
     onBackClick: () -> Unit,
     onSaveCompleted: () -> Unit,
+    scheduledRouteProvider: ScheduledRouteProvider? = null,
 ) {
     val viewModel: RoutineRegistrationViewModel = viewModel(
         factory = RoutineRegistrationViewModel.factory(
@@ -91,16 +98,13 @@ fun RoutineRegistrationRoute(
             placeSearchProvider = placeSearchProvider,
             routeEstimateProvider = routeEstimateProvider,
             currentLocationProvider = currentLocationProvider,
+            scheduledRouteProvider = scheduledRouteProvider,
         ),
     )
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(editingRoutine?.id) {
-        if (editingRoutine == null) {
-            viewModel.startNewRoutine()
-        } else {
-            viewModel.loadRoutineForEditing(editingRoutine)
-        }
+        viewModel.initialize(editingRoutine)
     }
 
     LaunchedEffect(uiState.isSaveCompleted) {
@@ -126,6 +130,32 @@ fun RoutineRegistrationScreen(
 ) {
     var currentStepIndex by rememberSaveable { mutableIntStateOf(0) }
     var isArrivalTimePickerVisible by remember { mutableStateOf(false) }
+    var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
+    val handleBack: () -> Unit = {
+        when {
+            uiState.isSaving -> Unit
+            currentStepIndex > 0 -> currentStepIndex--
+            uiState.hasUnsavedChanges -> showDiscardDialog = true
+            else -> onBackClick()
+        }
+    }
+    BackHandler(onBack = handleBack)
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("수정 내용을 버릴까요?") },
+            text = { Text("저장하지 않은 내용은 사라집니다.") },
+            confirmButton = { TextButton(onClick = { showDiscardDialog = false; onBackClick() }) { Text("버리기") } },
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text("계속 수정") } },
+        )
+    }
+    val canProceed = when (currentStepIndex) {
+        0 -> uiState.routineName.isNotBlank()
+        1 -> uiState.selectedOrigin?.hasValidCoordinates() == true && uiState.selectedDestination?.hasValidCoordinates() == true
+        2 -> Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$").matches(uiState.targetArrivalTimeText)
+        3 -> uiState.selectedRepeatDays.isNotEmpty()
+        else -> true
+    }
     val context = LocalContext.current
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -171,7 +201,7 @@ fun RoutineRegistrationScreen(
         item {
             DetailTopBar(
                 title = if (uiState.isEditing) "루틴 수정" else "루틴 등록",
-                onBackClick = onBackClick,
+                onBackClick = handleBack,
             )
         }
 
@@ -180,9 +210,8 @@ fun RoutineRegistrationScreen(
         }
 
         if (currentStepIndex == 0) item {
-            SectionCard(
+            RegistrationSection(
                 title = "기본 정보",
-                leadingText = "1",
             ) {
                 OutlinedTextField(
                     value = uiState.routineName,
@@ -198,16 +227,17 @@ fun RoutineRegistrationScreen(
         }
 
         if (currentStepIndex == 1) item {
-            SectionCard(
+            RegistrationSection(
                 title = "장소",
-                leadingText = "2",
             ) {
                 OutlinedTextField(
                     value = uiState.originQuery,
                     onValueChange = { onEvent(RoutineRegistrationEvent.OriginQueryChanged(it)) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("출발지") },
-                    placeholder = { Text("우리집") },
+                    placeholder = { Text("장소 또는 주소 검색") },
+                    leadingIcon = { MapMateIcon(MapMateIconType.Location, null, Modifier.size(20.dp), MaterialTheme.colorScheme.tertiary) },
+                    trailingIcon = { if (uiState.selectedOrigin != null) MapMateIcon(MapMateIconType.Check, "출발지 선택됨", Modifier.size(20.dp), MaterialTheme.colorScheme.tertiary) },
                     shape = MaterialTheme.shapes.medium,
                     singleLine = true,
                 )
@@ -220,7 +250,8 @@ fun RoutineRegistrationScreen(
                     if (uiState.isGettingCurrentLocation) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("현재 위치 사용")
+                        MapMateIcon(MapMateIconType.Location, null, Modifier.size(18.dp))
+                        Text("현재 위치 사용", Modifier.padding(start = 8.dp))
                     }
                 }
 
@@ -238,13 +269,20 @@ fun RoutineRegistrationScreen(
                     selectedDestination = uiState.selectedOrigin,
                     onDestinationSelected = { onEvent(RoutineRegistrationEvent.OriginSelected(it)) },
                 )
+                PlaceSearchStatus(
+                    isSearching = uiState.isSearchingOrigin,
+                    errorMessage = uiState.originSearchError,
+                    isEmpty = uiState.originQuery.isNotBlank() && uiState.selectedOrigin == null && uiState.originCandidates.isEmpty(),
+                )
 
                 OutlinedTextField(
                     value = uiState.destinationQuery,
                     onValueChange = { onEvent(RoutineRegistrationEvent.DestinationQueryChanged(it)) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("목적지") },
-                    placeholder = { Text("숭실대학교") },
+                    placeholder = { Text("장소 또는 주소 검색") },
+                    leadingIcon = { MapMateIcon(MapMateIconType.Flag, null, Modifier.size(20.dp), MaterialTheme.colorScheme.primary) },
+                    trailingIcon = { if (uiState.selectedDestination != null) MapMateIcon(MapMateIconType.Check, "목적지 선택됨", Modifier.size(20.dp), MaterialTheme.colorScheme.primary) },
                     shape = MaterialTheme.shapes.medium,
                     singleLine = true,
                 )
@@ -254,14 +292,20 @@ fun RoutineRegistrationScreen(
                     selectedDestination = uiState.selectedDestination,
                     onDestinationSelected = { onEvent(RoutineRegistrationEvent.DestinationSelected(it)) },
                 )
+                uiState.selectedDestination?.takeIf { it !in uiState.destinationCandidates }?.let {
+                    SelectedDestinationSummary(label = "선택된 목적지", destination = it)
+                }
+                PlaceSearchStatus(
+                    isSearching = uiState.isSearchingDestination,
+                    errorMessage = uiState.destinationSearchError,
+                    isEmpty = uiState.destinationQuery.isNotBlank() && uiState.selectedDestination == null && uiState.destinationCandidates.isEmpty(),
+                )
             }
         }
 
         if (currentStepIndex == 2) item {
-            SectionCard(
+            RegistrationSection(
                 title = "도착 목표",
-                subtitle = "시간 선택기로 도착 목표 시각을 설정합니다.",
-                leadingText = "3",
             ) {
                 ArrivalTimePickerButton(
                     timeText = uiState.targetArrivalTimeText,
@@ -271,9 +315,8 @@ fun RoutineRegistrationScreen(
         }
 
         if (currentStepIndex == 3) item {
-            SectionCard(
+            RegistrationSection(
                 title = "반복 요일",
-                leadingText = "4",
             ) {
                 DayOfWeekSelector(
                     selectedRepeatDays = uiState.selectedRepeatDays,
@@ -283,9 +326,8 @@ fun RoutineRegistrationScreen(
         }
 
         if (currentStepIndex == 4) item {
-            SectionCard(
+            RegistrationSection(
                 title = "이동 수단",
-                leadingText = "5",
             ) {
                 CommonTransportModeSelector(
                     selectedTransportMode = uiState.selectedTransportMode,
@@ -297,10 +339,8 @@ fun RoutineRegistrationScreen(
         }
 
         if (currentStepIndex == 5) item {
-            SectionCard(
+            RegistrationSection(
                 title = "보정 설정",
-                subtitle = "예상 이동 시간에 더할 개인 보정과 기본 여유 시간입니다.",
-                leadingText = "6",
             ) {
                 MinuteInputRow(
                     personalBufferMinutes = uiState.personalBufferMinutes,
@@ -329,6 +369,7 @@ fun RoutineRegistrationScreen(
             } else {
                 StepNavigationArea(
                     currentStepIndex = currentStepIndex,
+                    isNextEnabled = canProceed,
                     onPreviousClick = { currentStepIndex = (currentStepIndex - 1).coerceAtLeast(0) },
                     onNextClick = { currentStepIndex = (currentStepIndex + 1).coerceAtMost(5) },
                 )
@@ -361,7 +402,7 @@ private fun ArrivalTimePickerButton(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp),
+            .heightIn(min = 58.dp),
         shape = MaterialTheme.shapes.medium,
     ) {
         Row(
@@ -432,6 +473,17 @@ private fun ArrivalTimePickerDialog(
 }
 
 @Composable
+private fun RegistrationSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+@Composable
 private fun RegistrationStepRow(activeStepIndex: Int) {
     val steps = listOf(
         "1" to "기본 정보",
@@ -441,6 +493,22 @@ private fun RegistrationStepRow(activeStepIndex: Int) {
         "5" to "이동수단",
         "6" to "보정",
     )
+
+    if (LocalDensity.current.fontScale >= 1.5f) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "${activeStepIndex + 1} / ${steps.size} · ${steps[activeStepIndex].second}",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+            LinearProgressIndicator(
+                progress = { (activeStepIndex + 1f) / steps.size },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        return
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -604,7 +672,7 @@ private fun ResultArea(uiState: RoutineRegistrationUiState) {
                 }
             } else {
                 Text(
-                    text = "출발지, 목적지, 도착 목표를 입력한 뒤 권장 출발 시각을 계산하면 이곳에 결과가 표시됩니다.",
+                    text = "아직 계산한 경로가 없습니다",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -636,7 +704,7 @@ private fun SaveActionArea(
                 onClick = { onEvent(RoutineRegistrationEvent.CalculateClicked) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .heightIn(min = 48.dp),
                 enabled = !uiState.isCalculating,
                 shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -663,7 +731,7 @@ private fun SaveActionArea(
                     onClick = onPreviousClick,
                     modifier = Modifier
                         .weight(1f)
-                        .height(46.dp),
+                        .heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.medium,
                 ) {
                     Text("이전")
@@ -672,7 +740,7 @@ private fun SaveActionArea(
                     onClick = { onEvent(RoutineRegistrationEvent.SaveClicked) },
                     modifier = Modifier
                         .weight(1f)
-                        .height(46.dp),
+                        .heightIn(min = 48.dp),
                     enabled = uiState.isSaveEnabled && !uiState.isSaving,
                     shape = MaterialTheme.shapes.medium,
                 ) {
@@ -690,6 +758,7 @@ private fun SaveActionArea(
 @Composable
 private fun StepNavigationArea(
     currentStepIndex: Int,
+    isNextEnabled: Boolean,
     onPreviousClick: () -> Unit,
     onNextClick: () -> Unit,
 ) {
@@ -701,7 +770,7 @@ private fun StepNavigationArea(
             onClick = onPreviousClick,
             modifier = Modifier
                 .weight(1f)
-                .height(46.dp),
+                .heightIn(min = 48.dp),
             enabled = currentStepIndex > 0,
             shape = MaterialTheme.shapes.medium,
         ) {
@@ -709,9 +778,10 @@ private fun StepNavigationArea(
         }
         Button(
             onClick = onNextClick,
+            enabled = isNextEnabled,
             modifier = Modifier
                 .weight(1f)
-                .height(46.dp),
+                .heightIn(min = 48.dp),
             shape = MaterialTheme.shapes.medium,
         ) {
             Text("다음")
