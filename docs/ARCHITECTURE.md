@@ -1,5 +1,19 @@
 # MapMate 아키텍처
 
+## 2026-10-02 구조 보강
+
+- `MapMateApp`: `NavHost`가 탭과 등록/상세/측정/완료/구간 수정의 화면 스택을 관리합니다. ID로 데이터를 읽고 오류/삭제 상태를 처리하며 ViewModel은 화면 스택 항목에 귀속됩니다.
+- `ScheduledRouteCalculator`: 기본 경로, 출발 30분 이내 실시간 조회, 보정 정책, 안전 탑승 출발 시각을 계산하는 순수 도메인 경로입니다.
+- `ScheduledRouteProvider`: 화면이 실제 예약과 같은 추천을 받을 수 있는 도메인 인터페이스입니다. `DepartureAlarmCoordinator`가 저장된 루틴/설정/완료 기록을 검증하고 일관된 결과를 제공합니다.
+- `DepartureAlarmCoordinator`: 공유 mutex, 영속 예약/발행 이력, 작업 실행 시 stale 검증, 백그라운드 변경 revision 전파를 담당합니다. 편집 중 초안은 알림 예약을 바꾸지 않습니다.
+- `AppContainer.getInstance`: Activity, Receiver, Worker가 애플리케이션 단위 의존성 그래프를 공유합니다.
+- `AlarmAccessProvider`: 설정 화면이 Android data 구현체를 직접 참조하지 않고 OS 권한 상태와 설정 진입 결과를 받는 도메인 인터페이스입니다. 등록 ViewModel도 장소/경로 provider를 필수 주입받으며 내부에서 mock 구현을 생성하지 않습니다.
+- `TrackingSessionStore`: 측정 시작 당시 경로/권장 출발/목표 도착 epoch와 구간 시간을 DataStore에 저장합니다. 저장에 성공한 뒤 UI를 진행시키고, 복원할 때 경로를 다시 조회하지 않습니다.
+- `RoomCommuteRecordRepository`: 요약과 구간의 트랜잭션 읽기/저장, 완료 이벤트 중복 방지, 수동 수정 검증과 학습 재계산을 담당합니다. Room 스키마 버전은 8을 유지합니다. 기존 6→7, 7→8 migration은 이전 경로가 이미 만든 컬럼을 중복 추가하지 않도록 보강했습니다.
+- `CompletedCommuteEvents`: 홈/상세/측정/알림이 공유하는 도메인 완료 이벤트 제외 로직입니다. 새 기록은 목표 epoch로 정확 매칭하고 구형 기록만 하위호환 복원을 사용합니다.
+
+생명주기별 경로 조회, 20초 이내 프로세스 메모 재사용, 실제 구간 타임라인과 검증 근거는 [품질·사용성 점검 기록](QUALITY_REVIEW_2026_10_02.md)에 정리합니다.
+
 ## 구간별 소요시간 최적화 아키텍처
 
 구간별 소요시간 최적화 흐름은 기존 경로 예측과 이동 기록 파이프라인을 확장하며, 기존 fallback 동작을 대체하지 않습니다.
@@ -33,11 +47,11 @@ ODsay 경로 결과
 - `RouteEstimate.segments`가 비어 있으면 기존 단일 소요시간 기반 측정 UI를 유지합니다.
 - 구간 보정값이 없으면 원래 경로 예측값을 사용합니다.
 - 신뢰도가 너무 낮으면 구간 보정값을 적용하지 않습니다.
-- `personalBufferMinutes`는 구간 지연과 분리합니다. 이 값은 출발/준비 습관을 나타내고, 구간 지연은 실제 이동 소요시간 오차를 나타냅니다.
+- `personalBufferMinutes`와 구간 지연은 저장 모델을 분리합니다. 현재 개인 보정 자동 학습은 전체 도착 오차 기반이므로 준비 지연만 독립 추정하지는 않습니다. 구간 학습과의 중복 영향 분리는 후속 과제입니다.
 
 이 문서는 현재 MapMate 프로젝트의 실제 구현 구조를 설명합니다. 새 기능을 추가할 때는 이 문서를 기준으로 어느 패키지에 코드를 둘지 판단합니다.
 
-현재 앱은 홈 대시보드, 현 시간 기준 다음 출발 루틴 표시, 홈의 전체 루틴 목록, 루틴 목록, 단계형 루틴 등록, 상세 예측, 이동 기록 저장, 기록 완료 UI, 기록 목록/통계 요약, 도착 오차 기반 개인 보정 자동 업데이트, 설정 화면, AlarmManager 기반 출발 알림, 출발 전 상태 알림, WorkManager 기반 출발 전 재조회, ODsay 후보 경로 랭킹, 출발 30분 이내 첫 버스 실시간 도착정보 기반 대기 지연 보정, TAGO 버스 도착정보 fallback, 버스/지하철 위치정보 기반 운행 상태 보조 설명, 전체 경로 예상값 cache까지 구현되어 있습니다. Room 기반 루틴/이동 기록/경로 cache 저장과 DataStore 기반 설정 저장은 연결되어 있지만, Navigation Compose는 아직 구현되어 있지 않습니다.
+현재 앱은 루틴 등록/목록, 홈/상세 추천, 구간 측정/수정/완료, 기록 분석, 설정, 출발 알림과 재조회, 후보 랭킹, 첫 버스 실시간 보정 및 대체 처리를 구현합니다. Navigation Compose 화면 스택, Room 저장, DataStore 설정/측정/예약 상태가 연결되어 있습니다.
 
 ## 현재 아키텍처 개요
 
@@ -189,7 +203,7 @@ com.mapmate
 
 ## `presentation/routine`
 
-- `RoutinesScreen`: 저장된 루틴 목록, 활성/비활성 탭 UI, 수정/삭제/상세 예측 액션 표시
+- `RoutinesScreen`: 저장된 루틴 목록, 수정/삭제 확인/상세 예측 액션 표시
 - `RoutinesViewModel`: `RoutineRepository.observeRoutines()`를 관찰하고 루틴 목록 추천 UI 모델과 삭제 상태를 관리
 - `RoutinesUiState`: 루틴 목록 화면 상태
 
@@ -197,7 +211,7 @@ com.mapmate
 
 - `RoutineRegistrationScreen`: 기본 정보, 장소, 도착 목표, 반복, 이동수단, 보정 단계형 입력 UI 표시
 - `RoutineRegistrationComponents`: 목적지 후보, 반복 요일, 이동 수단, 메시지 등 재사용 UI component
-- `RoutineRegistrationViewModel`: 사용자 입력 처리, 검증, 수정 대상 루틴 로딩, DataStore 설정 저장, mock provider 호출, 권장 출발 시각 계산 요청
+- `RoutineRegistrationViewModel`: 입력 초안 복원/검증, 수정 대상 루틴 로딩, 장소 검색과 현재 위치 요청, 공통 추천 경로를 통한 출발 시각 계산, Room 루틴 저장
 - `RoutineRegistrationUiState`: 화면에 필요한 모든 상태
 - `RoutineRegistrationEvent`: 화면에서 ViewModel로 전달되는 사용자 액션
 
@@ -208,19 +222,19 @@ Composable은 화면 표시와 callback 전달만 담당하고, 계산이나 pro
 상세 예측 화면의 UI와 상태 관리를 담당합니다.
 
 - `PredictionDetailScreen`: 권장 출발 시각, 계산 근거, 탑승 판단, 경로 요약, 이동 기록 시작/루틴 수정 액션 표시
-- `PredictionDetailViewModel`: 선택된 루틴 기준으로 `RouteEstimateProvider`를 호출하고, 출발 30분 이내이면 `scheduledDepartureEpochMillis`를 전달해 권장 출발 시각 UI 모델을 생성
+- `PredictionDetailViewModel`: 공유 `ScheduledRouteProvider` 결과를 UI 모델로 변환하고, 활성 화면에서 새로고침과 백그라운드 revision을 반영
 - `PredictionDetailUiState`: 상세 예측 화면 상태
 
 ## `presentation/tracking`
 
 이동 기록 흐름과 저장 완료 상태를 담당합니다.
 
-- `TrackingScreen`: 출발 예정, 탑승, 도착 단계와 현재 이동 정보 표시
+- `TrackingScreen`: 출발 예정/탑승/도착 흐름과 현재 구간 하나의 측정 상태 표시
 - `TrackingCompletionScreen`: 저장된 `CommuteRecord` 기반 기록 완료 화면 표시
-- `TrackingViewModel`: 단계 상태, 경로 요약 로드, 도착 완료 시 `CommuteRecordRepository.saveRecord()` 호출 및 `SettingsRepository`를 통한 개인 보정값 자동 조정
+- `TrackingViewModel`: 영속 세션 복원, 구간 측정, 완료 저장 및 해당 루틴 개인 보정값의 조건부 갱신
 - `TrackingUiState`: 이동 기록 화면 상태와 저장된 완료 기록
 
-현재 `TrackingScreen`은 도착 완료 시 실제 `CommuteRecord`를 저장합니다. 기록 저장이 성공하면 목표 도착 시각 대비 실제 도착 오차를 DataStore 개인 보정값에 반영합니다. 자동 조정 폭은 한 번에 최대 ±5분으로 제한합니다.
+도착 완료 시 실제 `CommuteRecord`를 저장합니다. 성공 후 도착 오차를 해당 루틴의 개인 보정값에 반영하며, 전역 설정 기본값은 변경하지 않습니다. 자동 조정 폭은 한 번에 최대 ±5분이고, 1분 미만의 빠른 완료 기록은 자동 보정에 사용하지 않습니다. 루틴이 삭제되거나 측정 중 출발지/목적지/이동수단/목표가 변경되면 오래된 기록으로 덮어쓰지 않습니다.
 
 ## `presentation/history`
 
@@ -336,7 +350,7 @@ domain repository interface의 Room 구현체입니다.
 
 Preferences DataStore 기반 설정 저장 구조입니다.
 
-- `DataStoreSettingsRepository`: 개인 보정 시간, 안전 여유 시간, 출발 알림 설정값, 출발 전 상태 알림 설정값, 기본 이동수단을 저장하고 `Flow<AppSettings>`로 관찰하며, 이동 기록 도착 오차를 개인 보정값에 반영
+- `DataStoreSettingsRepository`: 전역 기본 개인 보정/안전 여유, 출발 알림/상태 알림 설정, 기본 이동수단을 저장하고 `Flow<AppSettings>`로 관찰합니다. 기존 도착 오차 갱신 API는 남아 있지만 현재 측정 완료 흐름은 루틴별 Room 보정값만 조건부 갱신합니다.
 
 ## `data/alarm`
 
@@ -362,7 +376,7 @@ Retrofit 기반 외부 API 구현체와 DTO를 담당합니다.
 - `CompositeTransitArrivalProvider`: 버스/지하철 실시간 도착정보 provider를 순서대로 시도하고 실패하면 `null`을 반환합니다. 현재 ODsay 후보 랭킹의 시간 보정 호출은 첫 버스 구간에 우선 적용합니다.
 - `SeoulBusRealtimeArrivalProvider`: 서울특별시 버스도착정보조회 서비스 XML 응답을 파싱해 첫 버스 대기 시간을 계산. ODsay `startArsID`가 있으면 `getStationByUid` 정류장 도착목록에서 `rtNm`/`busRouteAbrv`를 노선번호와 매칭하고, 실패하면 기존 `busRouteId` 기준 조회로 fallback합니다.
 - `SeoulSubwayRealtimeArrivalProvider`: 서울 지하철 실시간 도착정보 JSON 응답에서 가장 빠른 첫 지하철 대기 시간을 계산
-- `network_security_config.xml`: 기본 cleartext 통신을 차단하고 서울/TAGO 공공 API HTTP endpoint에 한해 cleartext 통신을 허용
+- `network_security_config.xml`: 기본 cleartext 통신과 TAGO 평문 요청을 차단합니다. HTTP 예외는 서울 API 두 호스트에만 남겨 두고 하위 도메인까지 허용하지 않습니다. 이 예외의 키 전송 위험은 미해결입니다.
 
 ## `di`
 
@@ -406,26 +420,26 @@ User input
 1. 사용자가 루틴 이름, 목적지, 도착 시각, 요일, 이동 수단, 보정 시간을 입력합니다. 도착 시각은 직접 문자열이 아니라 TimePicker로 선택합니다.
 2. `RoutineRegistrationScreen`은 입력 이벤트를 `RoutineRegistrationEvent`로 ViewModel에 전달합니다.
 3. `RoutineRegistrationViewModel`은 루틴명/장소 검색어의 제어문자와 길이를 제한하고, 보정값은 ASCII 숫자로 제한한 뒤 상태를 갱신하고 입력값을 검증합니다.
-4. 개인 보정 시간과 안전 여유 시간, 기본 이동수단, 알림 설정값이 변경되면 `SettingsRepository`를 통해 DataStore에 저장합니다.
+4. 등록 화면의 보정값은 해당 루틴 초안에만 반영합니다. 설정 화면의 전역 숫자 기본값은 명시적인 저장 동작으로 DataStore에 함께 저장하고, 알림/이동수단 선택은 별도로 처리합니다.
 5. 출발지/목적지 후보는 `PlaceSearchProvider`를 통해 조회합니다.
 6. 현재 위치 출발지는 `CurrentLocationProvider`가 좌표를 가져오고, Kakao 키가 있으면 `ReverseGeocodingProvider`로 주소 변환을 시도합니다.
 7. 예상 이동 시간은 `RouteEstimateProvider`를 통해 조회합니다. 대중교통 ODsay 경로는 후보 `path`를 최대 5개 평가하고, 출발 예정 시각이 30분 이내이며 첫 탑승 구간이 버스이면 `TransitArrivalProvider`로 실시간 도착정보를 조회해 지연분을 보정합니다. 이후 `RouteCandidateEvaluator`가 첫 버스 접근 시간과 도착 대기시간을 비교해 놓칠 위험이 높은 후보에 페널티를 주고, 목표 도착 시각을 놓치는 후보에는 가장 큰 페널티를 줍니다. 후보 전환 이득이 3분 미만이면 기존 ODsay 1순위 후보를 유지합니다. 성공값은 `RouteRealtimeSnapshotRepository`에 저장하며, 실시간 조회/매칭이 실패하면 30분 정책 안에서만 20분 이내 fresh snapshot을 재사용합니다.
 8. 선택된 후보의 탑승 판단 결과는 `RouteBoardingAdvice`로 변환되어 홈과 상세 예측 화면에서 사용자용 카드로 표시됩니다. 첫 버스를 타기 위해 더 일찍 출발해야 하는 경우에는 안전 탑승 출발 epoch millis와 앞당겨야 하는 분 수를 함께 담습니다.
-9. 권장 출발 시각은 `DepartureTimeCalculator`와 `DepartureAlarmPlanner`로 계산합니다. 이후 `BoardingSafeDeparturePolicy`가 `RouteBoardingAdvice`의 안전 탑승 출발 시각이 기존 권장 출발 시각보다 이르면 홈/상세/알림 시각을 같은 기준으로 앞당깁니다. 계산 결과가 이미 지난 시간이면서 목표 도착 시각이 아직 남아 있으면 UI 모델은 `지금 출발`로 표시하고, 알림 플래너는 즉시 알림을 예약합니다.
+9. `ScheduledRouteCalculator`가 경로와 목표 도착 이벤트를 계산합니다. `DepartureAlarmCoordinator`는 저장된 예약에 `DepartureAdjustmentPolicy`를 적용한 실제 예약 출발 시각을 확정하고, `ScheduleAwareRecommendationResolver`는 이 공통 결과를 화면에 전달합니다. 수정 중인 초안은 저장된 루틴의 알림을 바꾸지 않습니다.
 10. 저장 버튼을 누르면 `RoutineRepository`를 통해 Room DB에 루틴을 저장합니다.
 11. 홈에서 수정 버튼을 누르면 해당 루틴이 `RoutineRegistrationUiState`에 채워지고 같은 id로 다시 저장됩니다.
-12. 홈에서 삭제 버튼을 누르면 `RoutineRepository.deleteRoutine()`을 통해 Room DB에서 제거합니다.
+12. 루틴 목록에서 삭제 확인을 거치면 `RoutineRepository.deleteRoutine()`으로 제거합니다. 관련 알림과 재조회 작업도 정리합니다.
 13. 저장된 루틴 목록은 Room `Flow`를 통해 `HomeUiState.savedRoutines`와 `RoutinesUiState.recommendations`에 반영됩니다.
 14. DataStore 설정은 `Flow<AppSettings>`를 통해 루틴 등록 화면과 설정 화면의 기본값에 반영됩니다.
-15. 상세 예측 화면과 이동 기록 화면은 선택된 루틴을 기준으로 `RouteEstimateProvider`를 호출해 권장 출발 시각 UI 모델을 구성합니다.
+15. 홈/상세/목록/등록/측정 화면은 공통 추천 결과를 사용합니다. 측정이 이미 시작되었으면 저장된 세션의 출발/목표/경로를 복원하며 새 경로로 교체하지 않습니다.
 16. 이동 기록 화면에서 도착을 완료하면 `CommuteRecordRepository.saveRecord()`를 통해 Room DB에 기록을 저장합니다.
-17. 기록 저장이 성공하면 `SettingsRepository.updatePersonalBufferForArrivalDelta()`가 도착 오차를 개인 보정값에 반영합니다.
+17. 기록 저장 성공 후 `RoutineRepository`의 조건부 갱신으로 해당 루틴의 개인 보정값만 학습합니다. 측정 중 삭제/경로 변경이나 1분 미만 완료 기록은 자동 보정에 사용하지 않습니다. 전역 기본값은 바꾸지 않습니다.
 18. 이동 기록 완료 화면은 저장된 `CommuteRecord`의 실제 도착 시각과 목표 대비 오차를 표시합니다.
 19. 기록 탭은 `CommuteRecordRepository.observeRecords()`를 관찰해 저장된 기록 목록을 최신순으로 표시합니다.
-20. 앱 실행 중 `DepartureAlarmCoordinator`는 알림 설정과 저장된 루틴 목록을 관찰해 다음 출발 알림을 예약하거나 취소합니다.
-21. 다음 출발 알림이 30분보다 더 남아 있으면 `AndroidDepartureRecheckScheduler`가 WorkManager one-time work를 예약합니다.
+20. 앱 범위의 `DepartureAlarmCoordinator`는 설정, 루틴, 완료 기록을 관찰하고 예약/통지 상태를 영속 저장합니다. 경로 조회와 알림 발행의 잠금을 분리해 느린 조회가 이미 도래한 알림을 막지 않도록 합니다.
+21. `AndroidDepartureRecheckScheduler`는 이벤트별 T-60/T-30/T-15/T-10/T-5 작업을 예약하고 긴 이동에는 T-90/T-120을 추가합니다. 이전 이벤트 작업과 구형 단일 작업을 정리합니다.
 22. `DepartureRecheckWorker`는 출발 전 경로 예상 시간을 다시 조회하고 다음 출발 알림과 재조회 작업을 갱신합니다.
-23. 예약된 알림이 울리면 `DepartureAlarmReceiver`가 notification을 표시하고 다음 반복 알림을 다시 예약합니다.
+23. `DepartureAlarmReceiver`는 현재 예약/루틴/완료 상태와 중복 통지 여부를 검사해 알림을 발행합니다. 다음 경로 조회는 receiver에서 직접 실행하지 않고 별도 WorkManager 작업으로 넘깁니다. 조회 중 통지가 이미 발행되었으면 오래된 조회 결과가 같은 이벤트를 다시 예약하지 않습니다.
 24. 결과는 각 화면의 UiState에 반영되고 UI가 다시 그려집니다.
 
 ## 최근 확장 구조
@@ -456,8 +470,8 @@ Google Routes 자동차 모드는 `GoogleRoutesEstimateProvider`에서 `routingP
 ## 앞으로 확장할 영역
 
 - 통계/분석 화면
-- 필요 시 Navigation Compose 도입
+- Navigation Compose 화면 스택의 기기별 복원/뒤로가기 회귀 검증 유지
 - 운영 보안 정책: API 키 제한/백엔드 프록시, release 서명 keystore 관리, 위치/이동 기록 개인정보 보관 정책 정리
 # 현재 아키텍처 참고
 
-최신 브랜치 단위 아키텍처 변경은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 주요 내용은 출발 전 재조회 예약, 출발 전 상태 알림, 홈 UI/알림 시각 동기화, 현 시간 기준 다음 루틴 선택, 알림 반복 예약 방지, 기록 필터링, 대중교통 대기 구간, 구간 보정값 저장, 첫 버스 탑승 판단 UI, TAGO 노선명 정규화입니다.
+최신 보강 내용과 검증 범위는 [2026-10-02 품질 점검](QUALITY_REVIEW_2026_10_02.md)을 확인합니다. [2026-06-16 구현 기록](IMPLEMENTATION_UPDATE_2026_06_16.md)은 당시 변경 이력으로 보존합니다.
