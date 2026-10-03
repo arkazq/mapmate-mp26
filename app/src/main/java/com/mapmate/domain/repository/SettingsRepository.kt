@@ -13,6 +13,8 @@ interface SettingsRepository {
 
     suspend fun updateSafetyMarginMinutes(minutes: Int)
 
+    suspend fun updateBufferDefaults(personalBufferMinutes: Int, safetyMarginMinutes: Int)
+
     suspend fun updateNotificationsEnabled(enabled: Boolean)
 
     suspend fun updatePredepartureStatusNotificationEnabled(enabled: Boolean)

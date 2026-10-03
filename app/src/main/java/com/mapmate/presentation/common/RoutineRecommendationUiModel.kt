@@ -7,7 +7,10 @@ import com.mapmate.domain.model.RouteSegment
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import java.time.LocalTime
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.ceil
 
 data class RoutineRecommendationUiModel(
@@ -30,6 +33,20 @@ data class RoutineRecommendationUiModel(
     val routeSegments: List<RouteSegment> = emptyList(),
     val boardingAdvice: RouteBoardingAdvice? = null,
 ) {
+    fun departureWithDateText(zone: ZoneId = ZoneId.systemDefault()): String =
+        recommendedDepartureAtEpochMillis.dateTimeText(zone) ?: recommendedDepartureTimeText
+
+    fun arrivalWithDateText(zone: ZoneId = ZoneId.systemDefault()): String =
+        targetArrivalAtEpochMillis.dateTimeText(zone) ?: targetArrivalTimeText
+
+    fun arrivalRelativeToTodayText(nowEpochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+        val target = targetArrivalAtEpochMillis ?: return targetArrivalTimeText
+        val targetDate = Instant.ofEpochMilli(target).atZone(zone).toLocalDate()
+        return if (targetDate == Instant.ofEpochMilli(nowEpochMillis).atZone(zone).toLocalDate()) {
+            targetArrivalTimeText
+        } else arrivalWithDateText(zone)
+    }
+
     val recommendedDepartureDisplayText: String
         get() = if (isImmediateDepartureRecommended) "지금 출발" else recommendedDepartureTimeText
 
@@ -76,6 +93,10 @@ data class RoutineRecommendationUiModel(
             }
         }
     }
+}
+
+private fun Long?.dateTimeText(zone: ZoneId): String? = this?.let {
+    Instant.ofEpochMilli(it).atZone(zone).format(DateTimeFormatter.ofPattern("M/d E요일 HH:mm", Locale.KOREAN))
 }
 
 fun Routine.toRecommendationUiModel(

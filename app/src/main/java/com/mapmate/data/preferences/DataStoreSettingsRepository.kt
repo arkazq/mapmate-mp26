@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -13,9 +12,7 @@ import com.mapmate.domain.calculator.PersonalBufferOptimizer
 import com.mapmate.domain.model.AppSettings
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.repository.SettingsRepository
-import java.io.IOException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 private val Context.mapMateSettingsDataStore: DataStore<Preferences> by preferencesDataStore(
@@ -29,13 +26,6 @@ class DataStoreSettingsRepository(
     private val dataStore = context.applicationContext.mapMateSettingsDataStore
 
     override val settings: Flow<AppSettings> = dataStore.data
-        .catch { exception ->
-            if (exception is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw exception
-            }
-        }
         .map { preferences ->
             AppSettings(
                 personalBufferMinutes = AppSettings.bufferMinutesOrDefault(
@@ -83,6 +73,15 @@ class DataStoreSettingsRepository(
         requireValidBufferMinutes(minutes)
         dataStore.edit { preferences ->
             preferences[SAFETY_MARGIN_MINUTES] = minutes
+        }
+    }
+
+    override suspend fun updateBufferDefaults(personalBufferMinutes: Int, safetyMarginMinutes: Int) {
+        requireValidBufferMinutes(personalBufferMinutes)
+        requireValidBufferMinutes(safetyMarginMinutes)
+        dataStore.edit {
+            it[PERSONAL_BUFFER_MINUTES] = personalBufferMinutes
+            it[SAFETY_MARGIN_MINUTES] = safetyMarginMinutes
         }
     }
 

@@ -8,5 +8,7 @@ interface RoutineRepository {
 
     suspend fun deleteRoutine(id: Long)
 
+    suspend fun updatePersonalBufferMinutes(expectedRoutine: Routine, minutes: Int): Boolean
+
     fun observeRoutines(): Flow<List<Routine>>
 }

@@ -22,12 +22,15 @@ class SegmentTimeAdjustmentCalculator(
             .filter { it.plannedDurationMinutes >= 0 }
             .mapNotNull { segment ->
                 val actualDurationMinutes = segment.actualDurationMinutes ?: return@mapNotNull null
-                val delayMinutes = actualDurationMinutes - segment.plannedDurationMinutes
-                if (delayMinutes !in -maxUsableDelayMinutes..maxUsableDelayMinutes) return@mapNotNull null
+                if (actualDurationMinutes < 0) return@mapNotNull null
+                // Sub-minute button tests should not erase a multi-minute planned journey.
+                if (actualDurationMinutes == 0 && segment.plannedDurationMinutes >= 2) return@mapNotNull null
+                val delayMinutes = actualDurationMinutes.toLong() - segment.plannedDurationMinutes
+                if (delayMinutes !in -maxUsableDelayMinutes.toLong()..maxUsableDelayMinutes.toLong()) return@mapNotNull null
                 SegmentSample(
                     segment = segment,
                     key = segment.adjustmentKey(),
-                    delayMinutes = delayMinutes,
+                    delayMinutes = delayMinutes.toInt(),
                 )
             }
             .groupBy { it.key }

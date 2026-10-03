@@ -1,5 +1,8 @@
 package com.mapmate.presentation.common
 
+import com.mapmate.domain.alarm.completedArrivalEventToExclude
+import com.mapmate.domain.alarm.hasCompletedCommuteToday
+
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay

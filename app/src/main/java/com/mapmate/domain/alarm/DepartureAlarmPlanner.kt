@@ -37,6 +37,7 @@ class DepartureAlarmPlanner(
         routeDurationMinutes: Int,
         now: ZonedDateTime = ZonedDateTime.now(zoneId),
         excludedArrivalAtEpochMillis: Long? = null,
+        excludedArrivalEvents: Set<Long> = emptySet(),
     ): DepartureAlarmSchedule? {
         val routineId = routine.id ?: return null
         val recommendedDepartureTime = departureTimeCalculator.calculate(
@@ -51,6 +52,7 @@ class DepartureAlarmPlanner(
             recommendedDepartureTime = recommendedDepartureTime,
             now = now,
             excludedArrivalAtEpochMillis = excludedArrivalAtEpochMillis,
+            excludedArrivalEvents = excludedArrivalEvents,
         ) ?: return null
 
         return DepartureAlarmSchedule(
@@ -71,6 +73,7 @@ class DepartureAlarmPlanner(
         recommendedDepartureTime: LocalTime,
         now: ZonedDateTime,
         excludedArrivalAtEpochMillis: Long?,
+        excludedArrivalEvents: Set<Long>,
     ): NextDepartureAlarmTrigger? {
         val repeatDayOfWeeks = repeatDays.mapTo(mutableSetOf()) { it.toDayOfWeek() }
         if (repeatDayOfWeeks.isEmpty()) return null
@@ -103,8 +106,8 @@ class DepartureAlarmPlanner(
                 }
             }
             .filterNot { trigger ->
-                excludedArrivalAtEpochMillis != null &&
-                    trigger.arrivalAt.toInstant().toEpochMilli() == excludedArrivalAtEpochMillis
+                val arrivalEpoch = trigger.arrivalAt.toInstant().toEpochMilli()
+                arrivalEpoch == excludedArrivalAtEpochMillis || arrivalEpoch in excludedArrivalEvents
             }
             .firstOrNull { trigger -> !trigger.triggerAt.isBefore(now) }
     }

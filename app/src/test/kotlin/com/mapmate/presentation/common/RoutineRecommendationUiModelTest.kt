@@ -8,6 +8,8 @@ import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -73,6 +75,21 @@ class RoutineRecommendationUiModelTest {
         assertEquals("08:07", recommendation.recommendedDepartureDisplayText)
         assertEquals(false, recommendation.isImmediateDepartureRecommended)
         assertNull(recommendation.departureStatusMessage)
+    }
+
+    @Test
+    fun overnightLabelsKeepDepartureAndTargetOnTheirActualCalendarDates() {
+        val zone = ZoneId.of("Asia/Seoul")
+        val departure = ZonedDateTime.of(2026, 10, 2, 23, 35, 0, 0, zone)
+        val target = departure.plusMinutes(55)
+        val recommendation = sampleRoutine.copy(targetArrivalTime = LocalTime.of(0, 30)).toRecommendationUiModel(
+            routeEstimate, recommendedDepartureAtEpochMillis = departure.toInstant().toEpochMilli(),
+            targetArrivalAtEpochMillis = target.toInstant().toEpochMilli(), displayedDepartureTime = departure.toLocalTime(),
+        )
+        assertEquals("10/2 금요일 23:35", recommendation.departureWithDateText(zone))
+        assertEquals("10/3 토요일 00:30", recommendation.arrivalWithDateText(zone))
+        assertEquals("10/3 토요일 00:30", recommendation.arrivalRelativeToTodayText(departure.toInstant().toEpochMilli(), zone))
+        assertEquals("00:30", recommendation.arrivalRelativeToTodayText(target.toInstant().toEpochMilli(), zone))
     }
 
     @Test

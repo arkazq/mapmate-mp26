@@ -1,11 +1,26 @@
 # MapMate 기능 상태
 
+최신 점검: 2026-10-02. 아래의 구현 상태는 실기기/운영 API의 정상 동작 보장을 뜻하지 않습니다. 검증 범위와 한계는 [품질·사용성 점검 기록](QUALITY_REVIEW_2026_10_02.md)을 확인합니다.
+
+## 사용성·복구 보강
+
+| 기능 | 상태 | 설명 |
+| -- | -- | -- |
+| 화면 스택과 뒤로가기 | 구현·에뮬레이터 검증 | Navigation Compose, 화면별 ViewModel, 완료 후 홈 복귀, 수정/등록 초안 보존과 폐기 확인 |
+| 공통 추천 경로 | 구현·단위 검증 | 홈/상세/루틴/등록/측정과 실제 알림이 공유 계산을 사용하고 백그라운드 재조회 변경을 반영 |
+| 측정 중 재시작 | 구현·프로세스 종료 검증 | DataStore 세션에서 시작 당시 경로·시각·구간 상태 복원, 홈 이어하기 표시 |
+| 완료 후 재시작 | 구현·프로세스 종료 검증 | Room 완료 이벤트를 제외하고 다음 출발 표시, 같은 이벤트 중복 기록 방지 |
+| 원자적 구간 수정 | 구현·Room/UI 검증 | 날짜/시각 선택, 즉시 소요시간 표시, 변경한 구간만 수정 출처 표시, 잘못된 입력 전체 롤백 |
+| 설정 저장/권한 상태 | 구현·에뮬레이터 검증 | 숫자 초안의 명시적 저장, 읽기 실패 재시도, 시스템 차단과 정확한 알람 권한 분리 |
+| 큰 글꼴 | 구현·화면 확인 | 360dp 폭과 1.5/2배 글꼴에서 지표/이동수단 세로 배치와 입력형 시간 선택 |
+| 실시간 파싱/통신 방어 | 구현·오프라인 검증 | 서울 1/2번째 메시지-초 짝 유지, 운행 종료 제외, TAGO 비정상 ETA 제외/HTTPS, XML 외부 선언 거부 |
+
 ## 구간별 소요시간 최적화 상태
 
 | 기능 | 상태 | 설명 | 관련 파일 |
 | -- | -- | -- | -- |
 | ODsay subPath 구간 파싱 | 완료 | ODsay 대중교통 `subPath` 항목을 순서가 있는 `RouteSegment` 값으로 변환합니다. 도보 구간은 정류장/역까지 도보, 환승 도보, 목적지까지 도보로 분류합니다. | `data/remote/provider/OdsayRouteSegmentMapper.kt`, `domain/model/RouteSegment.kt` |
-| 구간 저장 | 완료 | 구간 기록과 구간별 보정값을 Room에 저장합니다. DB 버전은 6이며 `route_segments`, `segment_time_adjustments` 테이블을 사용합니다. | `data/local/RouteSegmentEntity.kt`, `data/local/SegmentTimeAdjustmentEntity.kt`, `data/local/MapMateDatabase.kt` |
+| 구간 저장 | 완료 | 구간 기록과 구간별 보정값을 Room에 저장합니다. DB 버전은 8이며 `route_segments`, `segment_time_adjustments` 테이블을 사용합니다. | `data/local/RouteSegmentEntity.kt`, `data/local/SegmentTimeAdjustmentEntity.kt`, `data/local/MapMateDatabase.kt` |
 | 구간 기반 측정 UI | 완료 | 이동 기록 화면은 현재 활성 구간 하나에 집중하고, 구간 진행 상태와 실제 측정 시간을 이동 기록과 함께 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt`, `presentation/tracking/TrackingUiState.kt` |
 | 구간 시간 수동 수정 | 완료 | 이동 완료 후 또는 기록 화면에서 저장된 구간의 시작/종료 시각을 수정할 수 있습니다. 수정된 값은 `isUserEdited = true`로 표시됩니다. | `presentation/segmentedit/RouteSegmentEditScreen.kt`, `presentation/segmentedit/RouteSegmentEditViewModel.kt` |
 | 구간 소요시간 개인화 | 완료 | 최근 완료된 구간 기록을 `routineId`, `segmentType`, `routeName`, `startName`, `endName` 기준으로 묶고 평균 지연과 신뢰도를 계산해 이후 경로 예측에 반영합니다. | `domain/calculator/SegmentTimeAdjustmentCalculator.kt`, `data/remote/provider/SegmentAdjustedRouteEstimateProvider.kt` |
@@ -28,7 +43,7 @@
 | 출발지 검색 선택 | 완료 | Kakao Local API 또는 mock 장소 후보에서 출발지를 검색하고 선택할 수 있습니다. | `presentation/routine/RoutineRegistrationScreen.kt`, `presentation/routine/RoutineRegistrationViewModel.kt` |
 | 현재 위치 출발지 선택 | 완료 | Android 위치 권한을 요청하고 휴대폰 현재 위치 좌표를 출발지로 설정합니다. Kakao 키가 있으면 좌표를 주소로 변환해 출발지 주소로 표시하고, 실패하면 기존 fallback 주소를 유지합니다. | `data/location/AndroidCurrentLocationProvider.kt`, `data/remote/provider/KakaoReverseGeocodingProvider.kt`, `presentation/routine/RoutineRegistrationScreen.kt` |
 | 반복 요일 선택 | 완료 | 월~일 반복 요일을 선택/해제할 수 있습니다. | `presentation/common/MapMateSelectors.kt` |
-| 이동 수단 선택 | 완료 | `TRANSIT`, `WALK`, `CAR` 이동 수단을 선택할 수 있으며 설정 화면에서는 3개 카드가 동일 폭으로 배치됩니다. | `domain/model/TransportMode.kt`, `presentation/common/MapMateSelectors.kt` |
+| 이동 수단 선택 | 완료 | `TRANSIT`, `WALK`, `CAR`를 선택합니다. 보통 크기에서는 동일 폭, 큰 글꼴/좁은 화면에서는 세로 배치하며 선택 상태를 접근성 서비스에 제공합니다. | `domain/model/TransportMode.kt`, `presentation/common/MapMateSelectors.kt` |
 | 권장 출발 시각 계산 | 완료 | 실제 경로 API 또는 mock 예상 이동 시간과 보정 시간을 기준으로 권장 출발 시각을 계산합니다. | `presentation/routine/RoutineRegistrationViewModel.kt` |
 | `DepartureTimeCalculator` | 완료 | 순수 Kotlin 계산기로 권장 출발 시각을 계산하고, 계산 결과가 이미 지난 시간이면서 목표 도착 시각이 아직 남아 있으면 `지금 출발` 상태로 보정합니다. | `domain/calculator/DepartureTimeCalculator.kt` |
 | 계산 로직 테스트 | 완료 | 기본 권장 출발 시각, 즉시 출발 보정, 도착 목표가 이미 지난 경우를 검증합니다. | `app/src/test/kotlin/com/mapmate/domain/calculator/DepartureTimeCalculatorTest.kt`, `app/src/test/kotlin/com/mapmate/presentation/common/RoutineRecommendationUiModelTest.kt` |
@@ -62,7 +77,7 @@
 | 이동 기록 화면 UI | 완료 | 출발 예정, 탑승, 도착 단계의 기록 흐름을 제공하고 도착 완료 시 Room에 기록을 저장합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/tracking/TrackingViewModel.kt` |
 | 기록 완료 화면 UI | 완료 | 도착 액션 후 같은 페이지 내부 카드가 아니라 별도 기록 완료 화면으로 전환합니다. | `presentation/tracking/TrackingScreen.kt`, `presentation/MapMateApp.kt` |
 | 이동 기록 저장 | 완료 | 루틴명, 출발지/목적지, 이동수단, 추천 출발 시각, 도착 시각, 도착 오차를 `commute_records` 테이블에 저장합니다. | `data/local/CommuteRecordEntity.kt`, `data/repository/RoomCommuteRecordRepository.kt` |
-| 개인 보정값 업데이트 | 완료 | 이동 기록의 도착 오차를 기준으로 개인 보정 시간을 최대 ±5분 범위에서 자동 조정합니다. | `domain/model/AppSettings.kt`, `data/preferences/DataStoreSettingsRepository.kt`, `presentation/tracking/TrackingViewModel.kt` |
+| 개인 보정값 업데이트 | 완료 | 1분 이상 측정한 이동의 도착 오차로 해당 루틴 보정값을 최대 ±5분 조정합니다. 전역 기본값이나 동시 수정한 루틴 정보를 덮어쓰지 않습니다. 준비 지연만 독립 학습하는 정책은 미구현입니다. | `domain/calculator/PersonalBufferOptimizer.kt`, `presentation/tracking/TrackingViewModel.kt`, `data/repository/RoomRoutineRepository.kt` |
 | 기록 탭 | 완료 | 저장된 이동 기록 목록, empty state, 전체 기록 수, 평균 도착 오차, 정시/빠른 도착률, 최근 5회 평균을 표시합니다. | `presentation/history/RecordsScreen.kt`, `presentation/history/RecordsViewModel.kt` |
 | 홈 화면 | 완료 | 앱 첫 화면에서 현 시간 기준 가장 가까운 다음 출발 루틴의 권장 출발 시각과 저장된 전체 루틴 목록을 확인할 수 있습니다. 출발까지 남은 시간이 60분 이상이면 `k시간 l분` 형식으로 표시합니다. | `presentation/home`, `presentation/common/RoutineRecommendationUiModel.kt` |
 | 통계 화면 | 완료 | 별도 탭을 추가하지 않고 기록 탭 상단에 최근 기록 기반 통계 요약을 제공합니다. | `presentation/history/RecordsScreen.kt`, `presentation/history/RecordsUiState.kt` |
@@ -71,7 +86,7 @@
 
 ## 현재 앱 진입점
 
-현재 `MainActivity`는 `MapMateApp`을 표시하고, `MapMateApp`이 홈/루틴/기록/설정 하단 내비게이션과 상세 화면 상태를 관리합니다.
+현재 `MainActivity`는 `MapMateApp`을 표시하고, `MapMateApp`의 `NavHost`가 하단 탭 및 등록/상세/측정/완료/구간 수정 화면 스택을 관리합니다.
 
 ```text
 MainActivity
@@ -94,9 +109,9 @@ MainActivity
 
 알림 설정이 켜져 있으면 앱 실행 중 `SettingsRepository.settings`와 `RoutineRepository.observeRoutines()`를 관찰해 다음 출발 알림을 자동 재예약합니다. 예약 시 실제 경로 provider를 우선 사용하고, API 키가 없거나 호출이 실패하면 기존 mock fallback 이동 시간으로 권장 출발 시각을 계산합니다. 알림은 현재 가장 가까운 1개만 유지하며, 알림 수신 후 다음 반복 요일 알림을 다시 예약합니다.
 
-다음 출발 알림이 30분보다 더 남아 있으면 WorkManager one-time work를 함께 예약합니다. 재조회 작업은 네트워크 연결 조건에서 실행되며, 실행 시 현재 루틴과 설정을 다시 읽고 `RouteEstimateProvider`를 다시 호출한 뒤 가장 가까운 출발 알림과 다음 재조회 작업을 갱신합니다. 출발까지 1분 이내이거나 이미 30분 재조회 구간 안에 들어온 경우에는 즉시 반복 예약을 만들지 않도록 기존 unique work를 취소합니다.
+WorkManager 재조회는 다음 출발 기준 T-60/T-30/T-15/T-10/T-5에 예약하고 긴 이동에는 더 이른 작업도 추가합니다. 실행 시 영속 예약과 현재 루틴/설정/완료 이벤트가 여전히 일치하는지 검증합니다. 이미 지난 작업, 변경 전 이벤트와 중복 알림은 배제하고 새 예약의 이전 작업을 정리합니다. 작업 실행 시각은 Android 백그라운드 정책에 따라 지연될 수 있습니다.
 
-이동 기록 화면에서 이동 시작 후 도착을 완료하면 `CommuteRecordRepository`를 통해 Room DB의 `commute_records` 테이블에 기록을 저장합니다. 기록 탭은 저장된 기록을 최신 도착 순서로 표시하고, 목표 도착 시각 대비 오차를 함께 보여줍니다. 기록 저장이 성공하면 `SettingsRepository`가 도착 오차를 DataStore 개인 보정값에 반영합니다. 한 번의 기록이 보정값을 과도하게 흔들지 않도록 자동 조정 폭은 최대 ±5분으로 제한합니다.
+이동 시작/구간 변경은 먼저 DataStore 세션에 저장하고, 도착 완료 시 Room에 요약과 구간을 함께 저장합니다. 완료 이벤트 중복 저장을 방지하며 성공 후 세션을 제거합니다. 기록 탭은 실제 출발/도착 날짜와 도착 오차를 표시합니다. 기록 저장 후 해당 루틴 개인 보정값만 조건부 갱신하고 자동 조정 폭은 최대 ±5분으로 제한합니다. 전역 설정 기본값은 바뀌지 않습니다.
 
 ## 현재 API 동작
 
@@ -107,4 +122,4 @@ MainActivity
 ODsay 대중교통 길찾기의 예상 이동 시간은 기본 경로 시간으로 사용하고, `path` 후보는 최대 5개까지 비교합니다. 출발 예정 시각이 30분 이내이면 후보별 첫 버스 탑승 구간의 실시간 도착정보를 조회해 대기 지연분을 보수적으로 추가 보정하고, 정류장까지 접근 시간 대비 버스 도착 시간이 너무 빠른 후보는 놓칠 위험 페널티를 받습니다. 목표 도착 시각을 놓치는 후보는 가장 큰 페널티를 받으며, 첫 버스를 타려면 기존 권장 출발 시각보다 더 일찍 나가야 하는 경우에는 `버스 도착 시각 - 정류장 접근 시간 - 최소 탑승 여유 3분` 기준으로 안전 탑승 출발 시각을 계산해 홈/상세/알림 시각에 반영합니다. 버스는 서울 버스 도착정보를 먼저 사용하고, 좌표가 있는 경우 TAGO 정류소/도착정보 fallback을 시도합니다. 후보 전환 이득이 3분 미만이면 기존 ODsay 1순위 경로를 유지합니다. 버스/지하철 위치정보는 운행 상태 보조 설명으로 reason에 반영합니다. 실시간 보정 성공값은 `RouteRealtimeSnapshot`으로 저장되며, 이후 실시간 도착정보가 실패하거나 매칭되지 않으면 출발 30분 이내에서만 20분 이내의 마지막 성공 보정값을 재사용합니다. 실시간 보정 또는 snapshot fallback이 적용된 결과는 일반 `RouteEstimateCache`에 저장하지 않습니다. 전체 경로 API 실패 시에는 6시간 이내의 `RouteEstimateCache`를 mock fallback 전에 재사용합니다. 출발 전 WorkManager 재조회도 같은 `RouteEstimateProvider`를 다시 호출하므로, 키와 좌표/노선 매칭이 맞으면 출발 전 재조회에 실시간 도착정보 보정 또는 fresh snapshot fallback이 반영됩니다. 서울버스는 ODsay 노선 ID가 서울버스 `busRouteId`와 다른 경로를 위해 정류장 ARS 기준 조회와 노선명 매칭을 먼저 사용합니다. TAGO는 ODsay 노선명 괄호 업체명 표기를 제거해 경기/전국 노선 매칭률을 높였습니다.
 # 현재 상태 참고
 
-최신 브랜치 변경 내용은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`와 `docs/MOBILE_SECURITY_CHECKLIST.md`를 확인합니다. 주요 변경은 출발 전 재조회 자기 취소 방지, 홈 카운트다운 동기화, 알림 반복 예약 방지, 출발 전 상태 알림, 현 시간 기준 다음 루틴 홈 메인 표시, 전체 루틴 홈 목록, 루틴별 기록 분석, 대중교통 대기 구간 측정, 구간 보정값의 최소/최대 실제 소요시간 저장, 첫 버스 탑승 가능성 기반 ODsay 후보 랭킹, 홈/상세 예측의 탑승 판단 UI, 서울버스 정류장 ARS 기준 도착목록 매칭, TAGO 노선명 정규화, 루틴 등록 입력 제한, 앱 백업 차단, release 축소/난독화입니다. ODsay 경로 밖의 주변 버스 직접 탐색, 알림 화면의 상세 대안 UI, 운영 API 키 보호 전략은 아직 후속 작업입니다.
+최신 변경과 미검증 범위는 `QUALITY_REVIEW_2026_10_02.md`와 `MOBILE_SECURITY_CHECKLIST.md`를 확인합니다. `IMPLEMENTATION_UPDATE_2026_06_16.md`는 이전 구현 이력입니다. 주변 버스 직접 탐색, 전체 환승 실시간 최적화, 요일/시간대별 학습, 운영 API 키 보호 전략은 후속 작업입니다.

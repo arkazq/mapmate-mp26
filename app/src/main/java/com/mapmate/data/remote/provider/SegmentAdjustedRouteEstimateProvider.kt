@@ -6,6 +6,8 @@ import com.mapmate.domain.model.SegmentTimeAdjustment
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.SegmentTimeAdjustmentRepository
+import com.mapmate.domain.util.runCatchingCancellable
+import com.mapmate.domain.calculator.SegmentTimeAdjustmentCalculator
 import kotlin.math.roundToInt
 
 class SegmentAdjustedRouteEstimateProvider(
@@ -30,26 +32,31 @@ class SegmentAdjustedRouteEstimateProvider(
         )
         if (routineId == null || estimate.segments.isEmpty()) return estimate
 
-        val adjustments = segmentTimeAdjustmentRepository.getAdjustmentsForRoutine(routineId)
+        val adjustments = runCatchingCancellable {
+            segmentTimeAdjustmentRepository.getAdjustmentsForRoutine(routineId)
+        }.getOrElse { return estimate }
         if (adjustments.isEmpty()) return estimate
 
         val adjustedDelayMinutes = estimate.segments.sumOf { segment ->
-            val adjustment = adjustments.firstOrNull { it.matches(segment) }
-            adjustment?.effectiveDelayMinutes() ?: 0
+            val adjustment = adjustments.firstOrNull { it.matches(segment.copy(routineId = routineId)) }
+            (adjustment?.effectiveDelayMinutes() ?: 0).coerceAtLeast(-segment.plannedDurationMinutes.coerceAtLeast(0))
         }
         if (adjustedDelayMinutes == 0) return estimate
 
         return estimate.copy(
-            estimatedMinutes = (estimate.estimatedMinutes + adjustedDelayMinutes).coerceAtLeast(1),
+            estimatedMinutes = (estimate.estimatedMinutes.toLong() + adjustedDelayMinutes)
+                .coerceIn(1, Int.MAX_VALUE.toLong()).toInt(),
             reason = listOf(
                 estimate.reason,
-                "Segment history adjustment ${adjustedDelayMinutes} min applied.",
+                "구간별 이동 기록 보정 ${adjustedDelayMinutes}분을 반영했습니다.",
             ).joinToString(" "),
         )
     }
 
     private fun SegmentTimeAdjustment.effectiveDelayMinutes(): Int {
-        if (confidence < MIN_APPLIED_CONFIDENCE) return 0
+        if (!confidence.isFinite() || confidence !in MIN_APPLIED_CONFIDENCE..1.0 || sampleCount <= 0 ||
+            averageDelayMinutes !in -SegmentTimeAdjustmentCalculator.MAX_USABLE_DELAY_MINUTES..SegmentTimeAdjustmentCalculator.MAX_USABLE_DELAY_MINUTES
+        ) return 0
         return (averageDelayMinutes * confidence).roundToInt()
     }
 

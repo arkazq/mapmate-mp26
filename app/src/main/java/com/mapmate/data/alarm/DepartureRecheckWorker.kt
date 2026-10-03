@@ -3,19 +3,28 @@ package com.mapmate.data.alarm
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.mapmate.di.AppContainer
 import com.mapmate.domain.alarm.DepartureAlarmSchedule
 import java.time.LocalTime
+import com.mapmate.domain.util.runCatchingCancellable
 
 class DepartureRecheckWorker(
     appContext: Context,
     workerParameters: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParameters) {
     override suspend fun doWork(): Result {
-        return runCatching {
-            AppContainer(applicationContext).departureAlarmCoordinator.rescheduleNextAlarm(
-                previousSchedule = inputData.toDepartureAlarmScheduleOrNull(),
-            )
+        return runCatchingCancellable {
+            val coordinator = AppContainer.getInstance(applicationContext).departureAlarmCoordinator
+            if (inputData.getBoolean(KEY_RESCHEDULE_ONLY, false)) {
+                coordinator.rescheduleNextAlarm()
+            } else {
+                val schedule = inputData.toDepartureAlarmScheduleOrNull() ?: return Result.success()
+                coordinator.recheckScheduledAlarm(schedule)
+            }
         }.fold(
             onSuccess = { Result.success() },
             onFailure = { Result.retry() },
@@ -54,6 +63,15 @@ class DepartureRecheckWorker(
     }
 
     companion object {
+        private const val KEY_RESCHEDULE_ONLY = "reschedule_only"
+        fun enqueueReschedule(context: Context) {
+            val request = OneTimeWorkRequestBuilder<DepartureRecheckWorker>()
+                .setInputData(Data.Builder().putBoolean(KEY_RESCHEDULE_ONLY, true).build())
+                .build()
+            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+                "departure_alarm_reschedule", ExistingWorkPolicy.REPLACE, request,
+            )
+        }
         const val KEY_ROUTINE_ID = "routine_id"
         const val KEY_ROUTINE_NAME = "routine_name"
         const val KEY_DESTINATION_NAME = "destination_name"

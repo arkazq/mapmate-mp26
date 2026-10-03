@@ -10,12 +10,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DisplayMode
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.TimeInput
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,28 +34,33 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.RouteSegment
 import com.mapmate.domain.model.RouteSegmentType
+import com.mapmate.domain.model.RouteSegmentStatus
 import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.presentation.common.DetailTopBar
 import com.mapmate.presentation.common.IconBadge
 import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
 import com.mapmate.presentation.common.MetricRow
-import com.mapmate.presentation.common.SectionCard
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 @Composable
@@ -67,7 +78,7 @@ fun RouteSegmentEditRoute(
             commuteRecordRepository = commuteRecordRepository,
         ),
     )
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(uiState.savedRecord) {
         uiState.savedRecord?.let(onSaveCompleted)
@@ -77,8 +88,8 @@ fun RouteSegmentEditRoute(
         uiState = uiState,
         contentPadding = contentPadding,
         onBackClick = onBackClick,
-        onStartTimeSelected = viewModel::onStartTimeSelected,
-        onEndTimeSelected = viewModel::onEndTimeSelected,
+        onStartTimeSelected = viewModel::onStartDateTimeSelected,
+        onEndTimeSelected = viewModel::onEndDateTimeSelected,
         onSaveClick = viewModel::onSaveClick,
     )
 }
@@ -88,11 +99,23 @@ fun RouteSegmentEditScreen(
     uiState: RouteSegmentEditUiState,
     contentPadding: PaddingValues,
     onBackClick: () -> Unit,
-    onStartTimeSelected: (Long, Int, Int) -> Unit,
-    onEndTimeSelected: (Long, Int, Int) -> Unit,
+    onStartTimeSelected: (Long, Long) -> Unit,
+    onEndTimeSelected: (Long, Long) -> Unit,
     onSaveClick: () -> Unit,
 ) {
     var pickerTarget by remember { mutableStateOf<TimePickerTarget?>(null) }
+    var showDiscardDialog by remember { mutableStateOf(false) }
+    fun requestBack() {
+        if (uiState.isSaving) return
+        if (uiState.hasUnsavedChanges) showDiscardDialog = true else onBackClick()
+    }
+    BackHandler { requestBack() }
+    if (showDiscardDialog) AlertDialog(
+        onDismissRequest = { showDiscardDialog = false },
+        title = { Text("시간 수정을 버릴까요?") },
+        confirmButton = { TextButton(onClick = { showDiscardDialog = false; onBackClick() }) { Text("버리기") } },
+        dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text("계속 수정") } },
+    )
 
     LazyColumn(
         modifier = Modifier
@@ -107,7 +130,7 @@ fun RouteSegmentEditScreen(
         item {
             DetailTopBar(
                 title = "구간별 시간 수정",
-                onBackClick = onBackClick,
+                onBackClick = ::requestBack,
             )
         }
 
@@ -127,30 +150,18 @@ fun RouteSegmentEditScreen(
 
             !uiState.canEdit -> {
                 item {
-                    SectionCard(
-                        title = "수정할 구간 없음",
-                        subtitle = "이 기록에는 저장된 RouteSegment가 없습니다.",
-                        leadingIcon = MapMateIconType.Route,
-                    ) {
-                        Text(
-                            text = "기존 단일 이동 기록은 구간별 시간 수정 대상이 아닙니다.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text("수정할 구간 기록이 없습니다.")
                 }
             }
 
             else -> {
                 item {
-                    SectionCard(
-                        title = uiState.record.routineName,
-                        subtitle = "${uiState.record.originName} -> ${uiState.record.destinationName}",
-                        leadingIcon = MapMateIconType.Records,
-                    ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(uiState.record.routineName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("${uiState.record.originName} → ${uiState.record.destinationName}", style = MaterialTheme.typography.bodyMedium)
                         MetricRow(
                             icon = MapMateIconType.Time,
-                            label = "전체 실제 이동",
+                            label = if (uiState.hasUnsavedChanges) "수정 전 전체 이동" else "전체 실제 이동",
                             value = "${uiState.record.totalActualDurationMinutes()}분",
                         )
                         MetricRow(
@@ -166,10 +177,10 @@ fun RouteSegmentEditScreen(
                     key = { it.editSegmentId() },
                 ) { segment ->
                     EditableRouteSegmentCard(
-                        record = uiState.record,
                         segment = segment,
                         onStartClick = { pickerTarget = segment.startPickerTarget(uiState.record) },
                         onEndClick = { pickerTarget = segment.endPickerTarget(uiState.record) },
+                        enabled = !uiState.isSaving,
                     )
                 }
 
@@ -179,7 +190,7 @@ fun RouteSegmentEditScreen(
                         enabled = !uiState.isSaving,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp),
+                            .heightIn(min = 48.dp),
                         shape = MaterialTheme.shapes.medium,
                     ) {
                         Text(
@@ -211,11 +222,11 @@ fun RouteSegmentEditScreen(
         SegmentTimePickerDialog(
             target = target,
             onDismiss = { pickerTarget = null },
-            onConfirm = { segmentId, isStart, hour, minute ->
+            onConfirm = { segmentId, isStart, epochMillis ->
                 if (isStart) {
-                    onStartTimeSelected(segmentId, hour, minute)
+                    onStartTimeSelected(segmentId, epochMillis)
                 } else {
-                    onEndTimeSelected(segmentId, hour, minute)
+                    onEndTimeSelected(segmentId, epochMillis)
                 }
                 pickerTarget = null
             },
@@ -225,10 +236,10 @@ fun RouteSegmentEditScreen(
 
 @Composable
 private fun EditableRouteSegmentCard(
-    record: CommuteRecord,
     segment: RouteSegment,
     onStartClick: () -> Unit,
     onEndClick: () -> Unit,
+    enabled: Boolean,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -268,13 +279,9 @@ private fun EditableRouteSegmentCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(segment.status.name) },
-                )
+                Text(segment.status.toEditingLabel(), style = MaterialTheme.typography.labelMedium)
             }
 
-            MetricRow(label = "segmentType", value = segment.segmentType.name)
             MetricRow(label = "노선", value = segment.routeName ?: "-")
             MetricRow(label = "예상 소요시간", value = "${segment.plannedDurationMinutes}분")
             MetricRow(label = "실제 소요시간", value = segment.actualDurationMinutes?.let { "${it}분" } ?: "-")
@@ -285,21 +292,25 @@ private fun EditableRouteSegmentCard(
             ) {
                 OutlinedButton(
                     onClick = onStartClick,
+                    enabled = enabled,
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp),
+                        .heightIn(min = 48.dp)
+                        .semantics { contentDescription = "${segment.segmentIndex + 1}구간 시작 시각 수정" },
                     shape = MaterialTheme.shapes.medium,
                 ) {
-                    Text("시작 ${segment.actualStartedAtEpochMillis.toTimeTextOrInput(record.startedAtEpochMillis)}")
+                    Text("시작 ${segment.actualStartedAtEpochMillis.toTimeTextOrInput()}")
                 }
                 OutlinedButton(
                     onClick = onEndClick,
+                    enabled = enabled,
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp),
+                        .heightIn(min = 48.dp)
+                        .semantics { contentDescription = "${segment.segmentIndex + 1}구간 종료 시각 수정" },
                     shape = MaterialTheme.shapes.medium,
                 ) {
-                    Text("종료 ${segment.actualEndedAtEpochMillis.toTimeTextOrInput(record.arrivedAtEpochMillis)}")
+                    Text("종료 ${segment.actualEndedAtEpochMillis.toTimeTextOrInput()}")
                 }
             }
         }
@@ -311,9 +322,12 @@ private fun EditableRouteSegmentCard(
 private fun SegmentTimePickerDialog(
     target: TimePickerTarget,
     onDismiss: () -> Unit,
-    onConfirm: (Long, Boolean, Int, Int) -> Unit,
+    onConfirm: (Long, Boolean, Long) -> Unit,
 ) {
     val initialTime = target.initialEpochMillis.toLocalHourMinute()
+    var selectedDate by remember(target) { mutableStateOf(Instant.ofEpochMilli(target.initialEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate()) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val compactPicker = LocalDensity.current.fontScale >= 1.5f || LocalConfiguration.current.screenHeightDp < 600
     val timePickerState = rememberTimePickerState(
         initialHour = initialTime.first,
         initialMinute = initialTime.second,
@@ -326,7 +340,12 @@ private fun SegmentTimePickerDialog(
             Text(if (target.isStart) "시작 시각 선택" else "종료 시각 선택")
         },
         text = {
-            TimePicker(state = timePickerState)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = { showDatePicker = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text(selectedDate.format(DateTimeFormatter.ofPattern("yyyy.MM.dd")))
+                }
+                if (compactPicker) TimeInput(state = timePickerState) else TimePicker(state = timePickerState)
+            }
         },
         confirmButton = {
             TextButton(
@@ -334,8 +353,8 @@ private fun SegmentTimePickerDialog(
                     onConfirm(
                         target.segmentId,
                         target.isStart,
-                        timePickerState.hour,
-                        timePickerState.minute,
+                        selectedDate.atTime(timePickerState.hour, timePickerState.minute)
+                            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
                     )
                 },
             ) {
@@ -348,6 +367,25 @@ private fun SegmentTimePickerDialog(
             }
         },
     )
+    if (showDatePicker) {
+        val dateState = rememberDatePickerState(initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            yearRange = 1970..2100, initialDisplayMode = if (compactPicker) DisplayMode.Input else DisplayMode.Picker)
+        DatePickerDialog(onDismissRequest = { showDatePicker = false },
+            confirmButton = { TextButton(onClick = {
+                dateState.selectedDateMillis?.let { selectedDate = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+                showDatePicker = false
+            }, enabled = dateState.selectedDateMillis != null) { Text("날짜 선택") } },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("취소") } }) {
+            DatePicker(state = dateState)
+        }
+    }
+}
+
+private fun RouteSegmentStatus.toEditingLabel(): String = when (this) {
+    RouteSegmentStatus.NOT_STARTED -> "시작 전"
+    RouteSegmentStatus.IN_PROGRESS -> "측정 중"
+    RouteSegmentStatus.COMPLETED -> "완료"
+    RouteSegmentStatus.SKIPPED -> "건너뜀"
 }
 
 private data class TimePickerTarget(
@@ -413,15 +451,14 @@ private fun CommuteRecord.totalActualDurationMinutes(): Int {
     ).toMinutes().toInt().coerceAtLeast(0)
 }
 
-private fun Long?.toTimeTextOrInput(fallbackEpochMillis: Long): String {
+private fun Long?.toTimeTextOrInput(): String {
     return this?.toTimeText() ?: "입력"
 }
 
 private fun Long.toTimeText(): String {
     return Instant.ofEpochMilli(this)
         .atZone(ZoneId.systemDefault())
-        .toLocalTime()
-        .format(DateTimeFormatter.ofPattern("HH:mm"))
+        .format(DateTimeFormatter.ofPattern("M/d HH:mm"))
 }
 
 private fun Long.toLocalHourMinute(): Pair<Int, Int> {

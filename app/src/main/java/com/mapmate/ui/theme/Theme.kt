@@ -1,6 +1,5 @@
 package com.mapmate.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -16,35 +15,54 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Navy80,
-    secondary = BlueGrey80,
-    tertiary = Sky80,
+    primary = Color(0xFF9EC3F7),
+    onPrimary = Color(0xFF0B2E59),
+    primaryContainer = Color(0xFF213F64),
+    onPrimaryContainer = Color(0xFFD5E5FF),
+    secondary = Color(0xFFB8C5CD),
+    onSecondary = Color(0xFF26343C),
+    secondaryContainer = Color(0xFF303C44),
+    onSecondaryContainer = Color(0xFFD9E4EC),
+    tertiary = Color(0xFF7BD1BE),
+    onTertiary = Color(0xFF00382D),
+    tertiaryContainer = Color(0xFF124D40),
+    onTertiaryContainer = Color(0xFFA6F2DE),
+    background = Color(0xFF121416),
+    surface = Color(0xFF191D20),
+    surfaceVariant = Color(0xFF303638),
+    onBackground = Color(0xFFE5E8EA),
+    onSurface = Color(0xFFE5E8EA),
+    onSurfaceVariant = Color(0xFFBCC3C7),
+    outline = Color(0xFF8B959A),
+    outlineVariant = Color(0xFF3E474B),
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Navy40,
-    secondary = BlueGrey40,
-    tertiary = Sky40,
-    background = SurfaceBlue,
+    primary = Color(0xFF1767D2),
+    secondary = Color(0xFF506270),
+    tertiary = Color(0xFF07845B),
+    onTertiary = Color.White,
+    background = Color(0xFFF2F4F6),
     surface = Color(0xFFFFFFFF),
-    surfaceVariant = SurfaceBlueVariant,
-    primaryContainer = Color(0xFFD7E3FF),
-    secondaryContainer = Color(0xFFDCE7F4),
-    tertiaryContainer = Color(0xFFD2EBFF),
+    surfaceVariant = Color(0xFFEDF0F2),
+    primaryContainer = Color(0xFFE8F1FF),
+    secondaryContainer = Color(0xFFE9EEF0),
+    tertiaryContainer = Color(0xFFD8F2E8),
+    onTertiaryContainer = Color(0xFF004E3E),
     onPrimary = Color.White,
-    onBackground = TextNavy,
-    onSurface = TextNavy,
-    onSurfaceVariant = TextBlueGrey,
-    outline = Color(0xFF91A0B5),
-    outlineVariant = Color(0xFFD7E0EC),
+    onBackground = Color(0xFF172128),
+    onSurface = Color(0xFF172128),
+    onSurfaceVariant = Color(0xFF59676E),
+    outline = Color(0xFF839097),
+    outlineVariant = Color(0xFFD6DFE3),
 )
 
 private val MapMateShapes = Shapes(
     extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(14.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(8.dp),
+    extraLarge = RoundedCornerShape(12.dp),
 )
 
 @Composable

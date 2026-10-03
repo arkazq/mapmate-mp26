@@ -1,6 +1,7 @@
 package com.mapmate.presentation.tracking
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,11 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
@@ -22,9 +25,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,7 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.mapmate.domain.model.CommuteRecord
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RepeatDay
@@ -44,9 +53,11 @@ import com.mapmate.domain.model.RouteSegmentType
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.provider.ScheduledRouteProvider
 import com.mapmate.domain.repository.CommuteRecordRepository
 import com.mapmate.domain.repository.RoutineRepository
 import com.mapmate.domain.repository.SettingsRepository
+import com.mapmate.domain.repository.TrackingSessionStore
 import com.mapmate.presentation.common.DetailTopBar
 import com.mapmate.presentation.common.IconBadge
 import com.mapmate.presentation.common.MapMateIcon
@@ -60,6 +71,8 @@ import com.mapmate.presentation.common.toFallbackRecommendationUiModel
 import com.mapmate.presentation.common.toKoreanDescription
 import com.mapmate.presentation.common.toKoreanLabel
 import com.mapmate.presentation.common.transportModeIcon
+import com.mapmate.presentation.common.RouteEndpoints
+import com.mapmate.presentation.common.journeyColor
 import com.mapmate.ui.theme.MapMateTheme
 import java.time.Instant
 import java.time.LocalTime
@@ -75,8 +88,10 @@ fun TrackingRoute(
     commuteRecordRepository: CommuteRecordRepository,
     routineRepository: RoutineRepository,
     settingsRepository: SettingsRepository,
+    trackingSessionStore: TrackingSessionStore,
     onBackClick: () -> Unit,
     onCompleted: (CommuteRecord) -> Unit,
+    scheduledRouteProvider: ScheduledRouteProvider? = null,
 ) {
     val viewModel: TrackingViewModel = viewModel(
         key = "tracking-${routine.id ?: routine.name}",
@@ -86,9 +101,11 @@ fun TrackingRoute(
             commuteRecordRepository = commuteRecordRepository,
             routineRepository = routineRepository,
             settingsRepository = settingsRepository,
+            trackingSessionStore = trackingSessionStore,
+            scheduledRouteProvider = scheduledRouteProvider,
         ),
     )
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(uiState.completedRecord) {
         uiState.completedRecord?.let {
@@ -102,6 +119,8 @@ fun TrackingRoute(
         onPrimaryActionClick = viewModel::onPrimaryActionClick,
         onSegmentStart = viewModel::onSegmentStart,
         onSegmentComplete = viewModel::onSegmentComplete,
+        onRetry = viewModel::retry,
+        onDiscardSession = viewModel::discardSavedSession,
         modifier = Modifier.padding(contentPadding),
     )
 }
@@ -114,8 +133,20 @@ fun TrackingScreen(
     onSegmentStart: (Long) -> Unit,
     onSegmentComplete: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    onRetry: () -> Unit = {},
+    onDiscardSession: () -> Unit = {},
 ) {
     val recommendation = uiState.recommendation
+    var showDiscardDialog by remember { mutableStateOf(false) }
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("기존 측정을 지울까요?") },
+            text = { Text("아직 완료하지 않은 측정 시간은 삭제됩니다.") },
+            confirmButton = { TextButton(onClick = { showDiscardDialog = false; onDiscardSession() }) { Text("지우기") } },
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text("취소") } },
+        )
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -151,36 +182,41 @@ fun TrackingScreen(
                     TrackingRoutineSummaryCard(recommendation = recommendation)
                 }
 
-                item {
-                    TrackingTimelineCard(
-                        recommendation = recommendation,
-                        stage = uiState.stage,
-                    )
+                if (uiState.isRestoredSession) item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("이전 측정을 이어서 기록합니다", color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelLarge)
+                        TextButton(onClick = { showDiscardDialog = true },
+                            enabled = !uiState.isSavingRecord && !uiState.isSavingSession,
+                            modifier = Modifier.heightIn(min = 48.dp)) { Text("측정 지우고 다시 시작") }
+                    }
                 }
-
-                item {
-                    CurrentMovementCard(recommendation = recommendation)
+                if (!uiState.canRecord) item {
+                    Text("오늘 남은 이동이 없습니다", style = MaterialTheme.typography.titleMedium)
+                    Text("다음 출발 ${recommendation.recommendedDepartureAtEpochMillis?.let {
+                        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("M월 d일 HH:mm"))
+                    }.orEmpty()}", style = MaterialTheme.typography.bodyMedium)
                 }
-
-                if (uiState.hasRouteSegments) {
+                if (uiState.hasRouteSegments && uiState.canRecord) {
                     item {
                         CurrentRouteSegmentCard(
                             uiState = uiState,
-                            isSavingRecord = uiState.isSavingRecord,
+                            isSavingRecord = uiState.isSavingRecord || uiState.isSavingSession,
                             onSegmentStart = onSegmentStart,
                             onSegmentComplete = onSegmentComplete,
                         )
                     }
                 }
 
-                if (!uiState.isCompleted && !uiState.hasRouteSegments) {
+                if (!uiState.isCompleted && !uiState.hasRouteSegments && uiState.canRecord) {
+                    item { TrackingTimelineCard(recommendation = recommendation, stage = uiState.stage) }
                     item {
                         Button(
                             onClick = onPrimaryActionClick,
-                            enabled = !uiState.isSavingRecord,
+                            enabled = !uiState.isSavingRecord && !uiState.isSavingSession,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
+                                .heightIn(min = 48.dp),
                             shape = MaterialTheme.shapes.medium,
                         ) {
                             MapMateIcon(
@@ -202,21 +238,26 @@ fun TrackingScreen(
                     }
                 }
 
-                if (!uiState.isCompleted && uiState.hasRouteSegments) {
+                if (!uiState.isCompleted && uiState.hasRouteSegments && uiState.canRecord) {
                     item {
                         Button(
                             onClick = onPrimaryActionClick,
-                            enabled = !uiState.isSavingRecord,
+                            enabled = !uiState.isSavingRecord && !uiState.isSavingSession,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
+                                .heightIn(min = 48.dp),
                             shape = MaterialTheme.shapes.medium,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.isAllSegmentsFinished) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                contentColor = if (uiState.isAllSegmentsFinished) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
+                            ),
+                            border = if (uiState.isAllSegmentsFinished) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         ) {
                             MapMateIcon(
                                 icon = MapMateIconType.Flag,
                                 contentDescription = null,
                                 modifier = Modifier.size(22.dp),
-                                tint = MaterialTheme.colorScheme.onPrimary,
+                                tint = if (uiState.isAllSegmentsFinished) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
                             )
                             Text(
                                 text = if (uiState.isSavingRecord) {
@@ -244,13 +285,11 @@ fun TrackingScreen(
             }
         }
 
-        item {
-            Text(
-                text = "기록은 더 정확한 추천을 위해 사용돼요.",
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        if (uiState.isLoadError) item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onRetry, enabled = !uiState.isSavingSession) { Text("다시 시도") }
+                TextButton(onClick = { showDiscardDialog = true }, enabled = !uiState.isSavingSession) { Text("이전 측정 지우기") }
+            }
         }
 
         item {
@@ -263,66 +302,11 @@ fun TrackingScreen(
 private fun TrackingRoutineSummaryCard(
     recommendation: RoutineRecommendationUiModel,
 ) {
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(MapMateSpacing.CardInner),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconBadge(
-                icon = if (recommendation.routine.name.contains("출근")) {
-                    MapMateIconType.Work
-                } else {
-                    MapMateIconType.School
-                },
-                modifier = Modifier.size(38.dp),
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = recommendation.routine.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "목표 도착 시간",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = recommendation.targetArrivalTimeText,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "추천 출발 시간",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = recommendation.recommendedDepartureDisplayText,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
-        }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(recommendation.routine.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        RouteEndpoints(recommendation.routine)
+        MetricRow(label = "추천 출발", value = recommendation.departureWithDateText())
+        MetricRow(label = "목표 도착", value = recommendation.arrivalWithDateText())
     }
 }
 
@@ -336,16 +320,13 @@ private fun TrackingTimelineCard(
         subtitle = stage.subtitle(recommendation.recommendedDepartureDisplayText),
         leadingIcon = MapMateIconType.Records,
     ) {
-        AssistChip(
-            onClick = {},
-            label = { Text("현재 단계") },
-        )
+        Text("현재 단계", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         StageRow(
             title = "출발 예정",
             description = if (recommendation.isImmediateDepartureRecommended) {
                 "지금 출발을 권장해요."
             } else {
-                "${recommendation.recommendedDepartureDisplayText} 이후 출발을 권장해요."
+                "${recommendation.recommendedDepartureDisplayText} 출발 권장"
             },
             isActive = stage == TrackingStage.Planned,
             icon = MapMateIconType.Time,
@@ -471,7 +452,6 @@ private fun CurrentRouteSegmentCard(
     if (currentSegment == null) {
         SectionCard(
             title = "모든 구간 측정 완료",
-            subtitle = "도착 완료를 누르면 오늘 이동 기록을 저장합니다.",
             leadingIcon = MapMateIconType.Check,
         ) {
             MetricRow(
@@ -495,30 +475,35 @@ private fun CurrentRouteSegmentCard(
     ) {
         mutableStateOf(System.currentTimeMillis())
     }
+    val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(
         currentSegment.trackingSegmentId(),
         currentSegment.actualStartedAtEpochMillis,
         currentSegment.status,
+        lifecycleOwner,
     ) {
-        while (currentSegment.status == RouteSegmentStatus.IN_PROGRESS) {
-            nowEpochMillis = System.currentTimeMillis()
-            delay(1_000L)
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (currentSegment.status == RouteSegmentStatus.IN_PROGRESS) {
+                nowEpochMillis = System.currentTimeMillis()
+                delay(1_000L)
+            }
         }
     }
 
-    SectionCard(
-        title = "현재 구간 ${uiState.currentSegmentIndex} / $totalSegmentCount",
-        subtitle = "완료하면 다음 구간으로 자동 전환됩니다.",
-        leadingIcon = currentSegment.segmentIcon(),
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            uiState.routeSegments.sortedBy { it.segmentIndex }.forEach { segment ->
+                Box(Modifier.weight(1f).height(6.dp).background(
+                    if (segment.status == RouteSegmentStatus.COMPLETED || segment == currentSegment) segment.journeyColor()
+                    else MaterialTheme.colorScheme.outlineVariant,
+                    MaterialTheme.shapes.small))
+            }
+        }
+        Text("현재 구간 ${uiState.currentSegmentIndex} / $totalSegmentCount", style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             Column(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(
@@ -529,8 +514,8 @@ private fun CurrentRouteSegmentCard(
                     IconBadge(
                         icon = currentSegment.segmentIcon(),
                         modifier = Modifier.size(38.dp),
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        containerColor = currentSegment.journeyColor().copy(alpha = 0.12f),
+                        contentColor = currentSegment.journeyColor(),
                     )
                     Column(
                         modifier = Modifier.weight(1f),
@@ -538,7 +523,7 @@ private fun CurrentRouteSegmentCard(
                     ) {
                         Text(
                             text = currentSegment.displayTitle(),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold,
                         )
@@ -546,32 +531,24 @@ private fun CurrentRouteSegmentCard(
                             text = listOfNotNull(
                                 currentSegment.startName?.takeIf(String::isNotBlank),
                                 currentSegment.endName?.takeIf(String::isNotBlank),
-                            ).joinToString(" -> ").ifBlank { "구간 정보 없음" },
+                            ).joinToString(" → ").ifBlank { "구간 정보 없음" },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(currentSegment.status.name) },
+                    Text(
+                        text = if (currentSegment.status == RouteSegmentStatus.IN_PROGRESS) "측정 중" else "시작 전",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
 
-                MetricRow(label = "노선", value = currentSegment.routeName ?: "-")
-                MetricRow(label = "예상 소요시간", value = "${currentSegment.plannedDurationMinutes}분")
-                MetricRow(
-                    label = "실제 소요시간",
-                    value = currentSegment.actualDurationMinutes?.let { "${it}분" } ?: "-",
-                )
+                Text("예상 ${currentSegment.plannedDurationMinutes}분", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (currentSegment.status == RouteSegmentStatus.IN_PROGRESS) {
-                    MetricRow(
-                        icon = MapMateIconType.Time,
-                        label = "측정 중",
-                        value = currentSegment.actualStartedAtEpochMillis
-                            ?.elapsedTimeText(nowEpochMillis)
-                            ?: "00:00",
-                        valueColor = MaterialTheme.colorScheme.primary,
-                    )
+                    Text(currentSegment.actualStartedAtEpochMillis?.elapsedTimeText(nowEpochMillis) ?: "00:00",
+                        fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface)
                 }
 
                 Button(
@@ -595,7 +572,7 @@ private fun CurrentRouteSegmentCard(
                             ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(46.dp),
+                        .heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.medium,
                 ) {
                     Text(
@@ -610,8 +587,6 @@ private fun CurrentRouteSegmentCard(
                     )
                 }
             }
-        }
-
         MetricRow(
             icon = MapMateIconType.Check,
             label = "완료된 구간",
@@ -653,9 +628,10 @@ private fun RouteSegment.segmentIcon(): MapMateIconType {
         -> MapMateIconType.Walk
         RouteSegmentType.WAIT_FOR_BUS,
         RouteSegmentType.BUS_RIDE,
+        -> MapMateIconType.Bus
         RouteSegmentType.WAIT_FOR_SUBWAY,
         RouteSegmentType.SUBWAY_RIDE,
-        -> MapMateIconType.Bus
+        -> MapMateIconType.Train
         RouteSegmentType.UNKNOWN -> MapMateIconType.Route
     }
 }
@@ -750,7 +726,7 @@ fun TrackingCompletionScreen(
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                     Text(
-                        text = "이번 기록은 다음 추천에 반영됩니다.",
+                        text = "저장된 내역은 기록 화면에서 확인할 수 있어요.",
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -880,7 +856,7 @@ private fun TrackingStage.subtitle(recommendedDepartureTimeText: String): String
         TrackingStage.Planned -> if (recommendedDepartureTimeText == "지금 출발") {
             "지금 출발을 권장해요."
         } else {
-            "${recommendedDepartureTimeText} 이후 출발을 권장해요."
+            "권장 출발 시각은 ${recommendedDepartureTimeText}입니다."
         }
         TrackingStage.Boarded -> "이동 중입니다. 도착하면 기록을 완료해 주세요."
         TrackingStage.Arrived -> "오늘 이동 기록 흐름을 완료했습니다."

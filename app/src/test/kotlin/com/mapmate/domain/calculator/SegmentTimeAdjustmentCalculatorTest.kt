@@ -10,6 +10,26 @@ import org.junit.Test
 class SegmentTimeAdjustmentCalculatorTest {
     private val calculator = SegmentTimeAdjustmentCalculator()
 
+    @Test fun calculate_excludesZeroMinuteButtonTestsForMultiMinuteSegments() {
+        val adjustments = calculator.calculate(1, listOf(segment(0, 0, 4000), segment(1, 13, 3000)), 5000)
+        assertEquals(1, adjustments.single().sampleCount)
+        assertEquals(3, adjustments.single().averageDelayMinutes)
+    }
+
+    @Test fun calculate_keepsGenuineSubMinuteShortWalkingSegments() {
+        val walk = segment(0, 0, 4000).copy(segmentType = RouteSegmentType.WALK_TO_DESTINATION, plannedDurationMinutes = 1)
+        val adjustment = calculator.calculate(1, listOf(walk), 5000).single()
+        assertEquals(-1, adjustment.averageDelayMinutes)
+        assertEquals(0, adjustment.averageActualDurationMinutes)
+    }
+
+    @Test fun calculate_rejectsNegativeAndOverflowingDurationsWithoutChangingGoodSamples() {
+        val adjustments = calculator.calculate(1, listOf(segment(0, -1, 5000),
+            segment(1, Int.MAX_VALUE, 4000), segment(2, 13, 3000)), 6000)
+        assertEquals(1, adjustments.single().sampleCount)
+        assertEquals(3, adjustments.single().averageDelayMinutes)
+    }
+
     @Test
     fun calculate_groupsByStableSegmentKeyIgnoringSegmentIndex() {
         val adjustments = calculator.calculate(

@@ -61,7 +61,7 @@ fun ScreenHeader(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            Text(
+            if (eyebrow.isNotBlank()) Text(
                 text = eyebrow,
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
@@ -73,7 +73,7 @@ fun ScreenHeader(
                 color = MaterialTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.ExtraBold,
             )
-            Text(
+            if (subtitle.isNotBlank()) Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -91,7 +91,17 @@ fun ScreenHeader(
 @Composable
 fun NotificationCircle(
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
+    if (onClick != null) {
+        IconCircleButton(
+            icon = MapMateIconType.Notifications,
+            contentDescription = "알림 설정",
+            onClick = onClick,
+            modifier = modifier,
+        )
+        return
+    }
     Surface(
         modifier = modifier.size(38.dp),
         shape = MaterialTheme.shapes.extraLarge,
@@ -281,8 +291,11 @@ fun IconCircleButton(
 ) {
     Surface(
         modifier = modifier
-            .size(36.dp)
-            .clickable(onClick = onClick),
+            .size(48.dp)
+            .clickable(
+                role = androidx.compose.ui.semantics.Role.Button,
+                onClick = onClick,
+            ),
         shape = MaterialTheme.shapes.extraLarge,
         color = containerColor,
     ) {
@@ -893,6 +906,7 @@ fun MetricRow(
     labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
+    val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.5f
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -906,19 +920,29 @@ fun MetricRow(
                 contentColor = MaterialTheme.colorScheme.primary,
             )
         }
-        Text(
-            text = label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = labelColor,
-        )
-        if (value.isNotBlank()) {
+        if (stacked) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = labelColor)
+                if (value.isNotBlank()) Text(value, style = MaterialTheme.typography.titleSmall,
+                    color = valueColor, fontWeight = FontWeight.ExtraBold)
+            }
+        } else {
             Text(
-                text = value,
-                style = MaterialTheme.typography.titleSmall,
-                color = valueColor,
-                fontWeight = FontWeight.ExtraBold,
+                text = label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = labelColor,
             )
+            if (value.isNotBlank()) {
+                Text(
+                    text = value,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = valueColor,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
         }
     }
 }

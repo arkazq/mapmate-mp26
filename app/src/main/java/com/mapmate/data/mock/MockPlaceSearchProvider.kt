@@ -38,8 +38,6 @@ class MockPlaceSearchProvider : PlaceSearchProvider {
         return candidates.filter { destination ->
             destination.name.contains(normalizedQuery, ignoreCase = true) ||
                 destination.address.contains(normalizedQuery, ignoreCase = true)
-        }.ifEmpty {
-            candidates
         }
     }
 }

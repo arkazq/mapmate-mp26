@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,18 @@ import com.mapmate.presentation.common.SectionCard
 import com.mapmate.presentation.common.toKoreanDescription
 import com.mapmate.presentation.common.toKoreanLabel
 import com.mapmate.presentation.common.toKoreanShortLabel
+
+@Composable
+internal fun PlaceSearchStatus(isSearching: Boolean, errorMessage: String?, isEmpty: Boolean) {
+    when {
+        isSearching -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            Text("검색 중", style = MaterialTheme.typography.bodySmall)
+        }
+        errorMessage != null -> Text(errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        isEmpty -> Text("검색 결과가 없습니다", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    }
+}
 
 @Composable
 fun SectionBlock(

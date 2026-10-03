@@ -2,6 +2,7 @@ package com.mapmate.presentation.common
 
 import androidx.annotation.DrawableRes
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,6 +21,7 @@ enum class MapMateIconType(
     Back(R.drawable.ic_mapmate_arrow_back),
     Time(R.drawable.ic_mapmate_schedule),
     Bus(R.drawable.ic_mapmate_bus),
+    Train(R.drawable.ic_mapmate_train),
     Walk(R.drawable.ic_mapmate_walk),
     Car(R.drawable.ic_mapmate_car),
     Person(R.drawable.ic_mapmate_person),
@@ -41,7 +43,7 @@ fun MapMateIcon(
     icon: MapMateIconType,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    tint: Color = Color.Unspecified,
+    tint: Color = LocalContentColor.current,
 ) {
     Icon(
         painter = painterResource(id = icon.drawableRes),

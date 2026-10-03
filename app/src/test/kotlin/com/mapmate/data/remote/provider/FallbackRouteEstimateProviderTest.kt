@@ -9,8 +9,32 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.CancellationException
 
 class FallbackRouteEstimateProviderTest {
+    @Test fun failureMessageUsesUserFacingTextInsteadOfImplementationClassNames() = runTest {
+        val provider = FallbackRouteEstimateProvider(listOf(FailingRouteEstimateProvider),
+            FixedRouteEstimateProvider(RouteEstimate(42, "기본 예상", "Mock", "")))
+        val result = provider.getRouteEstimate(testOrigin, testDestination, TransportMode.TRANSIT)
+        assertEquals("경로 정보를 확인하지 못해 기본 예상 시간을 사용했습니다. 네트워크 연결을 확인한 뒤 다시 조회해 주세요.", result.statusMessage)
+    }
+
+    @Test(expected = CancellationException::class)
+    fun cancellationDoesNotTryAnotherRouteProvider() = runTest {
+        val provider = FallbackRouteEstimateProvider(
+            primaryProviders = listOf(object : RouteEstimateProvider {
+                override suspend fun getRouteEstimate(
+                    origin: Destination, destination: Destination, transportMode: TransportMode,
+                    routineId: Long?, scheduledDepartureEpochMillis: Long?, targetArrivalEpochMillis: Long?,
+                ): RouteEstimate {
+                    throw CancellationException("Screen was closed.")
+                }
+            }),
+            fallback = FailingRouteEstimateProvider,
+        )
+        provider.getRouteEstimate(testOrigin, testDestination, TransportMode.TRANSIT)
+    }
+
     @Test
     fun getRouteEstimate_returnsFirstSuccessfulPrimary() = runTest {
         val primaryEstimate = RouteEstimate(
@@ -63,7 +87,7 @@ class FallbackRouteEstimateProviderTest {
         assertEquals(fallbackEstimate.providerName, result.providerName)
         assertTrue(result.isFallbackEstimate)
         assertTrue(result.statusMessage.orEmpty().contains("기본 예상 시간"))
-        assertTrue(result.statusMessage.orEmpty().contains("Failing"))
+        assertTrue(result.statusMessage.orEmpty().contains("네트워크 연결"))
     }
 
     private object FailingRouteEstimateProvider : RouteEstimateProvider {

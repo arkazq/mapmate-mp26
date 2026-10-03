@@ -4,8 +4,11 @@ package com.mapmate.presentation.common
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -20,6 +23,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,7 +46,7 @@ fun DayOfWeekSelector(
             val isSelected = repeatDay in selectedRepeatDays
             Surface(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(48.dp)
                     .clip(MaterialTheme.shapes.extraLarge)
                     .clickable { onRepeatDayToggled(repeatDay) },
                 shape = MaterialTheme.shapes.extraLarge,
@@ -82,69 +87,65 @@ fun TransportModeSelector(
     onTransportModeSelected: (TransportMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TransportMode.entries.forEach { transportMode ->
-            val isSelected = transportMode == selectedTransportMode
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 76.dp)
-                    .clip(MaterialTheme.shapes.medium)
-                    .clickable { onTransportModeSelected(transportMode) },
-                shape = MaterialTheme.shapes.medium,
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.secondaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surface
-                },
-                border = BorderStroke(
-                    width = if (isSelected) 2.dp else 1.dp,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant
-                    },
-                ),
-                ) {
-                Box {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        MapMateIcon(
-                            icon = transportModeIcon(transportMode),
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                        Text(
-                            text = transportMode.toKoreanLabel(),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = transportMode.toKoreanDescription(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    SelectionDot(
-                        isSelected = isSelected,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(7.dp),
-                    )
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val stacked = LocalDensity.current.fontScale >= 1.5f || maxWidth < 300.dp
+        if (stacked) {
+            Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TransportMode.entries.forEach { mode ->
+                    TransportModeOption(mode, mode == selectedTransportMode, true,
+                        { onTransportModeSelected(mode) }, Modifier.fillMaxWidth())
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TransportMode.entries.forEach { mode ->
+                    TransportModeOption(mode, mode == selectedTransportMode, false,
+                        { onTransportModeSelected(mode) }, Modifier.weight(1f))
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TransportModeOption(mode: TransportMode, selected: Boolean, stacked: Boolean,
+    onClick: () -> Unit, modifier: Modifier) {
+    Surface(
+        modifier = modifier.heightIn(min = 76.dp).clip(MaterialTheme.shapes.medium)
+            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        if (stacked) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MapMateIcon(transportModeIcon(mode), null, Modifier.size(24.dp), MaterialTheme.colorScheme.primary)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    TransportModeLabels(mode)
+                }
+                SelectionDot(selected)
+            }
+        } else {
+            Box {
+                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    MapMateIcon(transportModeIcon(mode), null, Modifier.size(22.dp), MaterialTheme.colorScheme.primary)
+                    TransportModeLabels(mode)
+                }
+                SelectionDot(selected, Modifier.align(Alignment.TopEnd).padding(7.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransportModeLabels(mode: TransportMode) {
+    Text(mode.toKoreanLabel(), style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+    Text(mode.toKoreanDescription(), style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable

@@ -4,6 +4,7 @@ import com.mapmate.domain.model.Destination
 import com.mapmate.domain.model.RouteEstimate
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.util.runCatchingCancellable
 import com.mapmate.domain.repository.RouteEstimateCacheRepository
 
 class CachingRouteEstimateProvider(
@@ -21,9 +22,9 @@ class CachingRouteEstimateProvider(
         targetArrivalEpochMillis: Long?,
     ): RouteEstimate {
         val now = nowProvider()
-        cacheRepository.deleteExpired(now)
+        runCatchingCancellable { cacheRepository.deleteExpired(now) }
 
-        return runCatching {
+        return runCatchingCancellable {
             primary.getRouteEstimate(
                 origin = origin,
                 destination = destination,
@@ -34,7 +35,7 @@ class CachingRouteEstimateProvider(
             )
         }.onSuccess { estimate ->
             if (!estimate.isFallbackEstimate && !estimate.hasRealtimeAdjustment) {
-                cacheRepository.saveEstimate(
+                runCatchingCancellable { cacheRepository.saveEstimate(
                     cacheNamespace = cacheNamespace,
                     origin = origin,
                     destination = destination,
@@ -42,16 +43,16 @@ class CachingRouteEstimateProvider(
                     routeEstimate = estimate,
                     capturedAtEpochMillis = now,
                     expiresAtEpochMillis = now + CACHE_TTL_MILLIS,
-                )
+                ) }
             }
         }.getOrElse { error ->
-            cacheRepository.findFreshEstimate(
+            runCatchingCancellable { cacheRepository.findFreshEstimate(
                 cacheNamespace = cacheNamespace,
                 origin = origin,
                 destination = destination,
                 transportMode = transportMode,
                 nowEpochMillis = now,
-            )?.copy(
+            ) }.getOrNull()?.copy(
                 isFallbackEstimate = true,
                 statusMessage = "실제 경로 API를 사용할 수 없어 최근 성공한 경로 예상 시간을 사용했습니다.",
                 reason = "최근 성공한 ${cacheNamespace} 경로 예상값을 재사용했습니다. 원래 실패 사유: ${error.toStatusReason()}",

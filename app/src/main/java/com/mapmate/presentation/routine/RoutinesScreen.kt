@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,11 +18,22 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,33 +42,53 @@ import com.mapmate.domain.model.RepeatDay
 import com.mapmate.domain.model.Routine
 import com.mapmate.domain.model.TransportMode
 import com.mapmate.domain.provider.RouteEstimateProvider
+import com.mapmate.domain.provider.ScheduledRouteProvider
 import com.mapmate.domain.repository.RoutineRepository
+import com.mapmate.domain.repository.CommuteRecordRepository
+import com.mapmate.domain.repository.TrackingSessionStore
 import com.mapmate.presentation.common.EmptyStateCard
 import com.mapmate.presentation.common.MapMateIcon
 import com.mapmate.presentation.common.MapMateIconType
 import com.mapmate.presentation.common.MapMateSpacing
-import com.mapmate.presentation.common.RoutineCard
+import com.mapmate.presentation.common.RoutineRecommendationUiModel
+import com.mapmate.presentation.common.IconCircleButton
+import com.mapmate.presentation.common.ScreenLifecycleEffect
+import com.mapmate.presentation.common.toKoreanShortLabel
 import com.mapmate.presentation.common.ScreenHeader
+import com.mapmate.presentation.common.RouteEndpoints
+import com.mapmate.presentation.common.IconBadge
+import com.mapmate.presentation.common.transportModeIcon
 import com.mapmate.presentation.common.toFallbackRecommendationUiModel
 import com.mapmate.ui.theme.MapMateTheme
 import java.time.LocalTime
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun RoutinesRoute(
     contentPadding: PaddingValues,
     routineRepository: RoutineRepository,
     routeEstimateProvider: RouteEstimateProvider,
+    commuteRecordRepository: CommuteRecordRepository,
+    trackingSessionStore: TrackingSessionStore,
     onRegisterRoutineClick: () -> Unit,
     onEditRoutineClick: (Routine) -> Unit,
     onPredictionClick: (Routine) -> Unit,
+    scheduledRouteProvider: ScheduledRouteProvider? = null,
 ) {
     val viewModel: RoutinesViewModel = viewModel(
         factory = RoutinesViewModel.factory(
             routineRepository = routineRepository,
             routeEstimateProvider = routeEstimateProvider,
+            commuteRecordRepository = commuteRecordRepository,
+            trackingSessionStore = trackingSessionStore,
+            scheduledRouteProvider = scheduledRouteProvider,
         ),
     )
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    ScreenLifecycleEffect(viewModel::setActive)
 
     RoutinesScreen(
         uiState = uiState,
@@ -65,6 +97,7 @@ fun RoutinesRoute(
         onDeleteRoutineClick = viewModel::deleteRoutine,
         onPredictionClick = onPredictionClick,
         modifier = Modifier.padding(contentPadding),
+        onRefresh = viewModel::refresh,
     )
 }
 
@@ -76,7 +109,18 @@ fun RoutinesScreen(
     onDeleteRoutineClick: (Routine) -> Unit,
     onPredictionClick: (Routine) -> Unit,
     modifier: Modifier = Modifier,
+    onRefresh: () -> Unit = {},
 ) {
+    var routineToDelete by remember { mutableStateOf<Routine?>(null) }
+    routineToDelete?.let { routine ->
+        AlertDialog(
+            onDismissRequest = { routineToDelete = null },
+            title = { Text("${routine.name} 루틴을 삭제할까요?") },
+            text = { Text("출발 알림과 진행 중인 측정은 취소됩니다. 저장된 이동 기록은 유지됩니다.") },
+            confirmButton = { TextButton(onClick = { routineToDelete = null; onDeleteRoutineClick(routine) }) { Text("삭제") } },
+            dismissButton = { TextButton(onClick = { routineToDelete = null }) { Text("취소") } },
+        )
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -88,7 +132,8 @@ fun RoutinesScreen(
         item {
             ScreenHeader(
                 title = "내 루틴",
-                subtitle = "출발 루틴을 관리하고 추천 시간을 확인하세요.",
+                subtitle = "저장한 이동 ${uiState.recommendations.size}개",
+                eyebrow = "",
                 trailingContent = {
                     AddRoutineButton(onClick = onRegisterRoutineClick)
                 },
@@ -102,6 +147,7 @@ fun RoutinesScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
+                TextButton(onClick = onRefresh) { Text("다시 시도") }
             }
         }
 
@@ -113,10 +159,6 @@ fun RoutinesScreen(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-        }
-
-        item {
-            RoutineStatusTabs()
         }
 
         when {
@@ -138,11 +180,11 @@ fun RoutinesScreen(
                     items = uiState.recommendations,
                     key = { it.routine.id ?: it.routine.name },
                 ) { recommendation ->
-                    RoutineCard(
+                    RoutineListItem(
                         recommendation = recommendation,
                         isDeleting = recommendation.routine.id == uiState.deletingRoutineId,
                         onEditClick = { onEditRoutineClick(recommendation.routine) },
-                        onDeleteClick = { onDeleteRoutineClick(recommendation.routine) },
+                        onDeleteClick = { routineToDelete = recommendation.routine },
                         onDetailClick = { onPredictionClick(recommendation.routine) },
                     )
                 }
@@ -170,69 +212,50 @@ fun RoutinesScreen(
 private fun AddRoutineButton(
     onClick: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier
-            .size(40.dp)
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.primary,
-        shadowElevation = 1.dp,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            MapMateIcon(
-                icon = MapMateIconType.Add,
-                contentDescription = "루틴 추가",
-                modifier = Modifier.size(22.dp),
-                tint = MaterialTheme.colorScheme.onPrimary,
-            )
-        }
-    }
+    IconCircleButton(MapMateIconType.Add, "루틴 추가", onClick)
 }
 
 @Composable
-private fun RoutineStatusTabs() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        RoutineTab(
-            text = "활성 루틴",
-            selected = true,
-            modifier = Modifier.weight(1f),
-        )
-        RoutineTab(
-            text = "비활성 루틴",
-            selected = false,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun RoutineTab(
-    text: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
+private fun RoutineListItem(
+    recommendation: RoutineRecommendationUiModel,
+    isDeleting: Boolean,
+    onEditClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onDetailClick: () -> Unit,
 ) {
-    Surface(
-        modifier = modifier.height(36.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = if (selected) {
-            MaterialTheme.colorScheme.secondaryContainer
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
+    val routine = recommendation.routine
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                IconBadge(transportModeIcon(routine.transportMode))
+                Text(routine.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onEditClick, enabled = !isDeleting) {
+                    MapMateIcon(MapMateIconType.Edit, "${routine.name} 수정")
+                }
+            }
+            RouteEndpoints(routine, Modifier.clickable(enabled = !isDeleting, onClick = onDetailClick))
+            Text("${recommendation.targetArrivalTimeText} 도착 · ${routine.repeatDays.sortedBy { it.ordinal }.joinToString(" ") { it.toKoreanShortLabel() }}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val departure = recommendation.recommendedDepartureAtEpochMillis?.let {
+                Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault())
+                    .format(DateTimeFormatter.ofPattern("M/d(E) HH:mm", Locale.KOREAN))
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (routine.repeatDays.isEmpty()) "반복 요일 없음" else "다음 출발 ${departure ?: "계산 중"}",
+                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDetailClick, enabled = !isDeleting) {
+                    MapMateIcon(MapMateIconType.Route, "${routine.name} 상세 경로")
+                }
+                IconButton(onClick = onDeleteClick, enabled = !isDeleting) {
+                    MapMateIcon(MapMateIconType.Delete, "${routine.name} 삭제")
+                }
+            }
         }
     }
 }

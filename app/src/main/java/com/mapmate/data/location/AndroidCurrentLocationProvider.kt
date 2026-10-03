@@ -9,17 +9,21 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.os.CancellationSignal
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.mapmate.domain.model.Destination
 import com.mapmate.domain.provider.CurrentLocationProvider
 import com.mapmate.domain.provider.ReverseGeocodingProvider
+import com.mapmate.domain.util.runCatchingCancellable
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AndroidCurrentLocationProvider(
     context: Context,
     private val reverseGeocodingProvider: ReverseGeocodingProvider? = null,
+    private val nowElapsedRealtimeNanos: () -> Long = SystemClock::elapsedRealtimeNanos,
 ) : CurrentLocationProvider {
     private val applicationContext = context.applicationContext
     private val locationManager = applicationContext.getSystemService(LocationManager::class.java)
@@ -30,7 +34,7 @@ class AndroidCurrentLocationProvider(
         }
 
         val location = getFreshLocationOrLastKnown()
-        val resolvedAddress = runCatching {
+        val resolvedAddress = runCatchingCancellable {
             reverseGeocodingProvider?.getAddress(
                 latitude = location.latitude,
                 longitude = location.longitude,
@@ -38,7 +42,7 @@ class AndroidCurrentLocationProvider(
         }.getOrNull()?.trim()?.takeIf(String::isNotBlank)
 
         return Destination(
-            name = "현재 위치",
+            name = if (location.accuracy > 100f) "대략적인 현재 위치" else "현재 위치",
             address = resolvedAddress ?: "휴대폰 위치 기반 출발지",
             latitude = location.latitude,
             longitude = location.longitude,
@@ -60,9 +64,9 @@ class AndroidCurrentLocationProvider(
 
     @SuppressLint("MissingPermission")
     private suspend fun getFreshLocationOrLastKnown(): Location {
-        return runCatching {
-            requestCurrentLocation()
-        }.getOrNull()
+        return runCatchingCancellable {
+            withTimeoutOrNull(10_000L) { requestCurrentLocation() }
+        }.getOrNull()?.takeIf { it.isUsable() }
             ?: getBestLastKnownLocation()
             ?: error("Current location is unavailable.")
     }
@@ -119,8 +123,12 @@ class AndroidCurrentLocationProvider(
             runCatching {
                 locationManager.getLastKnownLocation(provider)
             }.getOrNull()
-        }.maxByOrNull { it.time }
+        }.filter { it.isUsable() }.maxByOrNull { it.elapsedRealtimeNanos }
     }
+
+    private fun Location.isUsable() = isUsableLocationFix(
+        latitude, longitude, accuracy.takeIf { hasAccuracy() }, elapsedRealtimeNanos, nowElapsedRealtimeNanos(),
+    )
 
     private fun bestEnabledProvider(): String? {
         return when {

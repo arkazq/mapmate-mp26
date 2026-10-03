@@ -16,6 +16,10 @@ data class TrackingUiState(
     val completedRecord: CommuteRecord? = null,
     val adjustedPersonalBufferMinutes: Int? = null,
     val routeSegments: List<RouteSegment> = emptyList(),
+    val isSavingSession: Boolean = false,
+    val isRestoredSession: Boolean = false,
+    val isLoadError: Boolean = false,
+    val canRecord: Boolean = true,
 ) {
     val isCompleted: Boolean
         get() = completedRecord != null

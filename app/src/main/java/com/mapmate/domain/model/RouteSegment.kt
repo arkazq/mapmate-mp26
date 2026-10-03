@@ -1,5 +1,8 @@
 package com.mapmate.domain.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class RouteSegment(
     val id: Long? = null,
     val commuteRecordId: Long? = null,

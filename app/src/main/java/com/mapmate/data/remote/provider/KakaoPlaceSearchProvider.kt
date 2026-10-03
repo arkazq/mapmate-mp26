@@ -3,6 +3,7 @@ package com.mapmate.data.remote.provider
 import com.mapmate.data.remote.api.KakaoLocalApi
 import com.mapmate.data.remote.config.RemoteApiConfig
 import com.mapmate.domain.model.Destination
+import com.mapmate.domain.model.hasValidCoordinates
 import com.mapmate.domain.provider.PlaceSearchProvider
 
 class KakaoPlaceSearchProvider(
@@ -31,7 +32,7 @@ class KakaoPlaceSearchProvider(
                     address = address,
                     latitude = latitude,
                     longitude = longitude,
-                )
+                ).takeIf { it.hasValidCoordinates() }
             }
         }
     }

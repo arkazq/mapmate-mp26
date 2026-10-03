@@ -13,6 +13,20 @@ import org.junit.Test
 
 class CachingRouteEstimateProviderTest {
     @Test
+    fun successfulRouteIsReturnedEvenWhenCacheCleanupAndPersistenceFail() = runTest {
+        val failingCache = object : RouteEstimateCacheRepository {
+            override suspend fun deleteExpired(nowEpochMillis: Long) = error("cache cleanup failed")
+            override suspend fun saveEstimate(cacheNamespace: String, origin: Destination, destination: Destination,
+                transportMode: TransportMode, routeEstimate: RouteEstimate, capturedAtEpochMillis: Long,
+                expiresAtEpochMillis: Long) = error("cache write failed")
+            override suspend fun findFreshEstimate(cacheNamespace: String, origin: Destination, destination: Destination,
+                transportMode: TransportMode, nowEpochMillis: Long): RouteEstimate? = null
+        }
+        val provider = CachingRouteEstimateProvider("Primary", FixedRouteEstimateProvider(primaryEstimate), failingCache)
+        assertEquals(primaryEstimate, provider.getRouteEstimate(testOrigin, testDestination, TransportMode.TRANSIT))
+    }
+
+    @Test
     fun getRouteEstimate_savesSuccessfulPrimaryEstimate() = runTest {
         val cacheRepository = InMemoryRouteEstimateCacheRepository()
         val provider = CachingRouteEstimateProvider(

@@ -10,6 +10,8 @@ import androidx.work.WorkManager
 import com.mapmate.domain.alarm.DepartureAlarmSchedule
 import com.mapmate.domain.alarm.DepartureRecheckScheduler
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executor
+import androidx.work.WorkInfo
 
 class AndroidDepartureRecheckScheduler(
     context: Context,
@@ -21,10 +23,12 @@ class AndroidDepartureRecheckScheduler(
         schedule: DepartureAlarmSchedule,
         replaceExisting: Boolean,
     ) {
+        currentScheduleTag = scheduleTag(schedule)
         // A running recheck worker also calls schedule(); broad tag cancellation would stop itself.
         if (replaceExisting) {
             cancel()
         }
+        cancelObsoletePendingWork(schedule)
         val now = nowEpochMillis()
 
         departureRecheckOffsetsFor(schedule.routeDurationMinutes).forEach { offsetMinutes ->
@@ -38,6 +42,7 @@ class AndroidDepartureRecheckScheduler(
                 .setInputData(schedule.toInputData())
                 .addTag(WORK_TAG)
                 .addTag(routineTag(schedule.routineId))
+                .addTag(scheduleTag(schedule))
                 .build()
 
             workManager.enqueueUniqueWork(
@@ -52,8 +57,23 @@ class AndroidDepartureRecheckScheduler(
     }
 
     override fun cancel() {
+        workManager.cancelUniqueWork(WORK_TAG)
         workManager.cancelAllWorkByTag(WORK_TAG)
     }
+
+    private fun cancelObsoletePendingWork(schedule: DepartureAlarmSchedule) {
+        val future = workManager.getWorkInfosByTag(WORK_TAG)
+        future.addListener({
+            if (currentScheduleTag != scheduleTag(schedule)) return@addListener
+            runCatching { future.get() }.getOrNull()?.filter { info ->
+                info.state in setOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED) &&
+                    scheduleTag(schedule) !in info.tags
+            }?.forEach { workManager.cancelWorkById(it.id) }
+        }, Executor { it.run() })
+    }
+
+    private fun scheduleTag(schedule: DepartureAlarmSchedule): String =
+        "departure_schedule_${schedule.routineId}_${schedule.triggerAtEpochMillis}_${schedule.targetArrivalAtEpochMillis}_${schedule.routeDurationMinutes}"
 
     private val networkConstraints: Constraints
         get() = Constraints.Builder()
@@ -89,6 +109,7 @@ class AndroidDepartureRecheckScheduler(
     }
 
     companion object {
+        @Volatile private var currentScheduleTag: String? = null
         const val WORK_TAG = "departure_route_recheck"
         const val MIN_RECHECK_DELAY_MINUTES = 1L
         private const val MILLIS_PER_MINUTE = 60 * 1000L

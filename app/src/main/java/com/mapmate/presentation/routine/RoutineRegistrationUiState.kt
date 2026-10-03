@@ -13,9 +13,13 @@ data class RoutineRegistrationUiState(
     val originQuery: String = "",
     val selectedOrigin: Destination? = null,
     val originCandidates: List<Destination> = emptyList(),
+    val isSearchingOrigin: Boolean = false,
+    val originSearchError: String? = null,
     val destinationQuery: String = "",
     val selectedDestination: Destination? = null,
     val destinationCandidates: List<Destination> = emptyList(),
+    val isSearchingDestination: Boolean = false,
+    val destinationSearchError: String? = null,
     val targetArrivalTimeText: String = "09:00",
     val selectedRepeatDays: Set<RepeatDay> = setOf(
         RepeatDay.MONDAY,
@@ -38,6 +42,7 @@ data class RoutineRegistrationUiState(
     val isSaving: Boolean = false,
     val isSaveEnabled: Boolean = false,
     val isSaveCompleted: Boolean = false,
+    val hasUnsavedChanges: Boolean = false,
 ) {
     val isEditing: Boolean
         get() = editingRoutineId != null

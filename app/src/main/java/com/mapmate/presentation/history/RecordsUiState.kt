@@ -9,6 +9,7 @@ data class RecordsUiState(
     val selectedRoutineId: Long? = null,
     val isLoading: Boolean = true,
     val stats: RecordsStats = RecordsStats(),
+    val errorMessage: String? = null,
 ) {
     val filteredRecords: List<CommuteRecord>
         get() = selectedRoutineId?.let { routineId ->
@@ -83,6 +84,7 @@ data class RecordsStats(
                 .maxByOrNull { (_, count) -> count }
                 ?.key
             val recentAverageDeltaMinutes = records
+                .sortedByDescending { it.arrivedAtEpochMillis }
                 .take(5)
                 .map { it.arrivalDeltaMinutes }
                 .average()

@@ -1,14 +1,11 @@
 package com.mapmate.data.alarm
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import com.mapmate.MainActivity
 import com.mapmate.R
 
@@ -48,9 +45,7 @@ class DepartureAlarmNotificationPublisher(
     }
 
     private fun canPostNotifications(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            applicationContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
+        return AndroidAlarmAccess.read(applicationContext).canPostDeparture
     }
 
     private fun ensureNotificationChannel() {
@@ -80,11 +75,11 @@ class DepartureAlarmNotificationPublisher(
         return (this % Int.MAX_VALUE).toInt().takeIf { it > 0 } ?: DEFAULT_NOTIFICATION_ID
     }
 
-    private companion object {
-        const val CHANNEL_ID = "departure_alarm"
-        const val CHANNEL_NAME = "출발 알림"
-        const val CHANNEL_DESCRIPTION = "저장된 루틴의 권장 출발 시각 알림"
-        const val CONTENT_REQUEST_CODE = 1002
-        const val DEFAULT_NOTIFICATION_ID = 1003
+    companion object {
+        internal const val CHANNEL_ID = "departure_alarm"
+        private const val CHANNEL_NAME = "출발 알림"
+        private const val CHANNEL_DESCRIPTION = "저장된 루틴의 권장 출발 시각 알림"
+        private const val CONTENT_REQUEST_CODE = 1002
+        private const val DEFAULT_NOTIFICATION_ID = 1003
     }
 }

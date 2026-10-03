@@ -6,12 +6,12 @@ import android.content.Intent
 import com.mapmate.di.AppContainer
 import com.mapmate.domain.alarm.DepartureAlarmSchedule
 import java.time.LocalTime
-import java.time.ZoneId
-import java.time.ZonedDateTime
+import com.mapmate.domain.util.runCatchingCancellable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class DepartureAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -20,10 +20,15 @@ class DepartureAlarmReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                publishNotification(context, intent)
-                AppContainer(context).departureAlarmCoordinator.rescheduleAfterAlarmFired(
-                    firedSchedule = intent.toDepartureAlarmScheduleOrNull(),
-                )
+                withTimeoutOrNull(8_000L) {
+                    runCatchingCancellable {
+                        val schedule = intent.toDepartureAlarmScheduleOrNull() ?: return@runCatchingCancellable
+                        AppContainer.getInstance(context).departureAlarmCoordinator.publishCurrentAlarm(schedule) {
+                            publishNotification(context, it)
+                        }
+                    }
+                }
+                DepartureRecheckWorker.enqueueReschedule(context)
             } finally {
                 pendingResult.finish()
             }
@@ -32,23 +37,15 @@ class DepartureAlarmReceiver : BroadcastReceiver() {
 
     private fun publishNotification(
         context: Context,
-        intent: Intent,
+        schedule: DepartureAlarmSchedule,
     ) {
-        val routineName = intent.getStringExtra(EXTRA_ROUTINE_NAME) ?: return
-        val destinationName = intent.getStringExtra(EXTRA_DESTINATION_NAME) ?: return
-        val recommendedDepartureTime = intent.getStringExtra(EXTRA_RECOMMENDED_DEPARTURE_TIME) ?: return
-        val targetArrivalTime = intent.getStringExtra(EXTRA_TARGET_ARRIVAL_TIME) ?: return
-        val routineId = intent.getLongExtra(EXTRA_ROUTINE_ID, DEFAULT_ROUTINE_ID)
-        val routeDurationMinutes = intent.getIntExtra(EXTRA_ROUTE_DURATION_MINUTES, 0)
-
-        AndroidPredepartureStatusNotificationPublisher(context).cancel(routineId)
         DepartureAlarmNotificationPublisher(context).show(
-            routineId = routineId,
-            routineName = routineName,
-            destinationName = destinationName,
-            recommendedDepartureTime = recommendedDepartureTime,
-            targetArrivalTime = targetArrivalTime,
-            routeDurationMinutes = routeDurationMinutes,
+            routineId = schedule.routineId,
+            routineName = schedule.routineName,
+            destinationName = schedule.destinationName,
+            recommendedDepartureTime = schedule.recommendedDepartureTime.toString(),
+            targetArrivalTime = schedule.targetArrivalTime.toString(),
+            routeDurationMinutes = schedule.routeDurationMinutes,
         )
     }
 
@@ -65,10 +62,10 @@ class DepartureAlarmReceiver : BroadcastReceiver() {
             ?: return null
         val targetArrivalAtEpochMillis = getLongExtra(EXTRA_TARGET_ARRIVAL_AT_EPOCH_MILLIS, MISSING_LONG)
             .takeIf { it != MISSING_LONG }
-            ?: inferTargetArrivalAtEpochMillis(
-                targetArrivalTime = targetArrivalTime,
-                recommendedDepartureTime = recommendedDepartureTime,
-            )
+            ?: return null
+        val triggerAtEpochMillis = getLongExtra(EXTRA_TRIGGER_AT_EPOCH_MILLIS, MISSING_LONG)
+            .takeIf { it != MISSING_LONG }
+            ?: return null
 
         return DepartureAlarmSchedule(
             routineId = routineId,
@@ -77,32 +74,13 @@ class DepartureAlarmReceiver : BroadcastReceiver() {
             targetArrivalTime = targetArrivalTime,
             recommendedDepartureTime = recommendedDepartureTime,
             routeDurationMinutes = routeDurationMinutes,
-            triggerAtEpochMillis = System.currentTimeMillis(),
+            triggerAtEpochMillis = triggerAtEpochMillis,
             targetArrivalAtEpochMillis = targetArrivalAtEpochMillis,
         )
     }
 
     private fun String.toLocalTimeOrNull(): LocalTime? {
         return runCatching { LocalTime.parse(this) }.getOrNull()
-    }
-
-    private fun inferTargetArrivalAtEpochMillis(
-        targetArrivalTime: LocalTime,
-        recommendedDepartureTime: LocalTime,
-    ): Long {
-        val now = ZonedDateTime.now(ZoneId.systemDefault())
-        val arrivalDate = if (
-            recommendedDepartureTime > targetArrivalTime &&
-            now.toLocalTime() >= recommendedDepartureTime
-        ) {
-            now.toLocalDate().plusDays(1)
-        } else {
-            now.toLocalDate()
-        }
-        return arrivalDate.atTime(targetArrivalTime)
-            .atZone(now.zone)
-            .toInstant()
-            .toEpochMilli()
     }
 
     companion object {
@@ -114,8 +92,8 @@ class DepartureAlarmReceiver : BroadcastReceiver() {
         const val EXTRA_TARGET_ARRIVAL_TIME = "target_arrival_time"
         const val EXTRA_ROUTE_DURATION_MINUTES = "route_duration_minutes"
         const val EXTRA_TARGET_ARRIVAL_AT_EPOCH_MILLIS = "target_arrival_at_epoch_millis"
+        const val EXTRA_TRIGGER_AT_EPOCH_MILLIS = "trigger_at_epoch_millis"
 
-        private const val DEFAULT_ROUTINE_ID = 0L
         private const val MISSING_LONG = Long.MIN_VALUE
         private const val MISSING_INT = Int.MIN_VALUE
     }

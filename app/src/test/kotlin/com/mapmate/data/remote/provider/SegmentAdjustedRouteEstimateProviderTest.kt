@@ -10,9 +10,58 @@ import com.mapmate.domain.provider.RouteEstimateProvider
 import com.mapmate.domain.repository.SegmentTimeAdjustmentRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import kotlinx.coroutines.CancellationException
 import org.junit.Test
 
 class SegmentAdjustedRouteEstimateProviderTest {
+    @Test fun adjustmentReadFailureKeepsSuccessfulRouteAndCancellationStillPropagates() = runTest {
+        val base = RouteEstimate(30, "route", "test", "base", segments = listOf(busSegment()))
+        val failed = object : SegmentTimeAdjustmentRepository {
+            override suspend fun replaceAdjustmentsForRoutine(routineId: Long, adjustments: List<SegmentTimeAdjustment>) = Unit
+            override suspend fun getAdjustmentsForRoutine(routineId: Long): List<SegmentTimeAdjustment> = error("storage unavailable")
+        }
+        val provider = SegmentAdjustedRouteEstimateProvider(FixedRouteEstimateProvider(base), failed)
+        assertSame(base, provider.getRouteEstimate(destination, destination, TransportMode.TRANSIT, 1))
+        val cancelled = object : SegmentTimeAdjustmentRepository {
+            override suspend fun replaceAdjustmentsForRoutine(routineId: Long, adjustments: List<SegmentTimeAdjustment>) = Unit
+            override suspend fun getAdjustmentsForRoutine(routineId: Long): List<SegmentTimeAdjustment> = throw CancellationException("cancelled")
+        }
+        val outcome = runCatching {
+            SegmentAdjustedRouteEstimateProvider(FixedRouteEstimateProvider(base), cancelled)
+                .getRouteEstimate(destination, destination, TransportMode.TRANSIT, 1)
+        }
+        assertTrue(outcome.exceptionOrNull() is CancellationException)
+    }
+
+    @Test fun malformedConfidenceAndImpossibleNegativeSegmentDurationAreHandledConservatively() = runTest {
+        val base = RouteEstimate(30, "route", "test", "base", segments = listOf(busSegment()))
+        fun adjustment(confidence: Double, delay: Int) = SegmentTimeAdjustment(routineId = 1,
+            segmentType = RouteSegmentType.BUS_RIDE, routeName = "753", startName = "start", endName = "end",
+            averageDelayMinutes = delay, averageActualDurationMinutes = 1, minActualDurationMinutes = 1,
+            maxActualDurationMinutes = 1, sampleCount = 3, confidence = confidence, updatedAtEpochMillis = 1000)
+        for (confidence in listOf(Double.NaN, Double.POSITIVE_INFINITY, -1.0, 1.1)) {
+            val provider = SegmentAdjustedRouteEstimateProvider(FixedRouteEstimateProvider(base),
+                FixedSegmentTimeAdjustmentRepository(listOf(adjustment(confidence, 4))))
+            assertSame(base, provider.getRouteEstimate(destination, destination, TransportMode.TRANSIT, 1))
+        }
+        val bounded = SegmentAdjustedRouteEstimateProvider(FixedRouteEstimateProvider(base),
+            FixedSegmentTimeAdjustmentRepository(listOf(adjustment(1.0, -40))))
+        assertEquals(20, bounded.getRouteEstimate(destination, destination, TransportMode.TRANSIT, 1).estimatedMinutes)
+    }
+
+    @Test fun queriedRoutineSuppliesIdentityForSegmentsWithoutRoutineId() = runTest {
+        val base = RouteEstimate(30, "route", "test", "base", segments = listOf(busSegment().copy(routineId = null)))
+        val adjustment = SegmentTimeAdjustment(routineId = 1, segmentType = RouteSegmentType.BUS_RIDE,
+            routeName = "753", startName = "start", endName = "end", averageDelayMinutes = 4,
+            averageActualDurationMinutes = 14, minActualDurationMinutes = 13, maxActualDurationMinutes = 15,
+            sampleCount = 3, confidence = 1.0, updatedAtEpochMillis = 1000)
+        val provider = SegmentAdjustedRouteEstimateProvider(FixedRouteEstimateProvider(base),
+            FixedSegmentTimeAdjustmentRepository(listOf(adjustment)))
+        assertEquals(34, provider.getRouteEstimate(destination, destination, TransportMode.TRANSIT, 1).estimatedMinutes)
+    }
+
     @Test
     fun getRouteEstimate_appliesConfidentSegmentAdjustments() = runTest {
         val provider = SegmentAdjustedRouteEstimateProvider(

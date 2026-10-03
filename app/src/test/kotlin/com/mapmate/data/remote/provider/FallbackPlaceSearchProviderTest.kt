@@ -5,8 +5,44 @@ import com.mapmate.domain.provider.PlaceSearchProvider
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import kotlinx.coroutines.CancellationException
 
 class FallbackPlaceSearchProviderTest {
+    @Test(expected = IllegalStateException::class)
+    fun failedRemoteWithNoMatchingFallbackRemainsAnError() = runTest {
+        FallbackPlaceSearchProvider(FailingPlaceSearchProvider, FixedPlaceSearchProvider(emptyList())).search("Unknown")
+    }
+
+    @Test
+    fun emptyRemoteAndEmptyFallbackRemainAnEmptyResult() = runTest {
+        assertEquals(emptyList<Destination>(), FallbackPlaceSearchProvider(
+            FixedPlaceSearchProvider(emptyList()), FixedPlaceSearchProvider(emptyList()),
+        ).search("Unknown"))
+    }
+
+    @Test(expected = CancellationException::class)
+    fun cancellationDoesNotStartFallbackSearch() = runTest {
+        var fallbackWasCalled = false
+        val provider = FallbackPlaceSearchProvider(
+            primary = object : PlaceSearchProvider {
+                override suspend fun search(query: String): List<Destination> {
+                    throw CancellationException("Search was replaced.")
+                }
+            },
+            fallback = object : PlaceSearchProvider {
+                override suspend fun search(query: String): List<Destination> {
+                    fallbackWasCalled = true
+                    return emptyList()
+                }
+            },
+        )
+        try {
+            provider.search("Search")
+        } finally {
+            assertEquals(false, fallbackWasCalled)
+        }
+    }
+
     @Test
     fun search_returnsFallbackWhenPrimaryFails() = runTest {
         val fallbackDestination = Destination(

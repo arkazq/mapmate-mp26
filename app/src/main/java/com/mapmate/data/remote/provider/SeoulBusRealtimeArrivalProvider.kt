@@ -5,6 +5,7 @@ import com.mapmate.data.remote.config.RemoteApiConfig
 import com.mapmate.domain.model.TransitArrivalEstimate
 import com.mapmate.domain.model.TransitArrivalQuery
 import com.mapmate.domain.provider.TransitArrivalProvider
+import com.mapmate.domain.util.runCatchingCancellable
 import kotlin.math.ceil
 
 class SeoulBusRealtimeArrivalProvider(
@@ -24,15 +25,15 @@ class SeoulBusRealtimeArrivalProvider(
     ): TransitArrivalEstimate? {
         val stationArsId = busQuery.stationArsId?.takeIf(String::isNotBlank) ?: return null
         val routeName = busQuery.routeName?.takeIf(String::isNotBlank) ?: return null
-        val responseXml = runCatching {
-            api.getArrivalsByStationUid(
+        val arrivals = runCatchingCancellable {
+            val responseXml = api.getArrivalsByStationUid(
                 serviceKey = config.seoulBusServiceKey,
                 stationArsId = stationArsId,
-            ).string()
+            ).readSeoulBusXml()
+            SeoulBusArrivalXmlParser.parse(responseXml)
         }.getOrNull() ?: return null
 
-        val item = SeoulBusArrivalXmlParser.parse(responseXml)
-            .firstRouteMatchOrNull(routeName)
+        val item = arrivals.firstRouteMatchOrNull(routeName)
             ?: return null
         val waitCandidateMinutes = item.waitCandidateMinutes()
         val waitMinutes = waitCandidateMinutes.firstOrNull() ?: return null
@@ -52,7 +53,7 @@ class SeoulBusRealtimeArrivalProvider(
         val responseXml = api.getArrivalsByRouteAll(
             serviceKey = config.seoulBusServiceKey,
             busRouteId = busRouteId,
-        ).string()
+        ).readSeoulBusXml()
 
         val item = SeoulBusArrivalXmlParser.parse(responseXml)
             .firstOrNull { it.matches(busQuery) }
@@ -90,6 +91,10 @@ class SeoulBusRealtimeArrivalProvider(
     }
 
     private fun SeoulBusArrivalItem.matches(query: TransitArrivalQuery.Bus): Boolean {
+        val requestedRoute = query.routeName.normalizedRouteName()
+        if (requestedRoute.isNotBlank() && routeNames().isNotEmpty() &&
+            routeNames().none { it.normalizedRouteName() == requestedRoute }
+        ) return false
         return listOfNotNull(
             stationId != null && stationId == query.stationId,
             stationArsId != null && stationArsId == query.stationArsId,
@@ -112,17 +117,19 @@ class SeoulBusRealtimeArrivalProvider(
     }
 
     private fun SeoulBusArrivalItem.waitCandidateMinutes(): List<Int> {
-        val waitSecondsMinutes = listOfNotNull(arrivalSeconds1, arrivalSeconds2)
-            .filter { it >= 0 }
-            .map { ceil(it / SECONDS_PER_MINUTE).toInt() }
-
-        val waitMessageMinutes = listOfNotNull(arrivalMessage1, arrivalMessage2)
-            .mapNotNull { it.toWaitMinutesFromMessage() }
-
-        return (waitSecondsMinutes + waitMessageMinutes)
-            .filter { it >= 0 }
+        return listOfNotNull(
+            arrivalWaitMinutes(arrivalSeconds1, arrivalMessage1),
+            arrivalWaitMinutes(arrivalSeconds2, arrivalMessage2),
+        )
             .distinct()
             .sorted()
+    }
+
+    private fun arrivalWaitMinutes(seconds: Int?, message: String?): Int? {
+        val normalized = message.orEmpty().replace("\\s+".toRegex(), "")
+        if (listOf("운행종료", "운행중단", "출발대기", "운행대기", "정보없", "정보가없", "예정없").any { it in normalized }) return null
+        if (seconds != null && seconds > 0) return ceil(seconds / SECONDS_PER_MINUTE).toInt()
+        return message.toWaitMinutesFromMessage()
     }
 
     private fun String?.toWaitMinutesFromMessage(): Int? {
@@ -130,8 +137,9 @@ class SeoulBusRealtimeArrivalProvider(
         Regex("(\\d+)\\s*분").find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let {
             return it
         }
+        val normalized = message.replace("\\s+".toRegex(), "")
         return when {
-            "곧" in message || "도착" in message -> 0
+            normalized.startsWith("곧도착") || normalized == "도착" -> 0
             else -> null
         }
     }

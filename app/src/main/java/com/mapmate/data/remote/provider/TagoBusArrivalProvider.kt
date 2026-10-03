@@ -26,13 +26,17 @@ class TagoBusArrivalProvider(
 
         val stationLatitude = busQuery.stationLatitude ?: return null
         val stationLongitude = busQuery.stationLongitude ?: return null
+        if (!stationLatitude.isFinite() || stationLatitude !in -90.0..90.0 ||
+            !stationLongitude.isFinite() || stationLongitude !in -180.0..180.0 ||
+            busQuery.routeName.normalizedRouteName().isBlank()
+        ) return null
         val station = stationApi.getNearbyStations(
             serviceKey = config.tagoServiceKey,
             latitude = stationLatitude,
             longitude = stationLongitude,
         ).response?.body?.items?.item
             .orEmpty()
-            .filter { it.citycode != null && it.nodeid != null }
+            .filter { !it.citycode.isNullOrBlank() && !it.nodeid.isNullOrBlank() }
             .sortedByDescending { it.matchScore(busQuery, stationLatitude, stationLongitude) }
             .take(MAX_STATION_CANDIDATES)
             .firstNotNullOfOrNull { candidate ->
@@ -78,11 +82,8 @@ class TagoBusArrivalProvider(
         query: TransitArrivalQuery.Bus,
     ): List<TagoBusArrivalItem> {
         val routeName = query.routeName.normalizedRouteName()
-        val matches = if (routeName.isBlank()) {
-            this
-        } else {
-            filter { it.routeno.normalizedRouteName() == routeName }
-        }
+        if (routeName.isBlank()) return emptyList()
+        val matches = filter { it.routeno.normalizedRouteName() == routeName && (it.arrtime ?: -1) >= 0 }
         return matches.sortedBy { it.arrtime ?: Int.MAX_VALUE }
     }
 

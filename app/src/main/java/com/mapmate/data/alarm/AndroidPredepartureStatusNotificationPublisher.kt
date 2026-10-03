@@ -1,6 +1,5 @@
 package com.mapmate.data.alarm
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -8,8 +7,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.os.Build
 import com.mapmate.MainActivity
 import com.mapmate.R
 import com.mapmate.domain.alarm.DepartureAlarmSchedule
@@ -78,9 +75,7 @@ class AndroidPredepartureStatusNotificationPublisher(
     }
 
     private fun canPostNotifications(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            applicationContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
+        return AndroidAlarmAccess.read(applicationContext).canPostStatus
     }
 
     private fun ensureNotificationChannel() {
@@ -111,14 +106,14 @@ class AndroidPredepartureStatusNotificationPublisher(
         return STATUS_NOTIFICATION_ID_OFFSET + baseId
     }
 
-    private companion object {
-        const val CHANNEL_ID = "predeparture_status"
-        const val CHANNEL_NAME = "출발 전 상태 알림"
-        const val CHANNEL_DESCRIPTION = "출발 30분 전부터 권장 출발 시각을 알려주는 상태 알림"
-        const val CONTENT_REQUEST_CODE = 1004
-        const val STATUS_NOTIFICATION_ID_OFFSET = 200_000
-        const val STATUS_NOTIFICATION_ID_MODULO = 100_000
-        const val PREFERENCES_NAME = "predeparture_status_notifications"
-        const val ACTIVE_ROUTINE_IDS = "active_routine_ids"
+    companion object {
+        internal const val CHANNEL_ID = "predeparture_status"
+        private const val CHANNEL_NAME = "출발 전 상태 알림"
+        private const val CHANNEL_DESCRIPTION = "출발 30분 전부터 권장 출발 시각을 알려주는 상태 알림"
+        private const val CONTENT_REQUEST_CODE = 1004
+        private const val STATUS_NOTIFICATION_ID_OFFSET = 200_000
+        private const val STATUS_NOTIFICATION_ID_MODULO = 100_000
+        private const val PREFERENCES_NAME = "predeparture_status_notifications"
+        private const val ACTIVE_ROUTINE_IDS = "active_routine_ids"
     }
 }

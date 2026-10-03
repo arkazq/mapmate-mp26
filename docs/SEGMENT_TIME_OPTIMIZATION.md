@@ -39,7 +39,9 @@
 지원하는 `RouteSegmentType`:
 
 - `WALK_TO_TRANSIT`
+- `WAIT_FOR_BUS`
 - `BUS_RIDE`
+- `WAIT_FOR_SUBWAY`
 - `SUBWAY_RIDE`
 - `TRANSFER_WALK`
 - `WALK_TO_DESTINATION`
@@ -121,6 +123,7 @@ ODsay 파싱에 실패하거나 segment를 만들 수 없으면 `RouteEstimate.s
 
 - 구간별 시작 시각 수정
 - 구간별 종료 시각 수정
+- 시작/종료 날짜의 명시적 선택 및 자정 경계 표시
 - 실제 소요시간 재계산
 - `SKIPPED` 구간을 시간 입력 후 `COMPLETED`로 전환
 
@@ -128,6 +131,7 @@ ODsay 파싱에 실패하거나 segment를 만들 수 없으면 `RouteEstimate.s
 
 - 종료 시각이 시작 시각보다 빠르면 저장하지 않습니다.
 - 수정된 구간은 `isUserEdited = true`로 저장합니다.
+- 변경하지 않은 구간은 원래 측정 출처를 유지합니다. 모든 변경을 한 트랜잭션으로 검증/저장하며 구간 중첩이나 잘못된 소요시간은 부분 저장하지 않습니다.
 - 수정된 구간은 `status = COMPLETED`로 저장합니다.
 - 입력하지 않은 `SKIPPED` 구간은 `SKIPPED` 상태를 유지합니다.
 
@@ -149,6 +153,7 @@ delay = actualDurationMinutes - plannedDurationMinutes
 - 수동 수정 기록은 반영하되 낮은 가중치와 낮은 confidence를 적용합니다.
 - 지연값이 너무 큰 이상치는 제외합니다. 현재 기준은 +/- 60분입니다.
 - sample count가 3개 미만이면 confidence가 낮습니다.
+- 계획이 2분 이상인 구간을 0분으로 완료한 시연용 기록과 음수 소요시간은 학습에서 제외합니다. 계획 1분의 실제 짧은 도보 기록은 유지합니다.
 
 ## 추천 시간 반영
 
@@ -161,8 +166,9 @@ delay = actualDurationMinutes - plannedDurationMinutes
 3. 현재 estimate의 segment와 adjustment key가 일치하면 보정값을 적용합니다.
 4. confidence가 낮은 보정값은 적용하지 않습니다.
 5. 적용된 delay를 `estimatedMinutes`에 더합니다.
+6. 보정 저장소 읽기 실패는 성공한 경로 조회를 버리지 않습니다. 취소 신호는 전파하며 비정상 신뢰도/표본/지연값은 제외하고 구간 보정 후 시간이 음수가 되지 않도록 제한합니다.
 
-`personalBufferMinutes`는 계속 유지됩니다. 이 값은 출발 준비 지연 또는 사용자 습관성 출발 지연에 가깝고, segment 보정은 실제 이동 구간의 소요시간 오차를 보정합니다.
+`personalBufferMinutes`는 별도 값으로 유지됩니다. 현재 자동 조정은 전체 도착 오차 기반이며 준비 지연만 독립 학습하지는 않습니다. 따라서 구간 보정과의 중복 영향 분리는 후속 과제입니다. 1분 미만의 빠른 전체 완료 기록은 자동 개인 보정에 사용하지 않습니다.
 
 ## 대체 처리 정책
 
@@ -176,10 +182,11 @@ delay = actualDurationMinutes - plannedDurationMinutes
 ## 현재 한계
 
 - 시간대별/요일별 segment 보정은 아직 없습니다.
-- 환승 대기시간은 planned segment로 만들지 않습니다.
+- 버스/지하철 대기는 계획 대기 구간으로 측정할 수 있지만, 환승 정류장에 미래에 도착할 시각을 이용한 전체 환승 실시간 최적화는 구현하지 않습니다.
 - 구간 key는 문자열 정규화만 수행하므로 정류장/역 이름 표기 차이에 민감할 수 있습니다.
 - 자동 위치 기반 탑승/하차 감지는 없습니다.
 - 지하철 지역별 실시간 provider 확장은 별도 작업입니다.
+- 구간 보정은 최종 선택 경로에 적용합니다. 모든 후보의 개인화된 접근/탑승 시간을 다시 계산해 랭킹하는 기능은 별도 고도화 대상입니다.
 
 ## 검증
 
@@ -193,4 +200,4 @@ delay = actualDurationMinutes - plannedDurationMinutes
 - `.\gradlew.bat build`
 # 현재 구간 최적화 참고
 
-최신 구간 측정과 최적화 변경 내용은 `docs/IMPLEMENTATION_UPDATE_2026_06_16.md`를 확인합니다. 현재 버스/지하철 대기 구간은 별도로 측정하며, 구간 보정값은 평균/최소/최대 실제 소요시간을 저장합니다. 최적화 키는 루틴과 노선이 달라지면 별도로 학습되도록 유지합니다.
+최신 측정 복원, 구간 수정 및 검증 범위는 [품질·사용성 점검 기록](QUALITY_REVIEW_2026_10_02.md)을 확인합니다. 버스/지하철 대기는 별도 측정하며 보정 키는 루틴/유형/노선/출발지/도착지로 유지합니다. Room 스키마 버전은 8입니다.

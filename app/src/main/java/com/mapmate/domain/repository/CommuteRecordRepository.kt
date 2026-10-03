@@ -16,5 +16,7 @@ interface CommuteRecordRepository {
 
     suspend fun updateRouteSegment(segment: RouteSegment)
 
+    suspend fun updateRouteSegments(recordId: Long, segments: List<RouteSegment>): CommuteRecord
+
     fun observeRecords(): Flow<List<CommuteRecord>>
 }
